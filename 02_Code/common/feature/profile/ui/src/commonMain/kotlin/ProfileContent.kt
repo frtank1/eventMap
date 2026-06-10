@@ -41,6 +41,10 @@ import com.eventmap.profile.ui.viewmodel.ProfileViewModel
 import com.eventmap.theme.EventMapTheme
 import com.eventmap.theme.ui_kit.SecondaryButton
 import org.koin.mp.KoinPlatform.getKoin
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.Icon
 
 @Composable
 fun ProfileContent(
@@ -112,7 +116,7 @@ private fun ProfileHeader(p: UserProfile) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(p.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
-            if (p.isVerified) { Spacer(Modifier.size(4.dp)); Text("✓", color = EventMapTheme.colors.info) }
+            if (p.isVerified) { Spacer(Modifier.size(4.dp)); Icon(Icons.Rounded.Verified, contentDescription = "Подтверждён", tint = EventMapTheme.colors.info, modifier = Modifier.size(16.dp)) }
         }
         Text(p.username, style = MaterialTheme.typography.bodyMedium, color = EventMapTheme.colors.textSecondary)
         if (p.bio.isNotBlank()) {
@@ -164,7 +168,7 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text("🎫") }
+        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.ConfirmationNumber, contentDescription = null, tint = EventMapTheme.colors.textSecondary, modifier = Modifier.size(20.dp)) }
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
             Text(item.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)

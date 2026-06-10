@@ -36,6 +36,9 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.eventmap.video.models.VideoItem
 import com.eventmap.video.ui.viewmodel.VideoViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Icon
 
 class VideoFeedScreen : Screen {
     @Composable
@@ -80,7 +83,7 @@ private fun VideoPage(item: VideoItem, onLike: () -> Unit) {
                 Brush.verticalGradient(listOf(Color(0xFF1A1030), Color(0xFF301030), Color(0xFF101020))),
             ),
             contentAlignment = Alignment.Center,
-        ) { Text("▶", color = Color.White.copy(alpha = 0.25f), fontSize = 64.sp) }
+        ) { Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.25f), modifier = Modifier.size(72.dp)) }
 
         // правый столбец реакций
         Column(

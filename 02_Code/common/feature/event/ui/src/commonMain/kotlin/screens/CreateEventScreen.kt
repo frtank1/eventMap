@@ -46,6 +46,10 @@ import com.eventmap.theme.EventMapTheme
 import com.eventmap.theme.ui_kit.PrimaryGradientButton
 import com.eventmap.theme.ui_kit.SecondaryButton
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material3.Icon
 
 private val categories = listOf("Концерт", "Спорт", "Йога", "Еда", "Детям", "Лекция", "Квиз", "Книжклуб")
 
@@ -151,7 +155,11 @@ private fun StepLocation(name: String, onName: (String) -> Unit) {
             Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))
                 .background(EventMapTheme.colors.mapBg),
             contentAlignment = Alignment.Center,
-        ) { Text("🗺️ Выбор точки на карте", color = EventMapTheme.colors.textSecondary) }
+        ) { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Rounded.Map, contentDescription = null, tint = EventMapTheme.colors.textSecondary, modifier = Modifier.size(32.dp))
+            Spacer(Modifier.height(6.dp))
+            Text("Выбор точки на карте", color = EventMapTheme.colors.textSecondary)
+        } }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(value = name, onValueChange = onName, label = { Text("Адрес / название места") }, singleLine = true,
             shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())

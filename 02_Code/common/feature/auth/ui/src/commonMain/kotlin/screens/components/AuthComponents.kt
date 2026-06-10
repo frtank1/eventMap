@@ -28,6 +28,15 @@ import androidx.compose.ui.unit.sp
 import com.eventmap.theme.EventMapTheme
 import com.eventmap.theme.ui_kit.SecondaryButton
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 /** Бренд-логотип: градиентный кружок с пином. */
 @Composable
@@ -39,7 +48,7 @@ fun BrandLogo(size: Int = 88, modifier: Modifier = Modifier) {
             .background(Brush.linearGradient(EventMapTheme.colors.brandGradient)),
         contentAlignment = Alignment.Center,
     ) {
-        Text("◎", color = Color.White, fontSize = (size * 0.5).sp, fontWeight = FontWeight.Bold)
+        Icon(Icons.Rounded.Place, contentDescription = null, tint = Color.White, modifier = Modifier.size((size * 0.55).dp))
     }
 }
 
@@ -53,15 +62,30 @@ fun AuthTextField(
     isPassword: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
 ) {
+    var showPassword by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+        visualTransformation = if (isPassword && !showPassword) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        colors = OutlinedTextFieldDefaults.colors(),
+        trailingIcon = if (isPassword) {
+            {
+                Icon(
+                    imageVector = if (showPassword) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = if (showPassword) "Скрыть пароль" else "Показать пароль",
+                    tint = EventMapTheme.colors.textSecondary,
+                    modifier = Modifier.clickableNoRipple { showPassword = !showPassword },
+                )
+            }
+        } else null,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = EventMapTheme.colors.accent,
+            focusedLabelColor = EventMapTheme.colors.accent,
+            cursorColor = EventMapTheme.colors.accent,
+        ),
         modifier = modifier,
     )
 }

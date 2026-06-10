@@ -9,6 +9,8 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
+            // api: иконки доступны всем фичам через core.ui
+            api(libs.compose.materialIconsExtended)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.components.resources)
             implementation(libs.voyager.screenModel)

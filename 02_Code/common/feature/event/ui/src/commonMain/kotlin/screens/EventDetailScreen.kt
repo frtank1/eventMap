@@ -59,6 +59,9 @@ import com.eventmap.theme.ui_kit.PrimaryGradientButton
 import com.eventmap.theme.ui_kit.SecondaryButton
 import com.eventmap.theme.ui_kit.StatusPill
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material3.Icon
 
 data class EventDetailScreen(val eventId: String) : Screen {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -220,7 +223,7 @@ private fun AboutTab(ev: EventDetail, onOpenOrganizer: (String) -> Unit) {
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("🎤", fontSize = 18.sp)
+                Icon(Icons.Rounded.Mic, contentDescription = null, tint = EventMapTheme.colors.accent, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Организатор", style = MaterialTheme.typography.bodySmall, color = EventMapTheme.colors.textTertiary)

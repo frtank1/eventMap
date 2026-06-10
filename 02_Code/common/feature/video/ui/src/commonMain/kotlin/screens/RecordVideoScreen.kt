@@ -24,6 +24,10 @@ import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material3.Icon
 
 // E3 — экран записи. Камера/таймер подключаются платформенно (CameraX / AVFoundation).
 class RecordVideoScreen : Screen {
@@ -32,10 +36,10 @@ class RecordVideoScreen : Screen {
         val nav = LocalNavigator.currentOrThrow
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("📷 Камера (превью)", color = Color.White.copy(alpha = 0.5f))
+                Icon(Icons.Rounded.Videocam, contentDescription = "Камера (превью)", tint = Color.White.copy(alpha = 0.4f), modifier = Modifier.size(56.dp))
             }
-            Text("✕", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 44.dp, start = 16.dp).clickable { nav.pop() })
+            Icon(Icons.Rounded.Close, contentDescription = "Закрыть", tint = Color.White,
+                modifier = Modifier.padding(top = 44.dp, start = 16.dp).size(28.dp).clickable { nav.pop() })
 
             Text("0:30", color = Color.White, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp))

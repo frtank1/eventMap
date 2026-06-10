@@ -43,6 +43,10 @@ import com.eventmap.event.ui.viewmodel.OrganizerViewModel
 import com.eventmap.theme.EventMapTheme
 import com.eventmap.theme.ui_kit.PrimaryGradientButton
 import com.eventmap.theme.ui_kit.SecondaryButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ConfirmationNumber
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.Icon
 
 data class OrganizerScreen(val organizerId: String) : Screen {
     @Composable
@@ -100,7 +104,7 @@ private fun OrgHeader(org: Organizer, onBack: () -> Unit, onSubscribe: () -> Uni
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(org.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
-                if (org.isVerified) { Spacer(Modifier.size(4.dp)); Text("✓", color = EventMapTheme.colors.info, fontWeight = FontWeight.Bold) }
+                if (org.isVerified) { Spacer(Modifier.size(4.dp)); Icon(Icons.Rounded.Verified, contentDescription = "Подтверждён", tint = EventMapTheme.colors.info, modifier = Modifier.size(18.dp)) }
             }
             if (org.bio.isNotBlank()) {
                 Text(org.bio, style = MaterialTheme.typography.bodyMedium, color = EventMapTheme.colors.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, start = 16.dp, end = 16.dp))
@@ -109,7 +113,7 @@ private fun OrgHeader(org: Organizer, onBack: () -> Unit, onSubscribe: () -> Uni
             Text("${org.eventsCount} событий · ${org.subscribers} подписчиков", style = MaterialTheme.typography.bodySmall, color = EventMapTheme.colors.textTertiary)
             Spacer(Modifier.height(12.dp))
             if (org.isSubscribed) {
-                SecondaryButton(text = "Вы подписаны ✓", onClick = onSubscribe)
+                SecondaryButton(text = "Вы подписаны", onClick = onSubscribe)
             } else {
                 PrimaryGradientButton(text = "Подписаться", onClick = onSubscribe)
             }
@@ -125,7 +129,7 @@ private fun OrgEventRow(ev: EventDetail, onClick: () -> Unit) {
             .clickable(onClick = onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Text("🎫") }
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.ConfirmationNumber, contentDescription = null, tint = EventMapTheme.colors.textSecondary, modifier = Modifier.size(20.dp)) }
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f)) {
             Text(ev.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)

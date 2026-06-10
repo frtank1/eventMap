@@ -18,7 +18,17 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -37,7 +47,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -118,7 +130,7 @@ fun MapContent(
                 .padding(horizontal = 14.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("🔴", fontSize = 12.sp)
+            LivePulseDot()
             Spacer(Modifier.width(6.dp))
             Text("Прямо сейчас", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         }
@@ -133,7 +145,14 @@ fun MapContent(
                 .background(MaterialTheme.colorScheme.surface)
                 .clickableNoRipple { controller?.animateCamera(Astana, 14.0) },
             contentAlignment = Alignment.Center,
-        ) { Text("📍", fontSize = 20.sp) }
+        ) {
+            Icon(
+                Icons.Rounded.MyLocation,
+                contentDescription = "Моя локация",
+                tint = EventMapTheme.colors.accent,
+                modifier = Modifier.size(22.dp),
+            )
+        }
 
         // Карусель событий снизу
         EventCarousel(
@@ -177,7 +196,12 @@ private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearch
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("🔍", fontSize = 16.sp)
+            Icon(
+                Icons.Rounded.Search,
+                contentDescription = null,
+                tint = EventMapTheme.colors.textSecondary,
+                modifier = Modifier.size(18.dp),
+            )
             Spacer(Modifier.width(8.dp))
             Text("Поиск событий и мест", color = EventMapTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
         }
@@ -188,8 +212,34 @@ private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearch
                 .background(if (activeFilters > 0) EventMapTheme.colors.accent else MaterialTheme.colorScheme.surface)
                 .clickableNoRipple(onFilterClick),
             contentAlignment = Alignment.Center,
-        ) { Text("⚙️", fontSize = 18.sp) }
+        ) {
+            Icon(
+                Icons.Rounded.Tune,
+                contentDescription = "Фильтры",
+                tint = if (activeFilters > 0) Color.White else EventMapTheme.colors.textSecondary,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
+}
+
+// Пульсирующая точка LIVE (масштаб + прозрачность)
+@Composable
+private fun LivePulseDot(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition()
+    val pulse by transition.animateFloat(
+        initialValue = 0.7f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+    )
+    Box(
+        modifier
+            .size(8.dp)
+            .scale(pulse)
+            .alpha(pulse)
+            .clip(CircleShape)
+            .background(Color.White),
+    )
 }
 
 @Composable

@@ -48,7 +48,7 @@ fun PrimaryGradientButton(
             .clip(RoundedCornerShape(14.dp))
             .background(brush)
             .alpha(if (active) 1f else 0.5f)
-            .then(if (active) Modifier.clickableNoRipple(onClick) else Modifier),
+            .then(if (active) Modifier.pressableNoRipple(onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         if (loading) {
@@ -90,7 +90,7 @@ fun SecondaryButton(
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .alpha(if (enabled) 1f else 0.5f)
-            .then(if (enabled) Modifier.clickableNoRipple(onClick) else Modifier)
+            .then(if (enabled) Modifier.pressableNoRipple(onClick) else Modifier)
             .padding(contentPadding),
         contentAlignment = Alignment.Center,
     ) {

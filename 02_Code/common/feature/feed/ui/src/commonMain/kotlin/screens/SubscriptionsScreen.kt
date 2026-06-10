@@ -37,6 +37,10 @@ import com.eventmap.feed.models.SubscriptionRequest
 import com.eventmap.feed.ui.viewmodel.SubTab
 import com.eventmap.feed.ui.viewmodel.SubscriptionsViewModel
 import com.eventmap.theme.EventMapTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material3.Icon
 
 class SubscriptionsScreen : Screen {
     @Composable
@@ -120,7 +124,7 @@ private fun RequestRow(r: SubscriptionRequest, onApprove: () -> Unit, onReject: 
             Text(r.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             if (r.subtitle.isNotBlank()) Text(r.subtitle, style = MaterialTheme.typography.bodySmall, color = EventMapTheme.colors.textTertiary)
         }
-        Text("✓", color = EventMapTheme.colors.soft, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onApprove).padding(horizontal = 8.dp))
-        Text("✕", color = EventMapTheme.colors.danger, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onReject).padding(horizontal = 8.dp))
+        Icon(Icons.Rounded.CheckCircle, contentDescription = "Принять", tint = EventMapTheme.colors.soft, modifier = Modifier.clickable(onClick = onApprove).padding(horizontal = 8.dp).size(26.dp))
+        Icon(Icons.Rounded.Cancel, contentDescription = "Отклонить", tint = EventMapTheme.colors.danger, modifier = Modifier.clickable(onClick = onReject).padding(horizontal = 8.dp).size(26.dp))
     }
 }
