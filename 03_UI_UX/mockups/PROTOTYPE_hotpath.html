@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventMap · Кликабельный прототип — горячий путь</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#7C5CFF; --accent:#FF5C8A; --live:#FF4757; --soft:#5DCAA5; --warning:#FAC775;
+  --map-bg:#0c1825; --map-road:#1a2a3d; --map-park:#0f2419; --map-water:#0a2540; --map-build:#11212f;
+  --bg:#0a1420; --surface:#11212f; --surface-v:rgba(255,255,255,.07);
+  --text:#fff; --text-2:#7e8d9f; --text-3:#56657a;
+  --grad-brand:linear-gradient(135deg,#7C5CFF,#FF5C8A);
+  --grad-live:linear-gradient(135deg,#FF4757,#FF5C8A);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;background:radial-gradient(1200px 800px at 50% -10%,#1a1140,#070b14 60%);color:#e9ecf5;padding:34px 20px 70px;display:flex;flex-direction:column;align-items:center}
+h1{font-size:26px;font-weight:800;margin:0 0 4px;background:var(--grad-brand);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-align:center}
+.sub{color:#8a93ad;margin:0 0 22px;font-size:14px;text-align:center;max-width:520px}
+.stage{display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.phone{position:relative;width:320px;height:680px;background:var(--map-bg);border-radius:38px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.6),0 0 0 8px #1d2233,0 0 0 9px #2c3350;font-size:13px}
+.screen{position:absolute;inset:0;overflow:hidden;opacity:0;pointer-events:none;transition:opacity .28s}
+.screen.active{opacity:1;pointer-events:auto}
+.tap{cursor:pointer}
+/* map */
+.map{position:absolute;inset:0;background:var(--map-bg)}
+.map::before{content:"";position:absolute;inset:0;background:
+  linear-gradient(90deg,transparent 48%,var(--map-road) 48.5%,var(--map-road) 51%,transparent 51.5%),
+  linear-gradient(20deg,transparent 70%,var(--map-road) 70.4%,var(--map-road) 72%,transparent 72.4%),
+  linear-gradient(115deg,transparent 30%,var(--map-road) 30.4%,var(--map-road) 31.6%,transparent 32%),
+  radial-gradient(120px 90px at 22% 30%,var(--map-park),transparent 70%),
+  radial-gradient(160px 120px at 80% 78%,var(--map-water),transparent 70%);opacity:.9}
+.top{position:absolute;top:0;left:0;right:0;z-index:40;padding:16px 14px 6px;background:linear-gradient(to bottom,rgba(10,20,32,.92),transparent);display:flex;align-items:center;gap:8px}
+.logo{display:flex;align-items:center;gap:6px;background:var(--surface);padding:8px 13px;border-radius:999px;font-weight:800;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.logo .d{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(255,92,138,.25)}
+.search{flex:1;display:flex;align-items:center;gap:7px;background:var(--surface-v);backdrop-filter:blur(6px);padding:10px 13px;border-radius:999px;color:var(--text-2);font-size:12px}
+.pin{position:absolute;z-index:20;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px}
+.pin .dot{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 6px 18px rgba(0,0,0,.5);border:2px solid rgba(255,255,255,.2)}
+.pin .lbl{font-size:10px;font-weight:800;background:rgba(10,20,32,.85);padding:2px 7px;border-radius:999px;white-space:nowrap}
+.pin.soon .dot{background:var(--grad-brand)}
+.pin.live .dot{background:var(--grad-live);animation:pulse 1.6s infinite}
+.pin.person .dot{background:linear-gradient(135deg,#2a2140,#43325c);font-size:18px}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,71,87,.5)}70%{box-shadow:0 0 0 16px rgba(255,71,87,0)}100%{box-shadow:0 0 0 0 rgba(255,71,87,0)}}
+.hint{position:absolute;bottom:22px;left:0;right:0;text-align:center;font-size:11px;color:var(--text-3);z-index:30}
+.hint b{color:var(--primary-light,#a78bff)}
+/* bottom sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:60;background:var(--surface);border-radius:22px 22px 0 0;padding:8px 18px 22px;box-shadow:0 -10px 40px rgba(0,0,0,.5)}
+.grip{width:40px;height:4px;border-radius:999px;background:#33415a;margin:6px auto 14px}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;margin-bottom:8px}
+.badge.soon{background:rgba(124,92,255,.18);color:#a78bff}
+.badge.live{background:var(--grad-live);color:#fff}
+.badge.live .b{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.4s infinite}
+.s-title{font-size:19px;font-weight:800;margin:2px 0}
+.s-meta{font-size:12px;color:var(--text-2);margin-bottom:14px;line-height:1.6}
+.circles{display:flex;gap:9px;margin:4px 0 16px}
+.circles .c{width:54px;height:54px;border-radius:14px;background:linear-gradient(135deg,#2a2140,#43325c);position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:20px;border:2px solid var(--live)}
+.circles .c .play{position:absolute;bottom:3px;right:3px;font-size:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;border-radius:13px;font-weight:800;font-size:14px;border:none;color:#fff;background:var(--grad-brand);width:100%;cursor:pointer;box-shadow:0 8px 20px rgba(124,92,255,.35)}
+.btn.live{background:var(--grad-live);box-shadow:0 8px 20px rgba(255,71,87,.35)}
+.btn.ghost{background:var(--surface-v);color:#cfd6ea;box-shadow:none;margin-top:10px}
+.back{position:absolute;top:16px;left:14px;z-index:80;width:38px;height:38px;border-radius:50%;background:rgba(10,20,32,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;border:1px solid rgba(255,255,255,.1)}
+/* event card */
+.body{position:absolute;inset:0;overflow:auto;background:var(--bg)}
+.cover{height:200px;background:linear-gradient(135deg,#3a2a66,#7C5CFF55),var(--map-bg);position:relative;display:flex;align-items:flex-end;padding:16px}
+.cover .ttl{font-size:22px;font-weight:800}
+.ev-meta{padding:16px}
+.mrow{display:flex;align-items:center;gap:10px;font-size:13px;color:#cdd3e6;margin-bottom:12px}
+.mrow .ic{width:34px;height:34px;border-radius:10px;background:var(--surface-v);display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+.tabs{display:flex;gap:6px;padding:0 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+.tabs .t{padding:11px 4px;font-size:13px;font-weight:700;color:var(--text-2);border-bottom:2px solid transparent}
+.tabs .t.on{color:#fff;border-color:var(--primary)}
+.about{padding:16px;font-size:13px;color:#cdd3e6;line-height:1.65}
+/* live player */
+.player{position:absolute;inset:0;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.player::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 40%,#3a2a66,#0a0f1a 70%);opacity:.9}
+.player .em{font-size:90px;z-index:2;opacity:.9}
+.pl-top{position:absolute;top:16px;left:0;right:0;z-index:80;display:flex;align-items:center;gap:10px;padding:0 14px}
+.pl-top .av{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#2a2140,#43325c);border:2px solid var(--live)}
+.pl-top .nm{font-weight:800;font-size:13px}.pl-top .vw{font-size:11px;color:#cfd6ea}
+.pl-side{position:absolute;right:14px;bottom:120px;z-index:80;display:flex;flex-direction:column;gap:20px;align-items:center}
+.pl-side .a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700}
+.pl-side .a .ic{font-size:26px}
+.pl-bot{position:absolute;left:0;right:0;bottom:0;z-index:80;padding:18px 16px 26px;background:linear-gradient(to top,rgba(0,0,0,.8),transparent)}
+.pl-cap{font-size:13px;margin-bottom:14px}
+/* record */
+.rec{position:absolute;inset:0;background:#070b12;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.rec .vp{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,#1a2238,#070b12 75%)}
+.rec .timer{position:absolute;top:20px;left:50%;transform:translateX(-50%);background:var(--live);font-weight:800;font-size:12px;padding:5px 12px;border-radius:999px;z-index:5}
+.rec .shutter{position:absolute;bottom:40px;width:74px;height:74px;border-radius:50%;border:5px solid #fff;display:flex;align-items:center;justify-content:center;z-index:5;cursor:pointer}
+.rec .shutter .in{width:30px;height:30px;border-radius:8px;background:var(--live)}
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--soft);color:#06231a;font-weight:800;font-size:13px;padding:12px 22px;border-radius:999px;opacity:0;transition:.3s;z-index:200}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* side flow map */
+.flow{width:320px;background:var(--surface);border-radius:18px;padding:18px;border:1px solid rgba(255,255,255,.06)}
+.flow h2{font-size:15px;font-weight:800;margin:0 0 14px}
+.fnode{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:11px;font-size:12.5px;font-weight:700;cursor:pointer;color:#cdd3e6;border:1px solid transparent;margin-bottom:4px}
+.fnode:hover{background:var(--surface-v)}
+.fnode.cur{background:rgba(124,92,255,.16);border-color:var(--primary);color:#fff}
+.fnode .code{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:26px;border-radius:7px;background:var(--grad-brand);font-size:11px;font-weight:800;color:#fff}
+.fnode .arr{margin-left:auto;color:var(--text-3)}
+</style>
+</head>
+<body>
+<h1>EventMap · Кликабельный прототип</h1>
+<p class="sub">Горячий путь: карта → событие «скоро» / LIVE → видео-плеер → запись. Тапай пины, кнопки и узлы справа.</p>
+
+<div class="stage">
+<div class="phone" id="phone">
+
+  <!-- C1: MAP -->
+  <div class="screen active" data-screen="map">
+    <div class="map"></div>
+    <div class="top"><div class="logo"><span class="d"></span>EventMap</div><div class="search">🔍 Поиск событий рядом…</div></div>
+    <div class="pin soon tap" style="left:32%;top:38%" data-goto="soon"><div class="dot">🎭</div><div class="lbl">Стендап · 19:00</div></div>
+    <div class="pin live tap" style="left:64%;top:54%" data-goto="liveSheet"><div class="dot">🎵</div><div class="lbl">LIVE · 230</div></div>
+    <div class="pin person tap" style="left:46%;top:70%" data-goto="map"><div class="dot">🙂</div><div class="lbl">Аян</div></div>
+    <div class="hint">Тапни <b>фиолетовый</b> пин (скоро) или <b>красный</b> (LIVE)</div>
+  </div>
+
+  <!-- C4: SHEET SOON -->
+  <div class="screen" data-screen="soon">
+    <div class="map"></div>
+    <div class="back tap" data-goto="map">‹</div>
+    <div class="sheet">
+      <div class="grip"></div>
+      <span class="badge soon">⏳ Начнётся в 19:00</span>
+      <div class="s-title">Стендап-вечер · Open Mic</div>
+      <div class="s-meta">📍 Бар «Подвал», ул. Панфилова 120<br>👥 48 идут · 💸 свободный вход</div>
+      <button class="btn tap" data-goto="event">Открыть событие</button>
+      <button class="btn ghost tap" data-goto="map">На карту</button>
+    </div>
+  </div>
+
+  <!-- D1: EVENT CARD -->
+  <div class="screen" data-screen="event">
+    <div class="body">
+      <div class="cover"><div class="back tap" data-goto="soon" style="top:16px">‹</div><div class="ttl">Стендап-вечер<br>Open Mic</div></div>
+      <div class="ev-meta">
+        <div class="mrow"><div class="ic">📅</div>Сегодня · 19:00 – 22:00</div>
+        <div class="mrow"><div class="ic">📍</div>Бар «Подвал», Панфилова 120</div>
+        <div class="mrow"><div class="ic">👥</div>48 идут · 12 были раньше</div>
+      </div>
+      <div class="tabs"><div class="t on">О событии</div><div class="t">Галерея</div><div class="t">Участники</div></div>
+      <div class="about">Открытый микрофон для всех желающих. 10 комиков, свободный вход, бар работает весь вечер. Приходи поддержать или попробуй сам — запись на месте.</div>
+      <div style="padding:0 16px 24px"><button class="btn tap" data-goto="map">✓ Пойду</button></div>
+    </div>
+  </div>
+
+  <!-- C5: SHEET LIVE -->
+  <div class="screen" data-screen="liveSheet">
+    <div class="map"></div>
+    <div class="back tap" data-goto="map">‹</div>
+    <div class="sheet">
+      <div class="grip"></div>
+      <span class="badge live"><span class="b"></span>LIVE · сейчас</span>
+      <div class="s-title">Night Beats · DJ-сет на крыше</div>
+      <div class="s-meta">📍 Rooftop 360 · 230 человек сейчас здесь</div>
+      <div class="circles">
+        <div class="c tap" data-goto="player">🎧<span class="play">▶</span></div>
+        <div class="c tap" data-goto="player">🕺<span class="play">▶</span></div>
+        <div class="c tap" data-goto="player">🔥<span class="play">▶</span></div>
+        <div class="c tap" data-goto="player">✨<span class="play">▶</span></div>
+      </div>
+      <button class="btn live tap" data-goto="record">📹 Я тоже здесь — снять видео</button>
+      <button class="btn ghost tap" data-goto="player">Смотреть эфир</button>
+    </div>
+  </div>
+
+  <!-- C6: LIVE PLAYER -->
+  <div class="screen" data-screen="player">
+    <div class="player"><div class="em">🎧</div></div>
+    <div class="pl-top"><div class="back tap" data-goto="liveSheet" style="position:static;background:none;border:none;width:auto">‹</div><div class="av"></div><div><div class="nm">@dj_arman</div><div class="vw">👁 230 смотрят · LIVE</div></div></div>
+    <div class="pl-side">
+      <div class="a"><span class="ic">❤️</span>1.2k</div>
+      <div class="a"><span class="ic">💬</span>84</div>
+      <div class="a"><span class="ic">↗️</span></div>
+    </div>
+    <div class="pl-bot"><div class="pl-cap">🔥 Night Beats прямо сейчас на крыше Rooftop 360</div><button class="btn live tap" data-goto="record">📹 Снять своё видео отсюда</button></div>
+  </div>
+
+  <!-- E3: RECORD -->
+  <div class="screen" data-screen="record">
+    <div class="rec">
+      <div class="vp"></div>
+      <div class="back tap" data-goto="player">‹</div>
+      <div class="timer">● 00:12 / 00:30</div>
+      <div class="shutter tap" id="shutterBtn"><div class="in"></div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FLOW NAV -->
+<div class="flow">
+  <h2>Карта переходов</h2>
+  <div class="fnode cur" data-goto="map"><span class="code">C1</span>Карта<span class="arr">старт</span></div>
+  <div class="fnode" data-goto="soon"><span class="code">C4</span>Sheet «скоро»<span class="arr">›</span></div>
+  <div class="fnode" data-goto="event"><span class="code">D1</span>Карточка события<span class="arr">›</span></div>
+  <div class="fnode" data-goto="liveSheet"><span class="code">C5</span>Sheet «LIVE»<span class="arr">›</span></div>
+  <div class="fnode" data-goto="player"><span class="code">C6</span>Live-плеер<span class="arr">›</span></div>
+  <div class="fnode" data-goto="record"><span class="code">E3</span>Запись 30 сек<span class="arr">›</span></div>
+  <div style="margin-top:14px;font-size:11px;color:var(--text-3);line-height:1.6">Полные галереи всех 67 экранов — в <b style="color:#a78bff">index.html</b></div>
+</div>
+</div>
+
+<div class="toast" id="toast">✓ Видео опубликовано в событие</div>
+
+<script>
+const phone=document.getElementById('phone');
+const screens=phone.querySelectorAll('.screen');
+const nodes=document.querySelectorAll('.fnode');
+function go(name){
+  screens.forEach(s=>s.classList.toggle('active',s.dataset.screen===name));
+  nodes.forEach(n=>n.classList.toggle('cur',n.dataset.goto===name));
+}
+document.querySelectorAll('[data-goto]').forEach(el=>{
+  el.addEventListener('click',e=>{e.stopPropagation();go(el.dataset.goto)});
+});
+document.getElementById('shutterBtn').addEventListener('click',e=>{
+  e.stopPropagation();
+  const t=document.getElementById('toast');t.classList.add('show');
+  setTimeout(()=>{t.classList.remove('show');go('event')},1400);
+});
+</script>
+</body>
+</html>

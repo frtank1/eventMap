@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>EventMap · Прототип</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{
+    --brand:#5B2A86;
+    --brand-2:#8E54E9;
+    --brand-light:#EFE6F7;
+    --accent:#F6A623;
+    --bg:#F4F0FA;
+    --card:#FFFFFF;
+    --text:#1F2A44;
+    --muted:#6B7280;
+    --green:#22C55E;
+    --pink:#EC4899;
+    --red:#EF4444;
+    --blue:#3B82F6;
+    --night-overlay: rgba(15, 23, 42, 0);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue","Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg);overflow:hidden}
+
+  /* Phone frame for desktop preview */
+  .phone{
+    position:relative;width:100%;height:100%;max-width:430px;margin:0 auto;background:var(--bg);
+    box-shadow:0 30px 80px rgba(0,0,0,.25);overflow:hidden;
+  }
+
+  /* MAP */
+  #map{position:absolute;inset:0;z-index:1;background:#dde}
+  .map-tint{
+    position:absolute;inset:0;z-index:2;pointer-events:none;transition:background 1.2s ease, backdrop-filter 1.2s ease;
+    background:var(--night-overlay);
+  }
+  body.night .map-tint{background:rgba(15,23,42,.45);backdrop-filter:saturate(.7) hue-rotate(-10deg)}
+  body.night #map .leaflet-tile{filter:brightness(.55) saturate(.8) hue-rotate(180deg) invert(.92)}
+
+  /* TOP BAR */
+  .topbar{
+    position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 14px 8px;
+    background:linear-gradient(to bottom, rgba(244,240,250,.92), rgba(244,240,250,0));
+    pointer-events:none;
+  }
+  .topbar > *{pointer-events:auto}
+  .topbar-row{display:flex;align-items:center;gap:10px}
+  .logo{
+    display:flex;align-items:center;gap:8px;background:var(--card);padding:8px 14px;border-radius:22px;
+    box-shadow:0 6px 18px rgba(91,42,134,.18);font-weight:700;color:var(--brand);
+  }
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(246,166,35,.25)}
+  .search{
+    flex:1;display:flex;align-items:center;gap:8px;background:var(--card);padding:10px 14px;border-radius:22px;
+    box-shadow:0 6px 18px rgba(0,0,0,.08);color:var(--muted);font-size:14px;
+  }
+  .icon-btn{
+    width:42px;height:42px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px rgba(0,0,0,.08);cursor:pointer;font-size:18px;border:none;transition:transform .15s;
+  }
+  .icon-btn:active{transform:scale(.92)}
+  body.night .icon-btn{background:#2a2f50;color:#fff}
+  body.night .logo,body.night .search{background:#2a2f50;color:#fff}
+  body.night .search{color:#9aa3c7}
+
+  .filters{display:flex;gap:8px;overflow-x:auto;padding:10px 2px 4px;scrollbar-width:none;margin-top:6px}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{
+    flex:0 0 auto;padding:8px 14px;border-radius:20px;background:var(--card);font-size:13px;font-weight:600;
+    box-shadow:0 4px 12px rgba(0,0,0,.07);cursor:pointer;display:flex;align-items:center;gap:6px;color:var(--text);
+    border:2px solid transparent;transition:all .2s;user-select:none;
+  }
+  .chip.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+  body.night .chip{background:#2a2f50;color:#fff}
+  body.night .chip.active{background:var(--accent);border-color:var(--accent);color:#1F2A44}
+
+  /* DAY/NIGHT TOGGLE */
+  .daynight{
+    position:absolute;top:14px;right:14px;z-index:11;
+    width:42px;height:42px;border-radius:50%;cursor:pointer;border:none;
+    background:linear-gradient(135deg,#FCD34D,#F6A623);box-shadow:0 8px 22px rgba(246,166,35,.4);
+    font-size:20px;display:flex;align-items:center;justify-content:center;transition:all .3s;
+  }
+  body.night .daynight{background:linear-gradient(135deg,#1e293b,#4c1d95);box-shadow:0 8px 22px rgba(76,29,149,.6);color:#fff}
+
+  /* CUSTOM MARKERS */
+  .ev-marker{
+    width:46px;height:46px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;
+    font-size:22px;box-shadow:0 6px 16px rgba(0,0,0,.25);cursor:pointer;position:relative;
+  }
+  .ev-marker.premium::before{
+    content:'';position:absolute;inset:-6px;border-radius:50%;border:3px solid currentColor;opacity:.35;
+    animation:pulse 1.8s infinite;pointer-events:none;
+  }
+  @keyframes pulse{
+    0%{transform:scale(.85);opacity:.6}
+    100%{transform:scale(1.4);opacity:0}
+  }
+  .ev-marker .badge{
+    position:absolute;bottom:-4px;right:-4px;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+    border-radius:10px;padding:2px 6px;border:2px solid #fff;
+  }
+
+  /* BOTTOM NAV */
+  .bottom-nav{
+    position:absolute;bottom:0;left:0;right:0;z-index:9;background:var(--card);
+    display:flex;justify-content:space-around;padding:8px 6px calc(8px + env(safe-area-inset-bottom));
+    box-shadow:0 -6px 20px rgba(0,0,0,.08);border-radius:24px 24px 0 0;
+  }
+  body.night .bottom-nav{background:#1e2342;color:#fff}
+  .nav-item{
+    flex:1;text-align:center;padding:6px 0;font-size:11px;color:var(--muted);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+  }
+  .nav-item.active{color:var(--brand);font-weight:700}
+  body.night .nav-item.active{color:var(--accent)}
+  .nav-item .ico{font-size:22px}
+  .nav-create{
+    background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff !important;
+    width:54px;height:54px;border-radius:50%;margin-top:-22px;justify-content:center;
+    box-shadow:0 10px 24px rgba(91,42,134,.45);font-size:11px;font-weight:700;gap:0;
+  }
+  .nav-create .ico{font-size:26px}
+
+  /* BOTTOM SHEET */
+  .sheet{
+    position:absolute;left:0;right:0;bottom:0;z-index:20;background:var(--card);
+    border-radius:24px 24px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.25);
+    transform:translateY(110%);transition:transform .35s cubic-bezier(.4,1.2,.4,1);
+    max-height:82vh;display:flex;flex-direction:column;
+  }
+  .sheet.open{transform:translateY(0)}
+  body.night .sheet{background:#1e2342;color:#fff}
+  .sheet-grip{width:42px;height:5px;background:#d4d4d8;border-radius:3px;margin:8px auto 0}
+  .sheet-body{padding:14px 18px 100px;overflow-y:auto}
+  .sheet-cover{
+    height:130px;border-radius:18px;background:linear-gradient(135deg,var(--brand),var(--brand-2));
+    display:flex;align-items:flex-end;padding:12px;color:#fff;position:relative;overflow:hidden;
+  }
+  .sheet-cover .emoji{font-size:74px;position:absolute;right:8px;top:0;opacity:.85}
+  .sheet-cover .tag{background:rgba(255,255,255,.25);padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600}
+  .sheet h2{margin:14px 0 4px;font-size:22px}
+  .sheet .meta{color:var(--muted);font-size:14px;display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+  body.night .sheet .meta{color:#a5b0d4}
+  .sheet .meta span{display:inline-flex;align-items:center;gap:4px}
+
+  /* STORIES STRIP */
+  .stories-title{font-size:14px;font-weight:700;margin:6px 0 10px;display:flex;justify-content:space-between;align-items:center}
+  .stories-title .count{color:var(--muted);font-weight:500;font-size:12px}
+  .stories{display:flex;gap:10px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+  .stories::-webkit-scrollbar{display:none}
+  .story{
+    flex:0 0 auto;width:66px;text-align:center;cursor:pointer;
+  }
+  .story .ring{
+    width:66px;height:66px;border-radius:50%;padding:3px;
+    background:conic-gradient(from 0deg,#F6A623,#EC4899,#8E54E9,#F6A623);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .story.add .ring{background:none;border:2px dashed var(--brand)}
+  .story .avatar{
+    width:100%;height:100%;border-radius:50%;background-size:cover;background-position:center;
+    background-color:#ddd;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:26px;
+  }
+  .story .name{font-size:11px;margin-top:4px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:66px}
+  body.night .story .name{color:#a5b0d4}
+
+  /* VOTING */
+  .vote{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0 14px}
+  .vote button{
+    border:none;padding:14px 6px;border-radius:14px;font-weight:700;cursor:pointer;background:var(--bg);color:var(--text);
+    font-size:13px;display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .2s;
+  }
+  body.night .vote button{background:#2a2f50;color:#fff}
+  .vote button .ico{font-size:22px}
+  .vote button.active.yes{background:var(--green);color:#fff}
+  .vote button.active.maybe{background:var(--accent);color:#fff}
+  .vote button.active.no{background:#374151;color:#fff}
+  .vote button:active{transform:scale(.96)}
+  .vote .count{font-size:11px;font-weight:500;opacity:.85}
+
+  /* PROMO */
+  .promo{
+    background:linear-gradient(135deg,#FFF3D9,#FFE0B2);border-radius:16px;padding:14px;display:flex;
+    align-items:center;gap:12px;margin-bottom:14px;border:2px dashed var(--accent);position:relative;
+  }
+  body.night .promo{background:linear-gradient(135deg,#3a2c12,#5b3f1a);border-color:var(--accent)}
+  .promo .ico{font-size:30px}
+  .promo .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700}
+  body.night .promo .label{color:#d6c39a}
+  .promo .code{font-size:18px;font-weight:800;letter-spacing:1px;color:var(--brand)}
+  body.night .promo .code{color:var(--accent)}
+  .promo button{
+    margin-left:auto;background:var(--brand);color:#fff;border:none;padding:8px 14px;border-radius:10px;
+    font-weight:700;cursor:pointer;font-size:13px;
+  }
+
+  .desc{font-size:14px;line-height:1.5;color:var(--text);margin-bottom:14px}
+  body.night .desc{color:#dde2f5}
+
+  .actions{display:flex;gap:8px}
+  .actions button{
+    flex:1;padding:14px;border-radius:14px;border:none;font-weight:700;cursor:pointer;font-size:14px;display:flex;
+    align-items:center;justify-content:center;gap:6px;
+  }
+  .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff}
+  .btn-ghost{background:var(--bg);color:var(--text)}
+  body.night .btn-ghost{background:#2a2f50;color:#fff}
+
+  /* STORY VIEWER */
+  .viewer{
+    position:fixed;inset:0;z-index:50;background:#000;display:none;align-items:center;justify-content:center;
+    flex-direction:column;color:#fff;
+  }
+  .viewer.open{display:flex}
+  .viewer-bars{position:absolute;top:14px;left:14px;right:14px;display:flex;gap:4px}
+  .viewer-bar{flex:1;height:3px;background:rgba(255,255,255,.3);border-radius:2px;overflow:hidden}
+  .viewer-bar .fill{height:100%;width:0;background:#fff;transition:none}
+  .viewer-bar.done .fill{width:100%}
+  .viewer-bar.active .fill{animation:storybar 5s linear forwards}
+  @keyframes storybar{from{width:0}to{width:100%}}
+  .viewer-head{
+    position:absolute;top:30px;left:14px;right:14px;display:flex;align-items:center;gap:10px;z-index:2;
+  }
+  .viewer-head .avatar{width:36px;height:36px;border-radius:50%;background:#444;display:flex;align-items:center;justify-content:center;font-size:18px}
+  .viewer-head .name{font-weight:700;font-size:14px}
+  .viewer-head .time{font-size:12px;opacity:.7}
+  .viewer-close{margin-left:auto;font-size:24px;cursor:pointer;background:none;border:none;color:#fff;padding:6px 10px}
+  .viewer-content{
+    width:100%;max-width:430px;aspect-ratio:9/16;background:linear-gradient(180deg,#5B2A86,#1F2A44);
+    display:flex;align-items:center;justify-content:center;font-size:140px;position:relative;
+  }
+  .viewer-content .caption{
+    position:absolute;bottom:80px;left:20px;right:20px;font-size:18px;font-weight:600;text-align:center;
+    text-shadow:0 2px 8px rgba(0,0,0,.6);
+  }
+  .viewer-tap-left,.viewer-tap-right{
+    position:absolute;top:0;bottom:0;width:33%;cursor:pointer;z-index:3;
+  }
+  .viewer-tap-left{left:0}
+  .viewer-tap-right{right:0}
+  .viewer-reply{
+    position:absolute;bottom:20px;left:20px;right:20px;display:flex;gap:8px;z-index:2;
+  }
+  .viewer-reply input{
+    flex:1;padding:12px 16px;border-radius:24px;border:1px solid rgba(255,255,255,.4);
+    background:rgba(0,0,0,.3);color:#fff;font-size:14px;
+  }
+  .viewer-reply input::placeholder{color:rgba(255,255,255,.6)}
+  .viewer-reply button{
+    width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,.2);color:#fff;
+    cursor:pointer;font-size:18px;
+  }
+
+  /* TOAST */
+  .toast{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:90px;z-index:60;
+    background:#111;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;font-weight:600;
+    opacity:0;transition:opacity .25s;pointer-events:none;
+  }
+  .toast.show{opacity:1}
+
+  /* HINT */
+  .hint{
+    position:absolute;left:14px;right:14px;bottom:80px;z-index:8;
+    background:rgba(91,42,134,.95);color:#fff;padding:10px 14px;border-radius:14px;
+    font-size:13px;text-align:center;box-shadow:0 8px 24px rgba(91,42,134,.4);
+  }
+  .hint.hidden{display:none}
+
+  /* leaflet attribution position */
+  .leaflet-control-attribution{font-size:9px !important;opacity:.5}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- MAP + tint -->
+  <div id="map"></div>
+  <div class="map-tint"></div>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-row">
+      <div class="logo"><span class="dot"></span>EventMap</div>
+      <div class="search">🔍 Что найдём сегодня?</div>
+    </div>
+    <div class="filters" id="filters">
+      <div class="chip active" data-cat="all">✨ Все</div>
+      <div class="chip" data-cat="sale">🏷️ Скидки</div>
+      <div class="chip" data-cat="concert">🎤 Концерты</div>
+      <div class="chip" data-cat="food">🍕 Еда</div>
+      <div class="chip" data-cat="sport">🏃 Спорт</div>
+      <div class="chip" data-cat="kids">🎈 Детям</div>
+      <div class="chip" data-cat="party">🎉 Тусовки</div>
+      <div class="chip" data-cat="free">🆓 Бесплатно</div>
+    </div>
+  </div>
+
+  <button class="daynight" id="daynight" title="День / Ночь">☀️</button>
+
+  <div class="hint" id="hint">👆 Нажми на любой маркер — увидишь сторис от тех, кто там сейчас</div>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <div class="nav-item active"><div class="ico">🗺️</div>Карта</div>
+    <div class="nav-item"><div class="ico">📋</div>Лента</div>
+    <div class="nav-item nav-create"><div class="ico">＋</div>Создать</div>
+    <div class="nav-item"><div class="ico">🔔</div>Уведомл.</div>
+    <div class="nav-item"><div class="ico">👤</div>Профиль</div>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div class="sheet" id="sheet">
+    <div class="sheet-grip"></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+
+  <!-- Story viewer -->
+  <div class="viewer" id="viewer">
+    <div class="viewer-bars" id="viewerBars"></div>
+    <div class="viewer-head">
+      <div class="avatar" id="viewerAvatar">🙂</div>
+      <div>
+        <div class="name" id="viewerName">—</div>
+        <div class="time" id="viewerTime">—</div>
+      </div>
+      <button class="viewer-close" id="viewerClose">✕</button>
+    </div>
+    <div class="viewer-content" id="viewerContent">
+      <div class="viewer-tap-left" id="viewerLeft"></div>
+      <div class="viewer-tap-right" id="viewerRight"></div>
+      <span id="viewerEmoji">🎉</span>
+      <div class="caption" id="viewerCaption"></div>
+    </div>
+    <div class="viewer-reply">
+      <input placeholder="Отправить реакцию..." />
+      <button>❤️</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ---------- MOCK DATA ----------
+const EVENTS = [
+  {
+    id:1, cat:"concert", premium:true, emoji:"🎤", color:"#EC4899",
+    title:"Концерт Imagine Dragons cover",
+    place:"Парк Первого Президента",
+    time:"Сегодня · 20:00",
+    price:"Бесплатно",
+    lat:43.2220, lng:76.9462,
+    cover:"linear-gradient(135deg,#EC4899,#8E54E9)",
+    desc:"Открытый концерт под звёздами. Кавер-группа сыграет лучшие треки Imagine Dragons. Приходите с друзьями, берите пледы.",
+    promo:{ code:"MUSIC15", label:"−15% в кафе вокруг сцены" },
+    votes:{ yes:347, maybe:120, no:18 },
+    stories:[
+      { name:"Аяна", emoji:"💃", caption:"Уже на месте, разогревают!", time:"5 мин назад" },
+      { name:"Данияр", emoji:"🎸", caption:"Сцена огромная, звук топ", time:"12 мин назад" },
+      { name:"Камилла", emoji:"🌟", caption:"Народу уже целая толпа", time:"18 мин назад" },
+      { name:"Ерлан", emoji:"🔥", caption:"Сейчас начнётся!!", time:"25 мин назад" },
+    ],
+    going:["👩","🧑","👨","👩‍🦱","🧑‍🦲","👨‍🦰","👩‍🦰","🧑‍🦱"]
+  },
+  {
+    id:2, cat:"sale", premium:true, emoji:"🏷️", color:"#F6A623",
+    title:"−50% на всю весеннюю коллекцию",
+    place:"ZARA, Mega Alma-Ata",
+    time:"До конца дня",
+    price:"Скидка",
+    lat:43.2384, lng:76.9286,
+    cover:"linear-gradient(135deg,#F6A623,#EF4444)",
+    desc:"Только сегодня — большая распродажа весенней коллекции. Толпы не миновать, но скидки реальные.",
+    promo:{ code:"SPRING50", label:"Доп. −10% по промокоду" },
+    votes:{ yes:89, maybe:54, no:7 },
+    stories:[
+      { name:"Алина", emoji:"👗", caption:"Очередь не такая страшная", time:"3 мин назад" },
+      { name:"Дина", emoji:"🛍️", caption:"Унесла пакетов 5 уже", time:"10 мин назад" },
+    ],
+    going:["👩","👩‍🦰","🧑‍🦱"]
+  },
+  {
+    id:3, cat:"food", premium:false, emoji:"🍕", color:"#EF4444",
+    title:"Фестиваль уличной еды",
+    place:"Площадь Республики",
+    time:"Сегодня 12:00 – 22:00",
+    price:"от 1000 ₸",
+    lat:43.2360, lng:76.9450,
+    cover:"linear-gradient(135deg,#EF4444,#F6A623)",
+    desc:"Более 40 фудтраков, мастер-классы шефов, музыка. Привозите аппетит, есть веганские опции.",
+    promo:{ code:"YUM200", label:"−200₸ на первый заказ" },
+    votes:{ yes:512, maybe:301, no:42 },
+    stories:[
+      { name:"Тимур", emoji:"🌮", caption:"Тако божественные", time:"7 мин назад" },
+      { name:"Сабина", emoji:"🥟", caption:"Очередь за мантами, но стоит", time:"15 мин назад" },
+      { name:"Айдос", emoji:"🍦", caption:"Мороженое с азотом — космос", time:"22 мин назад" },
+    ],
+    going:["👨","👩","👨‍🦱","👩‍🦱","🧑"]
+  },
+  {
+    id:4, cat:"sport", premium:false, emoji:"🏃", color:"#22C55E",
+    title:"Утренний забег 5 км",
+    place:"Терренкур",
+    time:"Завтра · 07:00",
+    price:"Бесплатно",
+    lat:43.2150, lng:76.9700,
+    cover:"linear-gradient(135deg,#22C55E,#3B82F6)",
+    desc:"Свободный забег для всех уровней. После — растяжка от тренера и кофе от партнёров.",
+    promo:null,
+    votes:{ yes:124, maybe:88, no:15 },
+    stories:[],
+    going:["🧑","👩","👨"]
+  },
+  {
+    id:5, cat:"kids", premium:false, emoji:"🎈", color:"#3B82F6",
+    title:"Праздник мыльных пузырей",
+    place:"Детский парк \"Ailand\"",
+    time:"Сегодня · 14:00",
+    price:"2000 ₸",
+    lat:43.2480, lng:76.9410,
+    cover:"linear-gradient(135deg,#3B82F6,#8E54E9)",
+    desc:"Гигантские мыльные пузыри, шоу аниматоров, аквагрим. Для детей 3–10 лет.",
+    promo:{ code:"KIDS25", label:"−25% по промокоду" },
+    votes:{ yes:62, maybe:41, no:3 },
+    stories:[
+      { name:"Алия", emoji:"🫧", caption:"Дети в восторге!!", time:"4 мин назад" },
+    ],
+    going:["👩","👨","👩‍🦰"]
+  },
+  {
+    id:6, cat:"party", premium:true, emoji:"🎉", color:"#8E54E9",
+    title:"Ночная вечеринка Sky Lounge",
+    place:"Esentai Tower, 35 этаж",
+    time:"Сегодня · 22:00",
+    price:"от 5000 ₸",
+    lat:43.2100, lng:76.9290,
+    cover:"linear-gradient(135deg,#8E54E9,#5B2A86)",
+    desc:"DJ-сет, панорамный вид на город, фирменные коктейли. Dress-code: smart casual.",
+    promo:{ code:"SKY1", label:"Welcome-shot бесплатно" },
+    votes:{ yes:201, maybe:156, no:34 },
+    stories:[
+      { name:"Карина", emoji:"🍸", caption:"Виды нереальные", time:"30 мин назад" },
+      { name:"Артур", emoji:"🎧", caption:"DJ зашёл огонь", time:"1 ч назад" },
+    ],
+    going:["💃","🕺","👩","👨","🧑"]
+  },
+  {
+    id:7, cat:"free", premium:false, emoji:"🎨", color:"#F6A623",
+    title:"Бесплатный мастер-класс акварель",
+    place:"Арт-пространство \"Тысяча и одна\"",
+    time:"Сегодня · 17:00",
+    price:"Бесплатно",
+    lat:43.2540, lng:76.9520,
+    cover:"linear-gradient(135deg,#F6A623,#EC4899)",
+    desc:"Простая техника для новичков. Все материалы предоставим. Регистрация в приложении.",
+    promo:null,
+    votes:{ yes:47, maybe:22, no:1 },
+    stories:[],
+    going:["👩","👩‍🦰"]
+  },
+  {
+    id:8, cat:"food", premium:false, emoji:"☕", color:"#EF4444",
+    title:"Happy hour: −30% на кофе",
+    place:"Coffee Boom",
+    time:"15:00 – 17:00",
+    price:"Скидка",
+    lat:43.2300, lng:76.9550,
+    cover:"linear-gradient(135deg,#EF4444,#F6A623)",
+    desc:"Любой кофе со скидкой 30%. Можно с собой. Действует только на месте.",
+    promo:{ code:"BOOM30", label:"−30% на все напитки" },
+    votes:{ yes:28, maybe:14, no:2 },
+    stories:[],
+    going:["🧑","👩"]
+  }
+];
+
+// ---------- MAP ----------
+const map = L.map('map', { zoomControl:false, attributionControl:true }).setView([43.230, 76.945], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19, attribution:'© OSM'
+}).addTo(map);
+
+const markers = [];
+function renderMarkers(cat="all"){
+  markers.forEach(m => map.removeLayer(m));
+  markers.length = 0;
+  EVENTS.filter(e => cat==="all" || e.cat===cat).forEach(e => {
+    const html = `<div class="ev-marker ${e.premium?'premium':''}" style="background:${e.color};color:${e.color}">
+      <span style="filter:none">${e.emoji}</span>
+      ${e.votes.yes>200?`<span class="badge">${e.votes.yes}</span>`:''}
+    </div>`;
+    const icon = L.divIcon({ html, className:'', iconSize:[46,46], iconAnchor:[23,23] });
+    const m = L.marker([e.lat,e.lng],{icon}).addTo(map);
+    m.on('click', () => openSheet(e));
+    markers.push(m);
+  });
+}
+renderMarkers();
+
+// ---------- FILTERS ----------
+document.querySelectorAll('#filters .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#filters .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    renderMarkers(chip.dataset.cat);
+  });
+});
+
+// ---------- DAY / NIGHT ----------
+const dn = document.getElementById('daynight');
+dn.addEventListener('click', () => {
+  document.body.classList.toggle('night');
+  dn.textContent = document.body.classList.contains('night') ? '🌙' : '☀️';
+});
+// auto detect by clock hour
+const h = new Date().getHours();
+if (h < 7 || h >= 20){ document.body.classList.add('night'); dn.textContent='🌙'; }
+
+// ---------- SHEET ----------
+const sheet = document.getElementById('sheet');
+const sheetBody = document.getElementById('sheetBody');
+let currentEvent = null;
+let userVote = null;
+
+function openSheet(e){
+  currentEvent = e;
+  userVote = null;
+  document.getElementById('hint').classList.add('hidden');
+  sheetBody.innerHTML = renderSheet(e);
+  sheet.classList.add('open');
+  attachSheetHandlers();
+}
+function closeSheet(){ sheet.classList.remove('open') }
+
+function renderSheet(e){
+  const goingHtml = e.going.map(a => `<span style="display:inline-block;width:26px;height:26px;border-radius:50%;background:#eee;text-align:center;line-height:24px;border:2px solid #fff;margin-left:-8px;font-size:14px">${a}</span>`).join('');
+  return `
+    <div class="sheet-cover" style="background:${e.cover}">
+      <span class="emoji">${e.emoji}</span>
+      <div class="tag">${e.price}</div>
+    </div>
+    <h2>${e.title}</h2>
+    <div class="meta">
+      <span>📍 ${e.place}</span>
+      <span>🕒 ${e.time}</span>
+    </div>
+
+    <div class="stories-title">
+      <span>Сторис с события</span>
+      <span class="count">${e.stories.length} активных</span>
+    </div>
+    <div class="stories">
+      <div class="story add" data-add="1">
+        <div class="ring"><div class="avatar" style="background:#fff;color:var(--brand)">＋</div></div>
+        <div class="name">Твой</div>
+      </div>
+      ${e.stories.map((s,i)=>`
+        <div class="story" data-idx="${i}">
+          <div class="ring"><div class="avatar">${s.emoji}</div></div>
+          <div class="name">${s.name}</div>
+        </div>
+      `).join('')}
+      ${e.stories.length===0?'<div style="color:var(--muted);font-size:13px;align-self:center;padding:10px 4px">Пока никто не делился сторис — будь первым 👀</div>':''}
+    </div>
+
+    <div class="stories-title" style="margin-top:6px">
+      <span>Кто собирается</span>
+      <span class="count">${e.votes.yes} идут · ${e.votes.maybe} думают</span>
+    </div>
+    <div style="display:flex;align-items:center;padding-left:8px;margin-bottom:14px">${goingHtml}<span style="margin-left:6px;color:var(--muted);font-size:13px">+ ещё ${Math.max(0,e.votes.yes - e.going.length)}</span></div>
+
+    <div class="vote">
+      <button data-vote="yes" class="vote-btn yes"><span class="ico">✅</span>Иду<span class="count">${e.votes.yes}</span></button>
+      <button data-vote="maybe" class="vote-btn maybe"><span class="ico">🤔</span>Может<span class="count">${e.votes.maybe}</span></button>
+      <button data-vote="no" class="vote-btn no"><span class="ico">❌</span>Не иду<span class="count">${e.votes.no}</span></button>
+    </div>
+
+    ${e.promo ? `
+    <div class="promo">
+      <span class="ico">🎁</span>
+      <div>
+        <div class="label">${e.promo.label}</div>
+        <div class="code">${e.promo.code}</div>
+      </div>
+      <button id="copyPromo">Скопировать</button>
+    </div>` : ''}
+
+    <div class="desc">${e.desc}</div>
+
+    <div class="actions">
+      <button class="btn-ghost" id="closeBtn">Закрыть</button>
+      <button class="btn-primary" id="routeBtn">🧭 Маршрут</button>
+    </div>
+  `;
+}
+
+function attachSheetHandlers(){
+  document.querySelectorAll('.vote-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.vote;
+      document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('active'));
+      if (userVote === v){
+        userVote = null;
+        toast("Голос отменён");
+      } else {
+        userVote = v;
+        btn.classList.add('active');
+        const messages = { yes:"Записали — ты идёшь! 🎉", maybe:"Сохранили в «может быть» 🤔", no:"Окей, скроем подобное 🙈" };
+        toast(messages[v]);
+      }
+    });
+  });
+
+  document.querySelectorAll('.story[data-idx]').forEach(s => {
+    s.addEventListener('click', () => openViewer(parseInt(s.dataset.idx)));
+  });
+  const addStory = document.querySelector('.story[data-add]');
+  if (addStory) addStory.addEventListener('click', () => toast("📸 Камера откроется здесь (мок)"));
+
+  const cp = document.getElementById('copyPromo');
+  if (cp) cp.addEventListener('click', () => {
+    navigator.clipboard?.writeText(currentEvent.promo.code).catch(()=>{});
+    toast(`Промокод ${currentEvent.promo.code} скопирован ✨`);
+  });
+
+  document.getElementById('closeBtn').addEventListener('click', closeSheet);
+  document.getElementById('routeBtn').addEventListener('click', () => toast("🧭 Маршрут построен (мок)"));
+}
+
+// click outside sheet to close
+document.getElementById('map').addEventListener('click', closeSheet);
+
+// swipe down to close
+let startY=null;
+sheet.addEventListener('touchstart', e => startY = e.touches[0].clientY);
+sheet.addEventListener('touchmove', e => {
+  if (startY===null) return;
+  const dy = e.touches[0].clientY - startY;
+  if (dy > 80) { closeSheet(); startY = null; }
+});
+
+// ---------- STORY VIEWER ----------
+const viewer = document.getElementById('viewer');
+let storyIdx = 0;
+let storyTimer = null;
+
+function openViewer(idx){
+  storyIdx = idx;
+  viewer.classList.add('open');
+  renderStory();
+}
+function closeViewer(){
+  viewer.classList.remove('open');
+  if (storyTimer) clearTimeout(storyTimer);
+}
+function renderStory(){
+  const stories = currentEvent.stories;
+  const s = stories[storyIdx];
+  if (!s){ closeViewer(); return; }
+  const bars = stories.map((_,i)=>{
+    const cls = i<storyIdx ? 'done' : (i===storyIdx?'active':'');
+    return `<div class="viewer-bar ${cls}"><div class="fill"></div></div>`;
+  }).join('');
+  document.getElementById('viewerBars').innerHTML = bars;
+  document.getElementById('viewerAvatar').textContent = s.emoji;
+  document.getElementById('viewerName').textContent = s.name;
+  document.getElementById('viewerTime').textContent = s.time;
+  document.getElementById('viewerEmoji').textContent = s.emoji;
+  document.getElementById('viewerCaption').textContent = s.caption;
+  document.getElementById('viewerContent').style.background = currentEvent.cover;
+  if (storyTimer) clearTimeout(storyTimer);
+  storyTimer = setTimeout(()=>{ storyIdx++; renderStory(); }, 5000);
+}
+document.getElementById('viewerLeft').addEventListener('click', ()=>{ if(storyIdx>0){ storyIdx--; renderStory(); }});
+document.getElementById('viewerRight').addEventListener('click', ()=>{ storyIdx++; renderStory(); });
+document.getElementById('viewerClose').addEventListener('click', closeViewer);
+
+// ---------- TOAST ----------
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(text){
+  toastEl.textContent = text;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 2200);
+}
+
+// bottom nav demo
+document.querySelectorAll('.bottom-nav .nav-item').forEach(n => {
+  n.addEventListener('click', () => {
+    const text = n.textContent.trim();
+    if (text === 'Создать') toast("Откроется форма создания события ✨");
+    else if (text === 'Карта') return;
+    else toast(`Раздел «${text}» — пока заглушка`);
+  });
+});
+
+// auto-hint hide
+setTimeout(()=>document.getElementById('hint').classList.add('hidden'), 6000);
+</script>
+</body>
+</html>

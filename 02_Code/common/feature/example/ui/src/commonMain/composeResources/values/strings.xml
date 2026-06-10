@@ -1,0 +1,4 @@
+<resources>
+    <string name="example_title">Example feature</string>
+    <string name="example_login">Login</string>
+</resources>

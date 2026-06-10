@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">EventMap</string>
+    <string name="mapbox_access_token" translatable="false">MAPBOX_PUBLIC_TOKEN_REQUIRED</string>
+</resources>

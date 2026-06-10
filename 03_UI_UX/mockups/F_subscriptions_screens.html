@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventMap · Раздел F — Подписки и уведомления (F1–F5)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#7C5CFF; --accent:#FF5C8A; --live:#FF4757; --soft:#5DCAA5; --warning:#FAC775; --danger:#E24B4A; --info:#85B7EB;
+  --bg:#0a1420; --surface:#11212f; --surface-v:rgba(255,255,255,.07);
+  --text:#fff; --text-2:#7e8d9f; --text-3:#56657a;
+  --grad-brand:linear-gradient(135deg,#7C5CFF,#FF5C8A);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;background:radial-gradient(1200px 800px at 50% -10%,#1a1140,#070b14 60%);color:#e9ecf5;padding:32px 20px 80px}
+h1{font-size:26px;font-weight:800;margin:0 0 4px;background:var(--grad-brand);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#8a93ad;margin:0 0 28px;font-size:14px}
+.grid{display:flex;flex-wrap:wrap;gap:34px;justify-content:center;align-items:flex-start}
+.cell{width:300px}
+.cap{font-size:13px;font-weight:700;color:#cfd6ea;margin:0 0 2px}
+.cap .code{display:inline-block;background:var(--primary);color:#fff;border-radius:6px;padding:1px 7px;font-size:11px;margin-right:6px;font-weight:800}
+.desc{font-size:11px;color:#7a839c;margin:0 0 10px;min-height:28px}
+.phone{position:relative;width:300px;height:640px;background:var(--bg);border-radius:34px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 7px #1d2233,0 0 0 8px #2c3350;font-size:13px}
+.scr{position:absolute;inset:0;overflow:hidden}
+.body{position:absolute;inset:0;overflow:auto;background:var(--bg);padding-bottom:74px}
+.head{padding:16px 16px 6px;display:flex;align-items:center;gap:10px}
+.head .ti{font-size:19px;font-weight:800}
+.head .r{margin-left:auto;font-size:18px}
+.ava{width:44px;height:44px;border-radius:50%;background:var(--grad-brand);display:flex;align-items:center;justify-content:center;font-size:18px;flex:0 0 auto}
+.ava.org{border-radius:13px}
+.tabs{display:flex;gap:4px;padding:6px 16px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}
+.tabs .t{padding:10px 8px;font-weight:700;color:var(--text-2);border-bottom:2px solid transparent}
+.tabs .t.on{color:#fff;border-color:var(--primary)}
+.list{padding:6px 16px}
+.row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.row .nm{font-weight:700;font-size:13px}.row .st{font-size:11px;color:var(--text-2)}
+.btn{margin-left:auto;border:none;border-radius:999px;padding:7px 14px;font-size:11px;font-weight:800;flex:0 0 auto}
+.btn.on{background:var(--surface-v);color:#cfd6ea}
+.btn.add{background:var(--grad-brand);color:#fff}
+.btn.ok{background:var(--soft);color:#06241a}.btn.no{background:var(--surface-v);color:var(--text-2)}
+.chips{display:flex;flex-wrap:wrap;gap:7px;padding:10px 16px}
+.chip{padding:8px 13px;border-radius:999px;background:var(--surface);font-size:12px;font-weight:700;color:#cfd6ea;display:flex;align-items:center;gap:6px}
+.chip .x{color:var(--text-2)}
+/* feed */
+.fcard{background:var(--surface);border-radius:14px;margin:10px 16px;overflow:hidden}
+.fcard .img{height:108px;background:linear-gradient(135deg,#2a2140,#43325c);position:relative}
+.fcard .badge{position:absolute;top:8px;left:8px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:999px}
+.badge.live{background:var(--live);color:#fff}.badge.soon{background:var(--warning);color:#1a1206}
+.fcard .ct{padding:11px 12px}
+.fcard .by{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-2);margin-bottom:5px}
+.fcard .by .av{width:22px;height:22px;border-radius:50%;background:var(--grad-brand);display:flex;align-items:center;justify-content:center;font-size:11px}
+.fcard .nm{font-weight:800;font-size:14px}.fcard .mt{font-size:11px;color:var(--text-2);margin-top:3px}
+/* notifications */
+.nrow{display:flex;gap:11px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06);align-items:flex-start}
+.nrow.unread{background:rgba(124,92,255,.06)}
+.nrow .ic{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;flex:0 0 auto}
+.ic.live{background:rgba(255,71,87,.16)}.ic.soft{background:rgba(93,202,165,.16)}.ic.brand{background:rgba(124,92,255,.16)}.ic.warn{background:rgba(250,199,117,.16)}
+.nrow .tx{font-size:12.5px;line-height:1.4}.nrow .tx b{font-weight:800}
+.nrow .tm{font-size:10px;color:var(--text-3);margin-top:3px}
+.nrow .dot{width:8px;height:8px;border-radius:50%;background:var(--primary);margin-left:auto;flex:0 0 auto;margin-top:5px}
+.daylbl{font-size:11px;font-weight:800;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;padding:12px 16px 4px}
+/* notif settings */
+.section{font-size:11px;font-weight:800;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;margin:16px 16px 4px}
+.toggle{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px}
+.toggle .ic{width:32px;height:32px;border-radius:9px;background:var(--surface-v);display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+.toggle .tx{font-weight:700}.toggle .ts{font-size:11px;color:var(--text-2)}
+.sw{margin-left:auto;width:42px;height:24px;border-radius:999px;background:var(--primary);position:relative;flex:0 0 auto}
+.sw.off{background:#33415a}.sw::after{content:"";position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:#fff}.sw.off::after{right:auto;left:2px}
+.nav{position:absolute;left:0;right:0;bottom:0;z-index:40;height:64px;background:rgba(17,33,47,.96);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:space-around;border-top:1px solid rgba(255,255,255,.06)}
+.nav .it{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-3);font-size:9px;font-weight:600}
+.nav .it.on{color:var(--primary)}.nav .it .ic{font-size:19px}
+.nav .center{width:52px;height:52px;border-radius:50%;background:var(--grad-brand);display:flex;align-items:center;justify-content:center;font-size:24px;margin-top:-22px;box-shadow:0 8px 22px rgba(124,92,255,.55)}
+</style>
+</head>
+<body>
+<h1>EventMap · Раздел F — Подписки и уведомления</h1>
+<p class="sub">Hi-fi макеты F1–F5 · мои подписки, лента подписок, запросы, уведомления, настройки уведомлений.</p>
+
+<div class="grid">
+
+<!-- F1 -->
+<div class="cell">
+  <p class="cap"><span class="code">F1</span>Мои подписки</p>
+  <p class="desc">Табы: Организаторы / Жанры / Люди.</p>
+  <div class="phone"><div class="scr"><div class="body">
+    <div class="head"><div class="ti">Подписки</div><div class="r">🔍</div></div>
+    <div class="tabs"><div class="t on">Организаторы</div><div class="t">Жанры</div><div class="t">Люди</div></div>
+    <div class="list">
+      <div class="row"><div class="ava org">🎭</div><div><div class="nm">Sxodka Comedy ✔</div><div class="st">14k подписчиков</div></div><button class="btn on">Вы подписаны</button></div>
+      <div class="row"><div class="ava org">🎵</div><div><div class="nm">Rooftop 360</div><div class="st">8.2k подписчиков</div></div><button class="btn on">Вы подписаны</button></div>
+      <div class="row"><div class="ava org">💻</div><div><div class="nm">IT Almaty ✔</div><div class="st">22k подписчиков</div></div><button class="btn on">Вы подписаны</button></div>
+      <div class="row"><div class="ava org">🧘</div><div><div class="nm">Yoga Park</div><div class="st">3.1k подписчиков</div></div><button class="btn on">Вы подписаны</button></div>
+    </div>
+  </div>
+    <div class="nav"><div class="it"><span class="ic">🗺️</span>Карта</div><div class="it"><span class="ic">🔥</span>Сейчас</div><div class="center">🎬</div><div class="it on"><span class="ic">🔔</span>Лента</div><div class="it"><span class="ic">👤</span>Профиль</div></div>
+  </div></div>
+</div>
+
+<!-- F2 -->
+<div class="cell">
+  <p class="cap"><span class="code">F2</span>Лента подписок</p>
+  <p class="desc">События от тех, на кого подписан.</p>
+  <div class="phone"><div class="scr"><div class="body">
+    <div class="head"><div class="ti">Лента</div><div class="r">⚙️</div></div>
+    <div class="fcard"><div class="img"><span class="badge live">LIVE</span></div><div class="ct"><div class="by"><div class="av">🎭</div>Sxodka Comedy · сейчас</div><div class="nm">Open Mic #112</div><div class="mt">📍 Bar Sxodka · 240 человек</div></div></div>
+    <div class="fcard"><div class="img"><span class="badge soon">ЗАВТРА</span></div><div class="ct"><div class="by"><div class="av">🧘</div>Yoga Park · 08:30</div><div class="nm">Йога на рассвете</div><div class="mt">📍 Парк ППП · бесплатно</div></div></div>
+    <div class="fcard"><div class="ct"><div class="by"><div class="av">💻</div>IT Almaty · сб 19:00</div><div class="nm">Нетворкинг для разработчиков</div><div class="mt">📍 Tech Garden · регистрация</div></div></div>
+  </div>
+    <div class="nav"><div class="it"><span class="ic">🗺️</span>Карта</div><div class="it"><span class="ic">🔥</span>Сейчас</div><div class="center">🎬</div><div class="it on"><span class="ic">🔔</span>Лента</div><div class="it"><span class="ic">👤</span>Профиль</div></div>
+  </div></div>
+</div>
+
+<!-- F3 -->
+<div class="cell">
+  <p class="cap"><span class="code">F3</span>Запросы на подписку</p>
+  <p class="desc">Для приватных профилей — принять/отклонить.</p>
+  <div class="phone"><div class="scr"><div class="body">
+    <div class="head"><span style="font-size:15px;color:var(--text-2)">‹</span><div class="ti">Запросы · 3</div></div>
+    <div class="list">
+      <div class="row"><div class="ava">🥰</div><div><div class="nm">Алия К.</div><div class="st">хочет подписаться</div></div><div style="display:flex;gap:6px;margin-left:auto"><button class="btn ok">Принять</button><button class="btn no">✕</button></div></div>
+      <div class="row"><div class="ava">🤓</div><div><div class="nm">Тимур Ж.</div><div class="st">5 общих друзей</div></div><div style="display:flex;gap:6px;margin-left:auto"><button class="btn ok">Принять</button><button class="btn no">✕</button></div></div>
+      <div class="row"><div class="ava">😄</div><div><div class="nm">Сабина М.</div><div class="st">был на 3 ваших событиях</div></div><div style="display:flex;gap:6px;margin-left:auto"><button class="btn ok">Принять</button><button class="btn no">✕</button></div></div>
+    </div>
+  </div></div></div>
+</div>
+
+<!-- F4 -->
+<div class="cell">
+  <p class="cap"><span class="code">F4</span>Уведомления</p>
+  <p class="desc">Список: события, подписки, реакции.</p>
+  <div class="phone"><div class="scr"><div class="body">
+    <div class="head"><div class="ti">Уведомления</div><div class="r" style="font-size:12px;color:var(--primary);font-weight:700">Прочитать все</div></div>
+    <div class="daylbl">Сегодня</div>
+    <div class="nrow unread"><div class="ic live">🔴</div><div><div class="tx"><b>Sxodka Comedy</b> начал трансляцию «Open Mic #112»</div><div class="tm">5 минут назад</div></div><span class="dot"></span></div>
+    <div class="nrow unread"><div class="ic brand">＋</div><div><div class="tx"><b>Дамир А.</b> подписался на вас</div><div class="tm">1 час назад</div></div><span class="dot"></span></div>
+    <div class="nrow"><div class="ic soft">❤️</div><div><div class="tx"><b>Алия К.</b> и ещё 12 оценили ваше видео</div><div class="tm">3 часа назад</div></div></div>
+    <div class="daylbl">Вчера</div>
+    <div class="nrow"><div class="ic warn">⏰</div><div><div class="tx">Напоминание: «Йога на рассвете» завтра в 08:30</div><div class="tm">вчера 20:00</div></div></div>
+    <div class="nrow"><div class="ic brand">💬</div><div><div class="tx"><b>Тимур Ж.</b> упомянул вас в комментарии</div><div class="tm">вчера 14:20</div></div></div>
+  </div></div></div>
+</div>
+
+<!-- F5 -->
+<div class="cell">
+  <p class="cap"><span class="code">F5</span>Настройки уведомлений</p>
+  <p class="desc">По каналам: события, подписки, видео.</p>
+  <div class="phone"><div class="scr"><div class="body">
+    <div class="head"><span style="font-size:15px;color:var(--text-2)">‹</span><div class="ti">Уведомления</div></div>
+    <div class="section">События</div>
+    <div class="toggle"><div class="ic">🔴</div><div><div class="tx">Подписки вышли в LIVE</div><div class="ts">push</div></div><span class="sw"></span></div>
+    <div class="toggle"><div class="ic">⏰</div><div><div class="tx">Напоминания «скоро»</div></div><span class="sw"></span></div>
+    <div class="toggle"><div class="ic">📍</div><div><div class="tx">Событие рядом со мной</div></div><span class="sw"></span></div>
+    <div class="section">Люди</div>
+    <div class="toggle"><div class="ic">＋</div><div><div class="tx">Новые подписчики</div></div><span class="sw"></span></div>
+    <div class="toggle"><div class="ic">🟢</div><div><div class="tx">Друг отметился «здесь»</div></div><span class="sw off"></span></div>
+    <div class="section">Активность</div>
+    <div class="toggle"><div class="ic">❤️</div><div><div class="tx">Реакции на мои видео</div></div><span class="sw"></span></div>
+    <div class="toggle"><div class="ic">🔇</div><div><div class="tx">Не беспокоить 23:00–08:00</div></div><span class="sw"></span></div>
+  </div></div></div>
+</div>
+
+</div>
+</body>
+</html>

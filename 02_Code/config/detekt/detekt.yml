@@ -1,0 +1,23 @@
+# Минимальный конфиг. buildUponDefaultConfig = true в build.gradle.kts,
+# поэтому тут только то, что меняем относительно дефолта.
+build:
+  maxIssues: 0
+
+complexity:
+  LongMethod:
+    threshold: 80
+  TooManyFunctions:
+    active: false
+
+style:
+  MagicNumber:
+    active: false
+  ReturnCount:
+    max: 4
+  UnusedPrivateMember:
+    active: true
+
+naming:
+  FunctionNaming:
+    # Compose @Composable функции с большой буквы
+    ignoreAnnotated: ['Composable']

@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+
+# Gradle / Kotlin
+.gradle/
+.kotlin/
+**/build/
+!src/**/build/
+local.properties
+
+# Xcode
+xcuserdata/
+captures
+.externalNativeBuild
+.cxx
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+!*.xcworkspace/contents.xcworkspacedata
+**/xcshareddata/WorkspaceSettings.xcsettings
+
+# Node
+node_modules/
+
+# Secrets
+*.keystore
+*.jks
+.env

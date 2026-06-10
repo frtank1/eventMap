@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EventMap · Макеты — индекс</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#7C5CFF; --accent:#FF5C8A; --live:#FF4757; --soft:#5DCAA5; --warning:#FAC775;
+  --bg:#0a1420; --surface:#11212f; --surface-v:rgba(255,255,255,.06);
+  --text:#fff; --text-2:#7e8d9f; --text-3:#56657a;
+  --grad-brand:linear-gradient(135deg,#7C5CFF,#FF5C8A);
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Manrope',system-ui,sans-serif;background:radial-gradient(1200px 800px at 50% -10%,#1a1140,#070b14 60%);color:#e9ecf5;padding:40px 22px 80px;min-height:100vh}
+.wrap{max-width:920px;margin:0 auto}
+.logo{display:inline-flex;align-items:center;gap:9px;font-weight:800;font-size:28px}
+.logo .d{width:13px;height:13px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 6px rgba(255,92,138,.2)}
+h1{font-size:32px;font-weight:800;margin:16px 0 4px;background:var(--grad-brand);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#8a93ad;margin:0 0 24px;font-size:15px}
+.prog{background:var(--surface);border-radius:16px;padding:18px 20px;margin-bottom:30px;border:1px solid rgba(255,255,255,.06)}
+.prog .top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+.prog .big{font-size:26px;font-weight:800}
+.prog .pct{color:var(--soft);font-weight:800}
+.bar{height:10px;border-radius:999px;background:var(--surface-v);overflow:hidden}
+.bar .f{height:100%;width:100%;background:var(--grad-brand)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{display:block;text-decoration:none;color:inherit;background:var(--surface);border-radius:16px;padding:18px;border:1px solid rgba(255,255,255,.06);transition:transform .15s,border-color .15s}
+.card:hover{transform:translateY(-3px);border-color:var(--primary)}
+.card .code{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:34px;border-radius:10px;background:var(--grad-brand);font-weight:800;font-size:14px;padding:0 8px}
+.card .nm{font-size:16px;font-weight:800;margin:12px 0 4px}
+.card .ds{font-size:12.5px;color:var(--text-2);line-height:1.5;min-height:36px}
+.card .ft{display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11px;color:var(--text-3)}
+.card .cnt{background:var(--surface-v);border-radius:999px;padding:3px 10px;font-weight:700;color:#cfd6ea}
+.card .go{color:var(--primary);font-weight:800}
+.flow{margin-top:36px;background:var(--surface);border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,.06)}
+.flow h2{font-size:16px;font-weight:800;margin:0 0 12px}
+.flow pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.7;color:#aeb8d0;overflow-x:auto;margin:0;white-space:pre}
+.foot{margin-top:30px;color:var(--text-3);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="d"></span>EventMap</div>
+  <h1>Макеты приложения</h1>
+  <p class="sub">Hi-fi прототипы всех экранов · палитра Aurora Violet · ночная тема</p>
+
+  <div class="prog">
+    <div class="top"><div class="big">67 / 71 экран</div><div class="pct">+4 P (ADR-002)</div></div>
+    <div class="bar"><div class="f" style="width:94%"></div></div>
+  </div>
+
+  <div class="grid">
+    <a class="card" href="A_onboarding_screens.html"><div class="code">A</div><div class="nm">Онбординг и auth</div><div class="ds">Splash, 3 welcome-экрана, регистрация, логин, восстановление, выбор интересов.</div><div class="ft"><span class="cnt">8 экранов · A1–A8</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="B_permissions_screens.html"><div class="code">B</div><div class="nm">Разрешения</div><div class="ds">Экраны-объяснения перед системными диалогами: гео, камера, уведомления.</div><div class="ft"><span class="cnt">3 экрана · B1–B3</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="C_map_screens.html"><div class="code">C</div><div class="nm">Карта</div><div class="ds">Улица+звук, sheet «скоро»/«LIVE», live-плеер, человек, фильтры, спонсор, люди, тепло, пусто.</div><div class="ft"><span class="cnt">10 экранов · C3–C12</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="D_event_screens.html"><div class="code">D</div><div class="nm">Событие</div><div class="ds">Карточка (о/галерея/участники), просмотр и добавление медиа, создание в 3 шага.</div><div class="ft"><span class="cnt">8 экранов · D1–D8</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="E_video_screens.html"><div class="code">E</div><div class="nm">Видео</div><div class="ds">Лента «Прямо сейчас», TikTok-плеер, запись 30 сек, превью+подпись, архив.</div><div class="ft"><span class="cnt">5 экранов · E1–E5</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="F_subscriptions_screens.html"><div class="code">F</div><div class="nm">Подписки и уведомления</div><div class="ds">Подписки по табам, лента, запросы, список уведомлений, настройки по каналам.</div><div class="ft"><span class="cnt">5 экранов · F1–F5</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="G_search_screens.html"><div class="code">G</div><div class="nm">Поиск</div><div class="ds">Пустой поиск с историей, результаты по табам, карточка жанра.</div><div class="ft"><span class="cnt">3 экрана · G1–G3</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="H_profile_screens.html"><div class="code">H</div><div class="nm">Профиль</div><div class="ds">Мой/чужой профиль, редактирование, история, рекомендации, приватность, организатор, верификация, Sharing.</div><div class="ft"><span class="cnt">11 экранов · H1–H11</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="I_settings_screens.html"><div class="code">I</div><div class="nm">Настройки</div><div class="ds">Главные настройки, приватность, уведомления, аккаунт/безопасность, о приложении.</div><div class="ft"><span class="cnt">5 экранов · I1–I5</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="JK_moderation_errors_screens.html"><div class="code">J·K</div><div class="nm">Модерация и ошибки</div><div class="ds">Жалоба, статусы жалоб, ограничение аккаунта · нет сети, нет событий, нет подписок, ошибка сервера.</div><div class="ft"><span class="cnt">7 экранов · J1–J3, K1–K4</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="P_payments_ratings_screens.html" style="border-color:var(--soft)"><div class="code" style="background:linear-gradient(135deg,#5DCAA5,#7C5CFF)">P</div><div class="nm">Платежи и оценки</div><div class="ds">Оплата билета (карта/Kaspi), успех, ошибка, оценка ивента ★ + демо важности пинов.</div><div class="ft"><span class="cnt">4 экрана · P1–P4 · ADR-002</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="EventMap-prototype.html"><div class="code">C1·2</div><div class="nm">Первый прототип карты</div><div class="ds">Кликабельный прототип главной карты (день/ночь) на Leaflet — самый ранний макет.</div><div class="ft"><span class="cnt">2 экрана · C1–C2</span><span class="go">Открыть →</span></div></a>
+  </div>
+
+  <div class="grid" style="margin-top:24px">
+    <a class="card" href="PROTOTYPE_hotpath.html" style="border-color:var(--accent)"><div class="code" style="background:var(--grad-brand)">▶</div><div class="nm">Кликабельный прототип</div><div class="ds">Горячий путь с реальной навигацией: карта → событие/LIVE → плеер → запись видео.</div><div class="ft"><span class="cnt">6 экранов · интерактив</span><span class="go">Открыть →</span></div></a>
+    <a class="card" href="../DEV_SPEC.md"><div class="code">⚙</div><div class="nm">Спека для разработки</div><div class="ds">Дизайн-токены (Kotlin), каталог компонентов, JSON-граф навигации для Compose.</div><div class="ft"><span class="cnt">DEV_SPEC.md</span><span class="go">Открыть →</span></div></a>
+  </div>
+
+  <div class="flow">
+    <h2>Карта главных переходов</h2>
+<pre>C1 (карта) ── тап пин ──┬─► C4 (sheet «скоро») ─► D1 (карточка события)
+                        ├─► C5 (sheet «LIVE»)  ─► C6 (live-плеер)
+                        └─► C7 (sheet человек) ─► H2 (чужой профиль)
+
+D1 ─► D2 (галерея) ─► D4 (медиа фуллскрин)
+D1 ─► D5 (добавить медиа) ─► E3 (запись) ─► E4 (превью) ─► публикация
+
+H1 (мой профиль) ─► H3 (редакт.) · H4 (история) · H7 (приватность) · H11 (Sharing)
+
+(центр нав) ─► E3 (запись видео) ─► E4 (превью) ─► публикация
+A1 → A2→A3→A4 → A5/A6 → A8 (интересы) → B1→B2→B3 (доступы) → C1</pre>
+  </div>
+
+  <div class="foot">EventMap · UI/UX · обновлено 31.05.2026 · реестр экранов в SCREENS.md</div>
+</div>
+</body>
+</html>
