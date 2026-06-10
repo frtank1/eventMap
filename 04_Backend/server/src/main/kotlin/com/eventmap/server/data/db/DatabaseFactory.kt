@@ -20,9 +20,13 @@ object DatabaseFactory {
         }
         val dataSource = HikariDataSource(hikari)
 
-        // Схема — только через Flyway-миграции (src/main/resources/db/migration)
+        // Схема — только через Flyway-миграции (src/main/resources/db/migration).
+        // baselineOnMigrate: существующие dev-базы (созданные ранее SchemaUtils)
+        // получают baseline=0, и V1 применяется поверх (она idempotent: IF NOT EXISTS).
         Flyway.configure()
             .dataSource(dataSource)
+            .baselineOnMigrate(true)
+            .baselineVersion("0")
             .load()
             .migrate()
 

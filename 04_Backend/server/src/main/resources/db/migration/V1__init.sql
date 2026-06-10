@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users (email);
 
+-- Для dev-баз, созданных до миграций (SchemaUtils): добиваем недостающую колонку
+ALTER TABLE events ADD COLUMN IF NOT EXISTS capacity INT NULL;
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     token_hash    VARCHAR(64) PRIMARY KEY,
     user_id       VARCHAR(64) NOT NULL,
