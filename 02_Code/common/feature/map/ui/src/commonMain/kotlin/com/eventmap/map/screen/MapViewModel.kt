@@ -8,6 +8,7 @@ import com.eventmap.map.EventCategory
 import com.eventmap.map.EventState
 import com.eventmap.map.LatLng
 import com.eventmap.map.MapEvent
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,8 +27,9 @@ import kotlinx.coroutines.launch
 class MapViewModel(
     private val eventRepository: EventRepository,
     private val demoMode: Boolean = false,
+    dispatcher: CoroutineDispatcher = Dispatchers.Default, // в тестах — TestDispatcher
 ) : BaseScreenModel() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private var all: List<MapEvent> = if (demoMode) sampleEvents() else emptyList()
 

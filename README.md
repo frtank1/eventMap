@@ -5,6 +5,10 @@
 **Старт проекта:** 19 мая 2026
 **Релиз 1.0:** 18 мая 2027
 
+> **Статус (июнь 2026):** проект опережает roadmap — каркас всех экранов (A–P) и бэкенд
+> с auth/events уже собраны. Актуальное состояние: [05_Docs/PROJECT_REVIEW_2026-06-09.md](05_Docs/PROJECT_REVIEW_2026-06-09.md),
+> статус кода: [02_Code/README.md](02_Code/README.md).
+
 ---
 
 ## Структура репозитория
@@ -21,15 +25,14 @@ EventMap/
 │       ├── month_02/       (июнь 2026)
 │       └── ...month_12/    (апрель — 18 мая 2027)
 │
-├── 02_Code/                ← Compose Multiplatform проект
-│   ├── shared/             общий KMP код
-│   │   ├── commonMain/
-│   │   ├── androidMain/
-│   │   ├── iosMain/
-│   │   └── desktopMain/
-│   ├── androidApp/
-│   ├── iosApp/
-│   └── desktopApp/
+├── 02_Code/                ← Compose Multiplatform проект (Android/iOS/Desktop/Wasm)
+│   ├── composeApp/         точка входа всех платформ: App(), MainScreen, PlatformSDK
+│   ├── common/
+│   │   ├── core/           ядро: network, datastore, ui (тема+ui-kit), utils, logger…
+│   │   └── feature/        фичи (auth, map, event, feed, search, profile, video),
+│   │                       каждая = domain / data / ui модули
+│   ├── iosApp/             обёртка под Xcode
+│   └── build-logic/        convention-плагины Gradle
 │
 ├── 03_UI_UX/               ← Дизайн
 │   ├── wireframes/         lo-fi
@@ -38,11 +41,8 @@ EventMap/
 │   └── user_flows/         потоки пользователя
 │
 ├── 04_Backend/             ← Ktor server
-│   ├── api/
-│   ├── database/           PostgreSQL + PostGIS схемы
-│   ├── auth/               JWT, OAuth
-│   ├── storage/            S3 / R2 для фото и видео
-│   └── push_notifications/ FCM + APNS
+│   └── server/             auth (JWT + refresh-ротация), events, organizers;
+│                           Exposed + PostgreSQL, Flyway-миграции, docker-compose
 │
 ├── 05_Docs/                ← Документация
 │   └── ARCHITECTURE.md

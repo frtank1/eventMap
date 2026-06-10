@@ -39,7 +39,12 @@ dependencies {
     // auth hashing
     implementation("org.mindrot:jbcrypt:0.4")
     implementation("ch.qos.logback:logback-classic:1.5.6")
+    // Тесты
+    testImplementation(kotlin("test"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
+
+tasks.test { useJUnitPlatform() }
 
 application { mainClass.set("com.eventmap.server.ApplicationKt") }
 kotlin { jvmToolchain(17) }
