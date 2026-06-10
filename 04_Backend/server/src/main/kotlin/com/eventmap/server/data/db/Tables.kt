@@ -32,6 +32,7 @@ object EventsTable : Table("events") {
     val ratingCount = integer("rating_count").default(0)
     val cover = varchar("cover", 512).nullable()
     val organizerId = varchar("organizer_id", 64).nullable()
+    val capacity = integer("capacity").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

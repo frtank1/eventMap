@@ -3,8 +3,8 @@ package com.eventmap.server.data.db
 import com.eventmap.server.config.AppConfig
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -18,9 +18,16 @@ object DatabaseFactory {
             driverClassName = "org.postgresql.Driver"
             maximumPoolSize = 6
         }
-        Database.connect(HikariDataSource(hikari))
+        val dataSource = HikariDataSource(hikari)
+
+        // Схема — только через Flyway-миграции (src/main/resources/db/migration)
+        Flyway.configure()
+            .dataSource(dataSource)
+            .load()
+            .migrate()
+
+        Database.connect(dataSource)
         transaction {
-            SchemaUtils.create(OrganizersTable, EventsTable, UsersTable, RefreshTokensTable)
             if (EventsTable.selectAll().empty()) seed()
         }
     }

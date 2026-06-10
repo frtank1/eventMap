@@ -3,6 +3,7 @@ package com.eventmap.server
 import com.eventmap.server.config.AppConfig
 import com.eventmap.server.data.db.DatabaseFactory
 import com.eventmap.server.di.appModule
+import com.eventmap.server.domain.usecase.CreateEventUseCase
 import com.eventmap.server.domain.usecase.GetEventUseCase
 import com.eventmap.server.domain.usecase.GetEventsUseCase
 import com.eventmap.server.domain.usecase.GetOrganizerEventsUseCase
@@ -77,6 +78,7 @@ fun Application.module() {
 
     val getEvents: GetEventsUseCase by inject()
     val getEvent: GetEventUseCase by inject()
+    val createEvent: CreateEventUseCase by inject()
     val getOrganizer: GetOrganizerUseCase by inject()
     val getOrganizerEvents: GetOrganizerEventsUseCase by inject()
     val register: RegisterUseCase by inject()
@@ -87,7 +89,7 @@ fun Application.module() {
 
     routing {
         authRoutes(register, login, issueTokens, refreshSession, logout)
-        eventRoutes(getEvents, getEvent)
+        eventRoutes(getEvents, getEvent, createEvent)
         organizerRoutes(getOrganizer, getOrganizerEvents)
     }
 }

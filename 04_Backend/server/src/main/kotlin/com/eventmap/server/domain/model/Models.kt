@@ -3,6 +3,16 @@ package com.eventmap.server.domain.model
 data class GeoPoint(val lat: Double, val lng: Double, val name: String = "")
 data class Money(val type: String = "free", val amount: Int = 0, val currency: String = "KZT")
 
+// Видимая область карты: bbox=swLat,swLng,neLat,neLng (API_CONTRACT §3)
+data class Bbox(val swLat: Double, val swLng: Double, val neLat: Double, val neLng: Double)
+
+// Фильтры GET /events
+data class EventQuery(
+    val bbox: Bbox? = null,
+    val categories: List<String> = emptyList(),
+    val priceType: String? = null, // free | paid
+)
+
 data class Event(
     val id: String,
     val title: String,
@@ -20,6 +30,7 @@ data class Event(
     val cover: String? = null,
     val organizerId: String? = null,
     val organizerName: String = "",
+    val capacity: Int? = null,
 )
 
 data class Organizer(

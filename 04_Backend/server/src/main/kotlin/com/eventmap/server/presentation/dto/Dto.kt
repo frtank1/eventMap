@@ -13,7 +13,20 @@ import kotlinx.serialization.Serializable
 @Serializable data class RefreshResponse(val accessToken: String, val refreshToken: String, val expiresIn: Long)
 
 @Serializable data class LocationDto(val lat: Double, val lng: Double, val name: String = "")
-@Serializable data class PriceDto(val type: String, val amount: Int, val currency: String)
+@Serializable data class PriceDto(val type: String, val amount: Int = 0, val currency: String = "KZT")
+
+// Тело POST /events — зеркало клиентского CreateEventRequest (API_CONTRACT §3).
+@Serializable data class CreateEventRequest(
+    val title: String,
+    val description: String = "",
+    val coverMediaId: String? = null,
+    val location: LocationDto? = null,
+    val startAt: String = "",
+    val endAt: String = "",
+    val category: String = "",
+    val price: PriceDto = PriceDto("free"),
+    val limit: Int? = null,
+)
 @Serializable data class EventDto(
     val id: String, val title: String, val description: String, val category: String, val status: String,
     val startAt: String, val endAt: String, val location: LocationDto, val price: PriceDto,

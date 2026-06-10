@@ -9,6 +9,7 @@ import com.eventmap.server.domain.repository.EventRepository
 import com.eventmap.server.domain.repository.OrganizerRepository
 import com.eventmap.server.domain.repository.RefreshTokenRepository
 import com.eventmap.server.domain.repository.UserRepository
+import com.eventmap.server.domain.usecase.CreateEventUseCase
 import com.eventmap.server.domain.usecase.GetEventUseCase
 import com.eventmap.server.domain.usecase.GetEventsUseCase
 import com.eventmap.server.domain.usecase.GetOrganizerEventsUseCase
@@ -32,6 +33,7 @@ val appModule = module {
 
     factory { GetEventsUseCase(get()) }
     factory { GetEventUseCase(get()) }
+    factory { CreateEventUseCase(get()) }
     factory { GetOrganizerUseCase(get()) }
     factory { GetOrganizerEventsUseCase(get()) }
     factory { RegisterUseCase(get()) }
