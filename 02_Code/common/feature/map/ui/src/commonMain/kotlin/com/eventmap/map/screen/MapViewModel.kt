@@ -1,5 +1,6 @@
 package com.eventmap.map.screen
 
+import com.eventmap.base_screen.BaseScreenModel
 import com.eventmap.core.network.ktor.KtorResponse
 import com.eventmap.event.EventRepository
 import com.eventmap.event.models.EventDetail
@@ -10,6 +11,7 @@ import com.eventmap.map.MapEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,15 +19,17 @@ import kotlinx.coroutines.launch
 
 /**
  * Состояние домашней карты. Тянет события из EventRepository (GET /events).
- * Если бэкенд недоступен — остаётся на демо-данных (sampleEvents), чтобы карта
- * не была пустой. Фильтрация локальная.
+ * В demoMode при недоступном бэкенде остаётся на sampleEvents (карта не пустая);
+ * в боевом режиме ошибка уходит в errorMessage (снек экрана, см. ERRORS.md).
+ * Фильтрация локальная.
  */
 class MapViewModel(
     private val eventRepository: EventRepository,
-) {
+    private val demoMode: Boolean = false,
+) : BaseScreenModel() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private var all: List<MapEvent> = sampleEvents()
+    private var all: List<MapEvent> = if (demoMode) sampleEvents() else emptyList()
 
     private val _filter = MutableStateFlow(MapFilter())
     val filter: StateFlow<MapFilter> = _filter.asStateFlow()
@@ -40,13 +44,22 @@ class MapViewModel(
 
     fun reload() {
         scope.launch {
-            val r = eventRepository.getEvents()
-            if (r is KtorResponse.Success && r.data.isNotEmpty()) {
-                all = r.data.map { it.toMapEvent() }
-                _events.value = applyFilter(_filter.value)
+            when (val r = eventRepository.getEvents()) {
+                is KtorResponse.Success -> {
+                    // в demoMode пустой ответ не затирает sample-данные
+                    if (r.data.isNotEmpty() || !demoMode) {
+                        all = r.data.map { it.toMapEvent() }
+                        _events.value = applyFilter(_filter.value)
+                    }
+                }
+                is KtorResponse.Failure ->
+                    if (!demoMode) emitError(r.error) // в demoMode остаёмся на sampleEvents
             }
-            // при ошибке/пустом ответе — остаёмся на sampleEvents (фолбэк)
         }
+    }
+
+    override fun onDispose() {
+        scope.cancel()
     }
 
     fun select(event: MapEvent) { _selected.value = event }

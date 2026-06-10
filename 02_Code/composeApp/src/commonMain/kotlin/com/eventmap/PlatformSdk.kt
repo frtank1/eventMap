@@ -42,6 +42,10 @@ private val defaultCoreConfig = CoreConfig(
     ),
     authClientId = "", // у EventMap JWT-бэкенд без OAuth client_id
     authTokenPath = "auth/refresh",
+    // Пока боевой бэкенд не задеплоен — демо-данные и сетевые логи включены.
+    // Перед релизом: demoMode = false, debug = false.
+    demoMode = true,
+    debug = true,
 )
 
 fun platformModule(configuration: PlatformConfiguration) = module {

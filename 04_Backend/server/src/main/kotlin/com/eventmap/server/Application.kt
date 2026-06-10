@@ -55,9 +55,14 @@ fun Application.module() {
     install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; prettyPrint = true }) }
     install(CallLogging)
     install(CORS) {
-        anyHost()
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Authorization)
+        // dev: CORS_HOSTS пуст → anyHost; prod: только whitelist (проверка в AppConfig)
+        if (config.corsHosts.isEmpty()) {
+            anyHost()
+        } else {
+            config.corsHosts.forEach { allowHost(it, schemes = listOf("https")) }
+        }
     }
     install(StatusPages) {
         exception<Throwable> { call, cause ->

@@ -10,4 +10,9 @@ data class CoreConfig(
     val authClientId: String = "",
     // эндпоинт обновления токена (для EventMap: "auth/refresh")
     val authTokenPath: String = "",
+    // демо-режим: при недоступном бэкенде экраны показывают sample-данные.
+    // В боевой сборке должен быть false — ошибки сети показываются пользователю.
+    val demoMode: Boolean = false,
+    // подробное логирование сети (тела запросов, токены). Только для отладки!
+    val debug: Boolean = false,
 )

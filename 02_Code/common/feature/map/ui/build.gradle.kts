@@ -12,6 +12,7 @@ kotlin {
             implementation(libs.compose.components.resources)
 
             implementation(libs.koin.core)
+            implementation(libs.voyager.screenModel) // ScreenModel — супертип BaseScreenModel
             implementation(projects.common.core.ui)
             implementation(projects.common.core.network)
             implementation(projects.common.feature.event.domain)

@@ -22,10 +22,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +78,15 @@ fun MapContent(
     val selected by vm.selected.collectAsState()
     var showFilters by remember { mutableStateOf(false) }
     var controller by remember { mutableStateOf<EventMapController?>(null) }
+
+    // MapContent — не Voyager Screen, поэтому scope ViewModel освобождаем вручную
+    DisposableEffect(Unit) { onDispose { vm.onDispose() } }
+
+    // Ошибки экрана (ERRORS.md): errorMessage → снек
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        vm.errorMessage.collect { snackbarHostState.showSnackbar(it) }
+    }
 
     val colors = EventMapTheme.colors
 
@@ -127,6 +140,11 @@ fun MapContent(
             events = events,
             onClick = { vm.select(it) },
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 200.dp),
         )
     }
 

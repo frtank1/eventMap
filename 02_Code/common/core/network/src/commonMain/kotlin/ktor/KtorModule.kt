@@ -35,9 +35,10 @@ val ktorModule = module {
 
         HttpClient(HttpEngineFactory().createEngine()) {
 
+            // ALL пишет в лог тела запросов и токены — только при config.debug
             install(Logging) {
                 logger = Logger.SIMPLE
-                level = LogLevel.ALL
+                level = if (config.debug) LogLevel.ALL else LogLevel.NONE
             }
 
             install(DefaultRequest) {
