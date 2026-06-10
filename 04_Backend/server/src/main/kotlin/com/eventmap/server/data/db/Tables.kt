@@ -42,3 +42,12 @@ object UsersTable : Table("users") {
     val passwordHash = varchar("password_hash", 255)
     override val primaryKey = PrimaryKey(id)
 }
+
+// Храним SHA-256 хеш refresh-токена (сам токен — только у клиента).
+object RefreshTokensTable : Table("refresh_tokens") {
+    val tokenHash = varchar("token_hash", 64)
+    val userId = varchar("user_id", 64).index()
+    val expiresAtMs = long("expires_at_ms")
+    val revoked = bool("revoked").default(false)
+    override val primaryKey = PrimaryKey(tokenHash)
+}

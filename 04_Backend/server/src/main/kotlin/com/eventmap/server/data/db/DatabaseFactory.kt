@@ -20,7 +20,7 @@ object DatabaseFactory {
         }
         Database.connect(HikariDataSource(hikari))
         transaction {
-            SchemaUtils.create(OrganizersTable, EventsTable, UsersTable)
+            SchemaUtils.create(OrganizersTable, EventsTable, UsersTable, RefreshTokensTable)
             if (EventsTable.selectAll().empty()) seed()
         }
     }

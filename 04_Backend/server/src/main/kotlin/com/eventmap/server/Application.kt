@@ -7,7 +7,10 @@ import com.eventmap.server.domain.usecase.GetEventUseCase
 import com.eventmap.server.domain.usecase.GetEventsUseCase
 import com.eventmap.server.domain.usecase.GetOrganizerEventsUseCase
 import com.eventmap.server.domain.usecase.GetOrganizerUseCase
+import com.eventmap.server.domain.usecase.IssueTokensUseCase
 import com.eventmap.server.domain.usecase.LoginUseCase
+import com.eventmap.server.domain.usecase.LogoutUseCase
+import com.eventmap.server.domain.usecase.RefreshSessionUseCase
 import com.eventmap.server.domain.usecase.RegisterUseCase
 import com.eventmap.server.presentation.dto.ErrorResponse
 import com.eventmap.server.presentation.routes.authRoutes
@@ -78,9 +81,12 @@ fun Application.module() {
     val getOrganizerEvents: GetOrganizerEventsUseCase by inject()
     val register: RegisterUseCase by inject()
     val login: LoginUseCase by inject()
+    val issueTokens: IssueTokensUseCase by inject()
+    val refreshSession: RefreshSessionUseCase by inject()
+    val logout: LogoutUseCase by inject()
 
     routing {
-        authRoutes(register, login, jwt)
+        authRoutes(register, login, issueTokens, refreshSession, logout)
         eventRoutes(getEvents, getEvent)
         organizerRoutes(getOrganizer, getOrganizerEvents)
     }

@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class UserDto(val id: String, val name: String, val avatarUrl: String? = null)
 @Serializable data class AuthResponse(val accessToken: String, val refreshToken: String, val expiresIn: Long, val user: UserDto)
+@Serializable data class RefreshResponse(val accessToken: String, val refreshToken: String, val expiresIn: Long)
 
 @Serializable data class LocationDto(val lat: Double, val lng: Double, val name: String = "")
 @Serializable data class PriceDto(val type: String, val amount: Int, val currency: String)

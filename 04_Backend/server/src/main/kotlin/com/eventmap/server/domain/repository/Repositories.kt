@@ -18,3 +18,12 @@ interface UserRepository {
     suspend fun byEmail(email: String): User?
     suspend fun create(email: String, name: String, passwordHash: String): User
 }
+
+data class RefreshTokenRecord(val tokenHash: String, val userId: String, val expiresAtMs: Long, val revoked: Boolean)
+
+interface RefreshTokenRepository {
+    suspend fun save(tokenHash: String, userId: String, expiresAtMs: Long)
+    suspend fun find(tokenHash: String): RefreshTokenRecord?
+    suspend fun revoke(tokenHash: String)
+    suspend fun revokeAllForUser(userId: String)
+}
