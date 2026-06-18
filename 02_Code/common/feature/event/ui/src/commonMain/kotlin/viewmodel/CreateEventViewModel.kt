@@ -69,7 +69,10 @@ class CreateEventViewModel(
             startAt = "${f.date}T${f.time.ifBlank { "00:00" }}:00Z",
             endAt = "",
             category = f.category,
-            price = if (f.isPaid) EventPrice("paid", f.priceAmount.toIntOrNull() ?: 0, "KZT") else EventPrice("free"),
+            // платно — если введена положительная цена (переключатель 18+ к цене не относится)
+            price = (f.priceAmount.toIntOrNull() ?: 0).let { amount ->
+                if (amount > 0) EventPrice("paid", amount, "KZT") else EventPrice("free")
+            },
             limit = f.limit.toIntOrNull(),
         )
         screenModelScope.launch {

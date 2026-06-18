@@ -1,0 +1,90 @@
+# EventMap backend — Render Blueprint (Infrastructure as Code).
+# Вся инфраструктура описана здесь, в git: меняешь файл → Render применяет.
+# Деплой автоматический по push в привязанную ветку.
+#
+# Два окружения:
+#   staging (pre-prod) ← ветка  staging   (бесплатный план)
+#   prod              ← ветка  main      (платный план)
+# Третье окружение — test — гоняется локально через docker-compose и в CI (см. DEPLOY.md).
+#
+# Подключить: Render → New → Blueprint → выбрать этот репозиторий.
+# region: frankfurt — ближе к KZ, чем oregon. Поменяй при желании.
+
+databases:
+  - name: eventmap-db-staging
+    databaseName: eventmap
+    user: eventmap
+    plan: free            # free-база Render живёт ограниченно — для prod ниже starter
+    region: frankfurt
+
+  - name: eventmap-db-prod
+    databaseName: eventmap
+    user: eventmap
+    plan: basic-256mb     # подбери план под нагрузку/бюджет
+    region: frankfurt
+
+services:
+  # ---------- STAGING / PRE-PROD ----------
+  - type: web
+    name: eventmap-staging
+    runtime: docker
+    rootDir: 04_Backend/server
+    dockerfilePath: ./Dockerfile
+    branch: staging
+    plan: free
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: PORT
+        value: "8080"
+      # DATABASE_URL → AppConfig сам разберёт в jdbc + user + password
+      - key: DATABASE_URL
+        fromDatabase:
+          name: eventmap-db-staging
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true       # Render сгенерит и сохранит секрет
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: JWT_ISSUER
+        value: eventmap
+      - key: JWT_AUDIENCE
+        value: eventmap-app
+      # staging проверяет prod-валидацию конфига, поэтому CORS обязателен.
+      # Впиши сюда домен staging-фронта/приложения (или временно его же Render-URL).
+      - key: CORS_HOSTS
+        sync: false               # задаёшь вручную в дашборде
+
+  # ---------- PRODUCTION ----------
+  - type: web
+    name: eventmap-prod
+    runtime: docker
+    rootDir: 04_Backend/server
+    dockerfilePath: ./Dockerfile
+    branch: main
+    plan: starter
+    region: frankfurt
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: prod               # включает строгую валидацию (JWT_SECRET, CORS, ADMIN_KEY)
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: eventmap-db-prod
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_KEY
+        generateValue: true
+      - key: JWT_ISSUER
+        value: eventmap
+      - key: JWT_AUDIENCE
+        value: eventmap-app
+      - key: CORS_HOSTS
+        sync: false               # обязателен в prod: домены фронта через запятую

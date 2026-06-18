@@ -1,5 +1,10 @@
 package com.eventmap.map.screen
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,23 +23,19 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -62,20 +63,24 @@ import com.eventmap.map.EventOverlay
 import com.eventmap.map.EventState
 import com.eventmap.map.LatLng
 import com.eventmap.map.MapEvent
-import com.eventmap.theme.EventMapTheme
-import com.eventmap.theme.ui_kit.EventStatus
-import com.eventmap.theme.ui_kit.PrimaryGradientButton
-import com.eventmap.theme.ui_kit.SecondaryButton
-import com.eventmap.theme.ui_kit.StatusPill
+import com.eventmap.theme.BrandGradient
+import com.eventmap.theme.LiveGradient
+import com.eventmap.theme.NightBackground
+import com.eventmap.theme.NightSurface
+import com.eventmap.theme.NightTextSecondary
+import com.eventmap.theme.NightTextTertiary
+import com.eventmap.theme.Violet400
+import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
 import org.koin.mp.KoinPlatform.getKoin
 
 private val Astana = LatLng(51.1283, 71.4306)
 
-/**
- * Домашний экран — живая карта (раздел C). Поверх карты: поиск + фильтр,
- * FAB локации, карусель актуальных событий снизу, bottom-sheet события и фильтры.
- */
+// =====================================================================
+//  C · Карта — Aurora Violet night palette
+//  C1: живая карта, C4: sheet «скоро», C5: sheet «LIVE», C8: фильтры
+// =====================================================================
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapContent(
@@ -91,18 +96,15 @@ fun MapContent(
     var showFilters by remember { mutableStateOf(false) }
     var controller by remember { mutableStateOf<EventMapController?>(null) }
 
-    // MapContent — не Voyager Screen, поэтому scope ViewModel освобождаем вручную
     DisposableEffect(Unit) { onDispose { vm.onDispose() } }
 
-    // Ошибки экрана (ERRORS.md): errorMessage → снек
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
         vm.errorMessage.collect { snackbarHostState.showSnackbar(it) }
     }
 
-    val colors = EventMapTheme.colors
-
-    Box(modifier.background(colors.mapBg)) {
+    Box(modifier.background(NightBackground)) {
+        // ── Карта ──────────────────────────────────────────────────────
         EventMap(
             initialCenter = Astana,
             initialZoom = 13.0,
@@ -111,50 +113,41 @@ fun MapContent(
         )
         controller?.let { EventOverlay(controller = it, events = events, onPinClick = { vm.select(it) }) }
 
-        // Верхняя панель: поиск + фильтр
-        MapSearchBar(
-            activeFilters = filter.categories.size + (if (filter.freeOnly) 1 else 0),
-            onFilterClick = { showFilters = true },
-            onSearchClick = onSearchClick,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp, start = 16.dp, end = 16.dp),
-        )
-
-        // Пилюля «Прямо сейчас» (вход в live-видео ленту)
-        Row(
+        // ── Верхняя панель: поиск + чипы фильтров ──────────────────────
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 104.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(EventMapTheme.colors.live)
-                .clickableNoRipple(onOpenLive)
-                .padding(horizontal = 14.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(top = 52.dp, start = 16.dp, end = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            LivePulseDot()
-            Spacer(Modifier.width(6.dp))
-            Text("Прямо сейчас", color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            MapSearchBar(
+                activeFilters = filter.categories.size + (if (filter.freeOnly) 1 else 0),
+                onFilterClick = { showFilters = true },
+                onSearchClick = onSearchClick,
+            )
+            FilterChipsRow(filter = filter, vm = vm, onLiveClick = onOpenLive)
         }
 
-        // FAB локации (справа над каруселью)
+        // ── FAB локация ─────────────────────────────────────────────────
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = 180.dp)
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(NightSurface)
                 .clickableNoRipple { controller?.animateCamera(Astana, 14.0) },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.MyLocation,
                 contentDescription = "Моя локация",
-                tint = EventMapTheme.colors.accent,
-                modifier = Modifier.size(22.dp),
+                tint = Color.White,
+                modifier = Modifier.size(20.dp),
             )
         }
 
-        // Карусель событий снизу
+        // ── Карусель событий ─────────────────────────────────────────────
         EventCarousel(
             events = events,
             onClick = { vm.select(it) },
@@ -167,31 +160,49 @@ fun MapContent(
         )
     }
 
+    // ── Bottom sheet: C4 (скоро) / C5 (LIVE) ───────────────────────────
     selected?.let { ev ->
-        ModalBottomSheet(onDismissRequest = { vm.clearSelection() }, sheetState = rememberModalBottomSheetState()) {
-            EventSheetContent(ev, onOpen = {
-                vm.clearSelection()
-                onOpenEvent(ev.id)
-            })
+        ModalBottomSheet(
+            onDismissRequest = { vm.clearSelection() },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = NightSurface,
+            dragHandle = { SheetHandle() },
+        ) {
+            when (ev.state) {
+                EventState.Live, EventState.Ending ->
+                    LiveSheet(ev, onOpenReel = { vm.clearSelection(); onOpenEvent(ev.id) })
+                EventState.Soon ->
+                    SoonSheet(ev, onOpen = { vm.clearSelection(); onOpenEvent(ev.id) })
+            }
         }
     }
 
+    // ── Bottom sheet: C8 Фильтры ────────────────────────────────────────
     if (showFilters) {
-        ModalBottomSheet(onDismissRequest = { showFilters = false }, sheetState = rememberModalBottomSheetState()) {
+        ModalBottomSheet(
+            onDismissRequest = { showFilters = false },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = NightSurface,
+            dragHandle = { SheetHandle() },
+        ) {
             FiltersSheetContent(filter = filter, vm = vm, onApply = { showFilters = false })
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  C1 — Поиск-пилюля + кнопка фильтров
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearchClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearchClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp)
+                .height(46.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(NightSurface)
                 .clickableNoRipple(onSearchClick)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -199,33 +210,104 @@ private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearch
             Icon(
                 Icons.Rounded.Search,
                 contentDescription = null,
-                tint = EventMapTheme.colors.textSecondary,
-                modifier = Modifier.size(18.dp),
+                tint = NightTextSecondary,
+                modifier = Modifier.size(17.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text("Поиск событий и мест", color = EventMapTheme.colors.textSecondary, style = MaterialTheme.typography.bodyMedium)
+            Text("Поиск событий и мест", color = NightTextSecondary, fontSize = 14.sp)
         }
+        val hasFilters = activeFilters > 0
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (activeFilters > 0) EventMapTheme.colors.accent else MaterialTheme.colorScheme.surface)
+                .size(46.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .then(
+                    if (hasFilters) Modifier.background(Brush.linearGradient(BrandGradient))
+                    else Modifier.background(NightSurface),
+                )
                 .clickableNoRipple(onFilterClick),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Rounded.Tune,
                 contentDescription = "Фильтры",
-                tint = if (activeFilters > 0) Color.White else EventMapTheme.colors.textSecondary,
+                tint = if (hasFilters) Color.White else NightTextSecondary,
                 modifier = Modifier.size(20.dp),
             )
         }
     }
 }
 
-// Пульсирующая точка LIVE (масштаб + прозрачность)
+// ─────────────────────────────────────────────────────────────────────────────
+//  C1 — Ряд чипов фильтров: Сегодня · LIVE · категории
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun LivePulseDot(modifier: Modifier = Modifier) {
+private fun FilterChipsRow(filter: MapFilter, vm: MapViewModel, onLiveClick: () -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            val sel = filter.whenFilter == WhenFilter.Today
+            FilterChip(label = "Сегодня", emoji = "📅", selected = sel) {
+                vm.setWhen(if (sel) WhenFilter.Now else WhenFilter.Today)
+            }
+        }
+        item {
+            // LIVE chip → открывает ленту live-видео
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Brush.linearGradient(LiveGradient))
+                    .clickableNoRipple(onLiveClick)
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LivePulseDot()
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "LIVE",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp,
+                )
+            }
+        }
+        items(filterableCategories) { cat ->
+            val sel = cat in filter.categories
+            FilterChip(label = cat.label(), emoji = cat.emoji(), selected = sel) { vm.toggleCategory(cat) }
+        }
+    }
+}
+
+@Composable
+private fun FilterChip(label: String, emoji: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) Violet600.copy(alpha = 0.28f) else NightSurface.copy(alpha = 0.92f))
+            .border(
+                1.dp,
+                if (selected) Violet400.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.08f),
+                RoundedCornerShape(999.dp),
+            )
+            .clickableNoRipple(onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) {
+        Text(
+            "$emoji $label",
+            color = if (selected) Violet400 else NightTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Анимированная пульс-точка LIVE
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LivePulseDot() {
     val transition = rememberInfiniteTransition()
     val pulse by transition.animateFloat(
         initialValue = 0.7f,
@@ -233,8 +315,8 @@ private fun LivePulseDot(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
     )
     Box(
-        modifier
-            .size(8.dp)
+        Modifier
+            .size(7.dp)
             .scale(pulse)
             .alpha(pulse)
             .clip(CircleShape)
@@ -242,12 +324,16 @@ private fun LivePulseDot(modifier: Modifier = Modifier) {
     )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Карусель событий
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun EventCarousel(events: List<MapEvent>, onClick: (MapEvent) -> Unit, modifier: Modifier = Modifier) {
     LazyRow(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         items(events) { ev -> EventCard(ev, onClick = { onClick(ev) }) }
     }
@@ -257,26 +343,61 @@ private fun EventCarousel(events: List<MapEvent>, onClick: (MapEvent) -> Unit, m
 private fun EventCard(ev: MapEvent, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .width(260.dp)
+            .width(258.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surface)
+            .background(NightSurface)
             .clickableNoRipple(onClick)
-            .padding(14.dp),
+            .padding(13.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CategoryAvatar(ev.category)
+            CategoryAvatar(ev.category, size = 40)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(ev.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                Text(ev.subtitle, style = MaterialTheme.typography.bodyMedium, color = EventMapTheme.colors.textSecondary, maxLines = 1)
+                Text(ev.title, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(ev.subtitle, fontSize = 12.sp, color = NightTextSecondary, maxLines = 1)
             }
-            StatusPill(ev.state.toStatus())
+            Spacer(Modifier.width(6.dp))
+            when (ev.state) {
+                EventState.Live, EventState.Ending -> LiveBadge()
+                EventState.Soon -> SoonBadge()
+            }
         }
         Spacer(Modifier.height(10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("${ev.timeLabel} · ${formatKm(ev.distanceKm)}", style = MaterialTheme.typography.bodySmall, color = EventMapTheme.colors.textTertiary)
-            Text(ev.priceLabel, style = MaterialTheme.typography.labelLarge, color = EventMapTheme.colors.accent, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${ev.timeLabel} · ${formatKm(ev.distanceKm)}", fontSize = 11.sp, color = NightTextTertiary)
+            Text(ev.priceLabel, fontSize = 12.sp, color = Violet400, fontWeight = FontWeight.SemiBold)
         }
+    }
+}
+
+@Composable
+private fun LiveBadge() {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Brush.linearGradient(LiveGradient))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LivePulseDot()
+        Spacer(Modifier.width(4.dp))
+        Text("LIVE", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+    }
+}
+
+@Composable
+private fun SoonBadge() {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Violet600.copy(alpha = 0.22f))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text("скоро", color = Violet400, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -285,139 +406,367 @@ private fun CategoryAvatar(category: EventCategory, size: Int = 40) {
     Box(
         modifier = Modifier
             .size(size.dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(EventMapTheme.colors.brandGradient)),
+            .clip(RoundedCornerShape(10.dp))
+            .background(Brush.linearGradient(BrandGradient)),
         contentAlignment = Alignment.Center,
-    ) { Text(category.emoji(), fontSize = (size * 0.45).sp) }
+    ) {
+        Text(category.emoji(), fontSize = (size * 0.45).sp)
+    }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Sheet handle (grip)
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun EventSheetContent(ev: MapEvent, onOpen: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+private fun SheetHandle() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .width(40.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White.copy(alpha = 0.15f)),
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C4 — Bottom-sheet «Скоро»
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SoonSheet(ev: MapEvent, onOpen: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            CategoryAvatar(ev.category, size = 52)
-            Spacer(Modifier.width(14.dp))
+            CategoryAvatar(ev.category, size = 50)
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(ev.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                Text(ev.category.label(), style = MaterialTheme.typography.bodyMedium, color = EventMapTheme.colors.textSecondary)
+                Text(ev.title, fontSize = 19.sp, color = Color.White, fontWeight = FontWeight.ExtraBold, maxLines = 2)
+                Text(ev.category.label(), fontSize = 12.sp, color = NightTextSecondary, modifier = Modifier.padding(top = 2.dp))
             }
-            StatusPill(ev.state.toStatus())
         }
-        Spacer(Modifier.height(16.dp))
-        Text(ev.subtitle, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(12.dp))
-        InfoRow("🕒", ev.timeLabel)
-        InfoRow("📍", formatKm(ev.distanceKm) + " от вас")
-        InfoRow("🎟️", ev.priceLabel)
-        if (ev.state == EventState.Live && ev.watching > 0) InfoRow("👀", "${ev.watching} смотрят сейчас")
+
+        Spacer(Modifier.height(14.dp))
+
+        // Мета-чипы: место / время / цена
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetaChip("📍", formatKm(ev.distanceKm))
+            MetaChip("🕒", ev.timeLabel)
+            MetaChip("🎟️", ev.priceLabel)
+        }
+
+        if (ev.subtitle.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Text(ev.subtitle, fontSize = 13.sp, color = NightTextSecondary, lineHeight = 18.sp)
+        }
+
         Spacer(Modifier.height(20.dp))
-        if (ev.state == EventState.Live) {
-            PrimaryGradientButton(text = "Я тоже здесь", onClick = {})
-        } else {
-            PrimaryGradientButton(text = "Пойду", onClick = {})
+
+        // Primary CTA
+        val ctaLabel = if (ev.isFree) "Приду" else "Купить"
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.linearGradient(BrandGradient))
+                .clickableNoRipple(onOpen),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(ctaLabel, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
         }
-        Spacer(Modifier.height(10.dp))
-        SecondaryButton(text = "Открыть карточку", onClick = onOpen)
+
+        Spacer(Modifier.height(8.dp))
+
+        // Ghost: открыть рилс
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = 0.07f))
+                .clickableNoRipple(onOpen),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Открыть событие", color = Color.White.copy(alpha = 0.70f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
 @Composable
-private fun InfoRow(icon: String, text: String) {
-    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(icon, fontSize = 15.sp)
-        Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+private fun MetaChip(emoji: String, label: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(Color.White.copy(alpha = 0.07f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(emoji, fontSize = 12.sp)
+        Spacer(Modifier.width(4.dp))
+        Text(label, color = NightTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C5 — Bottom-sheet «LIVE»
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LiveSheet(ev: MapEvent, onOpenReel: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+    ) {
+        // LIVE badge + счётчик
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Brush.linearGradient(LiveGradient))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LivePulseDot()
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "LIVE",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp,
+                )
+            }
+            if (ev.watching > 0) {
+                Text("👀 ${ev.watching} сейчас", color = NightTextSecondary, fontSize = 12.sp)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text(ev.title, fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.ExtraBold, maxLines = 2)
+        Text(ev.category.label(), fontSize = 12.sp, color = NightTextSecondary, modifier = Modifier.padding(top = 2.dp))
+
+        Spacer(Modifier.height(14.dp))
+
+        // Лента live-кружков участников (C6)
+        LiveCirclesRow()
+
+        Spacer(Modifier.height(20.dp))
+
+        // ▶ Открыть рилс события
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.linearGradient(BrandGradient))
+                .clickableNoRipple(onOpenReel),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("▶  Открыть рилс события", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // 📍 Я тоже здесь
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = 0.07f))
+                .clickableNoRipple { /* check-in */ },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("📍  Я тоже здесь", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun LiveCirclesRow() {
+    val stubEmojis = listOf("🧑‍🎤", "💃", "🕺", "👩‍🎨", "🎸", "🎵")
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(stubEmojis) { emoji ->
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(2.dp, Brush.linearGradient(LiveGradient), RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.07f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(emoji, fontSize = 22.sp)
+            }
+        }
+        item {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.07f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("+12", color = NightTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C8 — Фильтры
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun FiltersSheetContent(filter: MapFilter, vm: MapViewModel, onApply: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Фильтры", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text("Сбросить", color = EventMapTheme.colors.accent, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickableNoRipple { vm.resetFilter() })
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Фильтры", fontSize = 20.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+            Text(
+                "Сбросить",
+                color = Violet400,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickableNoRipple { vm.resetFilter() },
+            )
         }
-        Spacer(Modifier.height(16.dp))
 
-        SectionTitle("Когда")
-        FlowChips(WhenFilter.entries.map { it.label }, selectedLabels = setOf(filter.whenFilter.label)) { label ->
-            WhenFilter.entries.firstOrNull { it.label == label }?.let { vm.setWhen(it) }
+        Spacer(Modifier.height(18.dp))
+        SheetSectionLabel("КОГДА")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WhenFilter.entries.forEach { wf ->
+                val sel = filter.whenFilter == wf
+                DarkChip(label = wf.label, selected = sel) { vm.setWhen(wf) }
+            }
         }
 
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("Категории")
-        FlowChips(
-            labels = filterableCategories.map { it.label() },
-            selectedLabels = filter.categories.map { it.label() }.toSet(),
-        ) { label ->
-            filterableCategories.firstOrNull { it.label() == label }?.let { vm.toggleCategory(it) }
+        Spacer(Modifier.height(18.dp))
+        SheetSectionLabel("КАТЕГОРИИ")
+        filterableCategories.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { cat ->
+                    val sel = cat in filter.categories
+                    DarkChip(label = "${cat.emoji()} ${cat.label()}", selected = sel) { vm.toggleCategory(cat) }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
         }
-
-        Spacer(Modifier.height(16.dp))
-        ToggleRow("Только бесплатные", filter.freeOnly) { vm.setFreeOnly(it) }
-        ToggleRow("Звук на карте", filter.soundOn) { vm.toggleSound() }
-
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("Радиус: ${filter.radiusKm.toInt()} км")
-        Slider(value = filter.radiusKm, onValueChange = { vm.setRadius(it) }, valueRange = 1f..20f)
 
         Spacer(Modifier.height(8.dp))
-        SectionTitle("Слои")
+        SheetSectionLabel("РАССТОЯНИЕ  ${filter.radiusKm.toInt()} КМ")
+        Slider(
+            value = filter.radiusKm,
+            onValueChange = { vm.setRadius(it) },
+            valueRange = 1f..20f,
+            colors = SliderDefaults.colors(thumbColor = Violet400, activeTrackColor = Violet600),
+        )
+
+        Spacer(Modifier.height(12.dp))
+        SheetSectionLabel("СЛОИ")
         MapLayer.entries.forEach { layer ->
             ToggleRow(layer.label, layer in filter.layers) { vm.toggleLayer(layer) }
         }
 
+        Spacer(Modifier.height(8.dp))
+        ToggleRow("Только бесплатные", filter.freeOnly) { vm.setFreeOnly(it) }
+        ToggleRow("Звук на карте", filter.soundOn) { vm.toggleSound() }
+
         Spacer(Modifier.height(20.dp))
-        PrimaryGradientButton(text = "Показать события", onClick = onApply)
-    }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 8.dp))
-}
-
-@Composable
-private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-/** Простой перенос чипов по строкам (без зависимости от FlowRow). */
-@Composable
-private fun FlowChips(labels: List<String>, selectedLabels: Set<String>, onClick: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        labels.chunked(3).forEach { rowLabels ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowLabels.forEach { label ->
-                    val sel = label in selectedLabels
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(if (sel) EventMapTheme.colors.accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-                            .border(1.dp, if (sel) EventMapTheme.colors.accent else Color.Transparent, RoundedCornerShape(999.dp))
-                            .clickableNoRipple { onClick(label) }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (sel) EventMapTheme.colors.accent else MaterialTheme.colorScheme.onSurface,
-                            fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
-                }
-            }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Brush.linearGradient(BrandGradient))
+                .clickableNoRipple(onApply),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Показать события", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
 
-private fun EventState.toStatus(): EventStatus = when (this) {
-    EventState.Live -> EventStatus.Live
-    EventState.Soon -> EventStatus.Soon
-    EventState.Ending -> EventStatus.Live
+@Composable
+private fun SheetSectionLabel(text: String) {
+    Text(
+        text,
+        color = NightTextSecondary,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp,
+        modifier = Modifier.padding(bottom = 10.dp),
+    )
+}
+
+@Composable
+private fun DarkChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) Violet600.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.07f))
+            .border(
+                1.dp,
+                if (selected) Violet400.copy(alpha = 0.5f) else Color.Transparent,
+                RoundedCornerShape(999.dp),
+            )
+            .clickableNoRipple(onClick)
+            .padding(horizontal = 13.dp, vertical = 8.dp),
+    ) {
+        Text(
+            label,
+            color = if (selected) Violet400 else NightTextSecondary,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.05f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Violet600,
+                uncheckedThumbColor = NightTextTertiary,
+                uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
+            ),
+        )
+    }
+    Spacer(Modifier.height(8.dp))
 }
 
 private fun formatKm(km: Double): String =

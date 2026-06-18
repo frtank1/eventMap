@@ -32,10 +32,18 @@ class ProfileViewModel(
     fun load() {
         screenModelScope.launch {
             _loading.value = true
-            val me = (repository.getMe() as? KtorResponse.Success)?.data ?: sampleProfile()
-            _profile.value = me
-            _history.value = (repository.getHistory(me.id) as? KtorResponse.Success)?.data ?: sampleHistory()
-            _loading.value = false
+            try {
+                val me = (repository.getMe() as? KtorResponse.Success)?.data ?: sampleProfile()
+                _profile.value = me
+                _history.value = (repository.getHistory(me.id) as? KtorResponse.Success)?.data ?: sampleHistory()
+            } catch (e: Throwable) {
+                // нет сети/бэка — показываем демо-данные, чтобы экран не висел на загрузке
+                val me = sampleProfile()
+                _profile.value = me
+                _history.value = sampleHistory()
+            } finally {
+                _loading.value = false
+            }
         }
     }
 

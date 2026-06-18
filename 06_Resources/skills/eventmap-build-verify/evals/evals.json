@@ -1,0 +1,44 @@
+{
+  "skill_name": "eventmap-build-verify",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Собери андроид, он сейчас не компилируется. Почини все ошибки компиляции в 02_Code пока assembleDebug не пройдёт.",
+      "expected_output": "Identifies 02_Code as a separate Gradle build, runs :composeApp:assembleDebug (or per-module compileDebugKotlinAndroid), reads the first real error, fixes root causes (not stubs), checks module dependency wiring in build.gradle.kts, and reports a green build. Flags Mapbox token / JVM 11 / SDK preconditions if relevant.",
+      "files": [],
+      "assertions": [
+        {"text": "Runs Gradle from 02_Code (not the backend dir) using the wrapper", "passed": null},
+        {"text": "Targets :composeApp:assembleDebug or a narrower compileDebugKotlinAndroid task", "passed": null},
+        {"text": "Diagnoses the FIRST real Kotlin error rather than the last log line", "passed": null},
+        {"text": "Fixes root cause (e.g. missing module dependency / definition) instead of stubbing or deleting code", "passed": null},
+        {"text": "Mentions at least one real precondition (Mapbox token, JVM 11, or SDK) when applicable", "passed": null}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Доведи бэкенд до 100%: он ни разу не компилировался. Сделай чтобы собирался, тесты проходили и сервер поднимался, потом подключи приложение к нему.",
+      "expected_output": "Works in 04_Backend/server with JDK 17, runs compileKotlin then build/test, brings server up via docker compose (or ./gradlew run), smoke-tests /events and /auth/register, then sets CoreConfig.baseUrl to 10.0.2.2:8080 and removes the dev auth bypass in AuthRepositoryImpl. Respects Clean Architecture layering and DI registration.",
+      "files": [],
+      "assertions": [
+        {"text": "Operates in 04_Backend/server as a separate build with JDK 17", "passed": null},
+        {"text": "Runs compileKotlin / build / test before declaring done", "passed": null},
+        {"text": "Brings the server up (docker compose or gradlew run) and smoke-tests an endpoint", "passed": null},
+        {"text": "Wires the client: baseUrl 10.0.2.2:8080 and removes dev auth bypass in AuthRepositoryImpl", "passed": null},
+        {"text": "Respects domain/data/presentation layering and registers usecases in Koin (AppModule + Application)", "passed": null}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Сверь экраны проекта с фигмой на полное соответствие: https://www.figma.com/design/Lf0iBDnxz7x80uA4LAAyDJ/EventMap-Design-v2 — карта, лента-рилсы, карточка события, авторизация.",
+      "expected_output": "Uses the Figma MCP (get_metadata, get_screenshot, get_variable_defs, get_design_context) on the named frames, maps each to the right feature/ui Compose file, compares layout/color/type/components/states attribute-by-attribute, and outputs a per-screen PASS/DIFFERS verdict with concrete diffs and file paths. Avoids false 100%.",
+      "files": [],
+      "assertions": [
+        {"text": "Pulls real design data via Figma MCP tools (not eyeballing a single screenshot)", "passed": null},
+        {"text": "Maps Figma frames to the correct 02_Code feature/ui files (map/feed/event/auth)", "passed": null},
+        {"text": "Compares concrete attributes: spacing, color (hex), typography, components, states", "passed": null},
+        {"text": "Produces a per-screen PASS/DIFFERS verdict with the code file to change", "passed": null},
+        {"text": "Does not claim full match unless every in-scope screen passed", "passed": null}
+      ]
+    }
+  ]
+}

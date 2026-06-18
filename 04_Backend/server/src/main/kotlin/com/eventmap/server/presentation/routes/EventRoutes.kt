@@ -55,7 +55,7 @@ fun Route.eventRoutes(getEvents: GetEventsUseCase, getEvent: GetEventUseCase, cr
     get("/events/{id}/participants") { call.respond(emptyList<String>()) }
     get("/events/{id}/media") { call.respond(emptyList<String>()) }
     get("/events/{id}/ratings") { call.respond(emptyList<String>()) }
-    post("/events/{id}/attend") { call.respond(HttpStatusCode.OK) }
+    // attend → SocialRoutes (честная гео-логика D1c)
     post("/events/{id}/rating") { call.respond(HttpStatusCode.OK) }
     post("/events/{id}/purchase") { call.respond(mapOf("status" to "paid")) }
 }

@@ -1,9 +1,13 @@
 package com.eventmap
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.transitions.SlideTransition
@@ -37,11 +41,14 @@ fun App() {
     EventMapTheme {
         Scaffold(
             snackbarHost = { SnackbarHost(globalSnackbar) }
-        ) { _ ->
-            Navigator(SplashScreen()) { nav ->
-                navigator.value = nav
-                // плавный слайд между экранами вместо мгновенной смены
-                SlideTransition(nav)
+        ) { innerPadding ->
+            // innerPadding = отступы под статус-бар (батарейка/wifi) и навигацию телефона
+            Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                Navigator(SplashScreen()) { nav ->
+                    navigator.value = nav
+                    // плавный слайд между экранами вместо мгновенной смены
+                    SlideTransition(nav)
+                }
             }
         }
     }

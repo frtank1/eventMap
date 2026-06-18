@@ -56,7 +56,8 @@ val ktorModule = module {
             }
 
             install(HttpTimeout) {
-                connectTimeoutMillis = 15_000
+                // быстрый фолбэк на демо-данные, когда бэка нет (офлайн-режим)
+                connectTimeoutMillis = 4_000
                 requestTimeoutMillis = 30_000
                 socketTimeoutMillis = 15_000
             }

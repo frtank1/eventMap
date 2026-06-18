@@ -32,7 +32,8 @@ import org.koin.dsl.module
 // Дефолт проекта. При форке/новом проекте меняешь тут (или передаёшь свой в init).
 // Бэкенд EventMap: Ktor + JWT, эндпоинты /auth/* (см. 05_Docs/API_CONTRACT.md).
 private val defaultCoreConfig = CoreConfig(
-    baseUrl = "https://api.eventmap.app/v1/",
+    // ВАЖНО: без /v1 — сервер отдаёт роуты с корня (/auth, /events). Слэш в конце обязателен.
+    baseUrl = "http://192.168.1.29:8080/",
     // на эти пути bearer-токен не вешаем
     authExcludedPaths = listOf(
         "/auth/login",
@@ -44,7 +45,7 @@ private val defaultCoreConfig = CoreConfig(
     authTokenPath = "auth/refresh",
     // Пока боевой бэкенд не задеплоен — демо-данные и сетевые логи включены.
     // Перед релизом: demoMode = false, debug = false.
-    demoMode = true,
+    demoMode = false,
     debug = true,
 )
 

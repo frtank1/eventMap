@@ -14,6 +14,7 @@ kotlin { sourceSets {
         implementation(projects.common.core.network)
         implementation(projects.common.feature.search.domain)
         implementation(projects.common.feature.event.ui)
+        implementation(projects.common.feature.event.domain)
     }
     androidMain.dependencies {
         implementation(libs.compose.uiToolingPreview)

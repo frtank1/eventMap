@@ -55,6 +55,14 @@ fun EventOverlay(
 private fun EventMarker(event: MapEvent, position: Offset, onClick: () -> Unit) {
     val markerDp = 40
     val ring = statusColor(event.state)
+    val transition = rememberInfiniteTransition()
+
+    // мигание самого маркера (для Blink)
+    val blink by transition.animateFloat(
+        initialValue = 0.5f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+    )
+    val markerAlpha = if (event.animation == PinAnimation.Blink) blink else 1f
 
     Box(
         modifier = Modifier.offset {
@@ -65,24 +73,30 @@ private fun EventMarker(event: MapEvent, position: Offset, onClick: () -> Unit) 
         },
         contentAlignment = Alignment.Center,
     ) {
-        if (event.state == EventState.Live) {
-            val transition = rememberInfiniteTransition()
-            val pulse by transition.animateFloat(
-                initialValue = 1f, targetValue = 2.1f,
-                animationSpec = infiniteRepeatable(tween(2200), RepeatMode.Restart),
-            )
-            val ringAlpha by transition.animateFloat(
-                initialValue = 0.5f, targetValue = 0f,
-                animationSpec = infiniteRepeatable(tween(2200), RepeatMode.Restart),
-            )
-            Box(
-                Modifier.size(markerDp.dp).scale(pulse).alpha(ringAlpha)
-                    .clip(CircleShape).background(ring),
-            )
+        // фоновый анимированный эффект по выбранному типу анимации пина
+        when (event.animation) {
+            PinAnimation.Pulse, PinAnimation.Wave -> {
+                PulseRing(transition, ring, markerDp, durationMs = 2200)
+                if (event.animation == PinAnimation.Wave) {
+                    PulseRing(transition, ring, markerDp, durationMs = 1500)
+                }
+            }
+            PinAnimation.Glow -> {
+                val g by transition.animateFloat(
+                    initialValue = 1.2f, targetValue = 1.9f,
+                    animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse),
+                )
+                val a by transition.animateFloat(
+                    initialValue = 0.35f, targetValue = 0.08f,
+                    animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse),
+                )
+                Box(Modifier.size(markerDp.dp).scale(g).alpha(a).clip(CircleShape).background(ring))
+            }
+            PinAnimation.None, PinAnimation.Blink -> Unit
         }
 
         Box(
-            Modifier.size(markerDp.dp).clip(CircleShape)
+            Modifier.size(markerDp.dp).alpha(markerAlpha).clip(CircleShape)
                 .background(ring).border(2.dp, Color.White, CircleShape)
                 .clickableNoRipple(onClick),
             contentAlignment = Alignment.Center,
@@ -90,6 +104,24 @@ private fun EventMarker(event: MapEvent, position: Offset, onClick: () -> Unit) 
             Text(emojiFor(event.category), fontSize = 18.sp)
         }
     }
+}
+
+@Composable
+private fun PulseRing(
+    transition: androidx.compose.animation.core.InfiniteTransition,
+    color: Color,
+    markerDp: Int,
+    durationMs: Int,
+) {
+    val pulse by transition.animateFloat(
+        initialValue = 1f, targetValue = 2.2f,
+        animationSpec = infiniteRepeatable(tween(durationMs), RepeatMode.Restart),
+    )
+    val a by transition.animateFloat(
+        initialValue = 0.5f, targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween(durationMs), RepeatMode.Restart),
+    )
+    Box(Modifier.size(markerDp.dp).scale(pulse).alpha(a).clip(CircleShape).background(color))
 }
 
 private fun statusColor(state: EventState): Color = when (state) {
@@ -128,6 +160,7 @@ data class MapEvent(
     val distanceKm: Double = 0.0,
     val isFree: Boolean = true,
     val watching: Int = 0,
+    val animation: PinAnimation = PinAnimation.Pulse,
 )
 
 enum class EventCategory {
@@ -136,3 +169,6 @@ enum class EventCategory {
 }
 
 enum class EventState { Soon, Live, Ending }
+
+/** Тип анимации пина на карте (Этап 1 — встроенные бесплатные эффекты). */
+enum class PinAnimation { None, Pulse, Wave, Glow, Blink }

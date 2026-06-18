@@ -1,37 +1,32 @@
 package com.eventmap.event.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,260 +37,402 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
-import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
-import com.eventmap.event.models.EventDetail
-import com.eventmap.event.models.EventStatus
-import com.eventmap.event.models.MediaItem
-import com.eventmap.event.models.Participant
-import com.eventmap.event.ui.viewmodel.EventDetailViewModel
-import com.eventmap.theme.EventMapTheme
-import com.eventmap.theme.ui_kit.EventStatus as PillStatus
-import com.eventmap.theme.ui_kit.PrimaryGradientButton
-import com.eventmap.theme.ui_kit.SecondaryButton
-import com.eventmap.theme.ui_kit.StatusPill
+import com.eventmap.theme.BrandGradient
+import com.eventmap.theme.Coral500
+import com.eventmap.theme.Live
+import com.eventmap.theme.LiveGradient
+import com.eventmap.theme.NightBackground
+import com.eventmap.theme.NightSurface
+import com.eventmap.theme.NightTextSecondary
+import com.eventmap.theme.Soft
+import com.eventmap.theme.Violet400
+import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material3.Icon
 
-data class EventDetailScreen(val eventId: String) : Screen {
-    @OptIn(ExperimentalMaterial3Api::class)
+// =====================================================================
+//  D · Событие-рилс
+//  D1 EventFeedScreen  — вертикальный пейджер событий (reel-style)
+//  D2 CreateEventScreen — создание события
+//  D3 EventAttendeesScreen — список участников
+// =====================================================================
+
+private val NightTextTertiary = Color(0xFF56657A)
+
+private data class EventItem(
+    val id: String,
+    val emoji: String,
+    val title: String,
+    val organizer: String,
+    val location: String,
+    val date: String,
+    val price: String,
+    val attending: Int,
+    val likes: Int,
+    val comments: Int,
+    val isLive: Boolean = false,
+    val isFree: Boolean = false,
+    val tags: List<String> = emptyList(),
+)
+
+private val sampleFeedEvents = listOf(
+    EventItem("d1", "🎵", "Jazz Квартал · Весенний сет", "Алатау Бар", "ул. Желтоксан 111", "Пт, 14 июн · 20:00",
+        "2 000 ₸", 184, 432, 67, isLive = true, tags = listOf("Джаз", "18+", "Живая музыка")),
+    EventItem("d2", "🛍", "Craft Маркет «Весна»", "EventMap KZ", "EXPO Astana", "Сб-Вс · 11:00–20:00",
+        "Бесплатно", 831, 1200, 94, isFree = true, tags = listOf("Маркет", "Хэндмейд", "Семья")),
+    EventItem("d3", "🎤", "Стендап Ночь: Новые лица", "Comedy Club KZ", "Theatre Club", "Сб · 21:00",
+        "3 500 ₸", 112, 305, 44, tags = listOf("Стендап", "18+")),
+    EventItem("d4", "🎨", "Арт-резиденция Amin", "Amin Gallery", "Галерея Центр", "14–30 июн",
+        "Бесплатно", 290, 780, 112, isFree = true, tags = listOf("Арт", "Выставка")),
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  D1: EventFeedScreen (рилс-стиль)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class EventFeedScreen : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
-        val vm = koinScreenModel<EventDetailViewModel>()
-        val snackbar = remember { SnackbarHostState() }
-        val event by vm.event.collectAsState()
-        val loading by vm.loading.collectAsState()
-        val participants by vm.participants.collectAsState()
-        val media by vm.media.collectAsState()
-        val attended by vm.attended.collectAsState()
-        val ticketStatus by vm.ticketStatus.collectAsState()
-        val purchasing by vm.purchasing.collectAsState()
-        val ratingSent by vm.ratingSent.collectAsState()
-        var tab by remember { mutableStateOf(0) }
-        var showRating by remember { mutableStateOf(false) }
+        val pager = rememberPagerState { sampleFeedEvents.size }
 
-        LaunchedEffect(eventId) { vm.load(eventId) }
-        LaunchedEffect(Unit) { vm.errorMessage.collect { snackbar.showSnackbar(it) } }
-        LaunchedEffect(ratingSent) { if (ratingSent) showRating = false }
+        VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+            EventPage(event = sampleFeedEvents[page], onAttend = {}, onShare = {},
+                onShowAttendees = { nav.push(EventAttendeesV2Screen(sampleFeedEvents[page].id)) })
+        }
+    }
+}
 
-        Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { inner ->
-            val ev = event
-            if (loading || ev == null) {
-                Box(Modifier.fillMaxSize().padding(inner), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+@Composable
+private fun EventPage(event: EventItem, onAttend: () -> Unit, onShare: () -> Unit, onShowAttendees: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF0D1520), NightBackground))),
+    ) {
+        // Основной контент
+        Column(
+            Modifier.fillMaxSize().padding(bottom = 120.dp),
+            verticalArrangement = Arrangement.Bottom,
+        ) {
+            // Теги
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(event.tags) { tag ->
+                    Box(
+                        Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    ) { Text(tag, fontSize = 11.sp, color = Color.White) }
                 }
-                return@Scaffold
             }
+            Spacer(Modifier.height(12.dp))
 
-            Column(Modifier.fillMaxSize().padding(inner)) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    Header(ev, onBack = { nav.pop() })
-                    Spacer(Modifier.height(16.dp))
-                    TabRow(tab, onSelect = { tab = it }, modifier = Modifier.padding(horizontal = 16.dp))
-                    Spacer(Modifier.height(16.dp))
-                    Box(Modifier.padding(horizontal = 16.dp)) {
-                        when (tab) {
-                            0 -> AboutTab(ev, onOpenOrganizer = { id -> nav.push(OrganizerScreen(id)) })
-                            1 -> GalleryTab(media)
-                            else -> ParticipantsTab(participants)
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    // LIVE badge
+                    if (event.isLive) {
+                        Row(Modifier.padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(Live))
+                            Spacer(Modifier.width(5.dp))
+                            Text("ИДЁТ СЕЙЧАС", fontSize = 11.sp, color = Live, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp)
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
+                    Text(event.title, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 28.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(22.dp).clip(CircleShape).background(Violet600.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(event.emoji, fontSize = 11.sp) }
+                        Spacer(Modifier.width(6.dp))
+                        Text(event.organizer, fontSize = 13.sp, color = Violet400, fontWeight = FontWeight.Medium)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("📍", fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(event.location, fontSize = 12.sp, color = NightTextSecondary)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🗓", fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text(event.date, fontSize = 12.sp, color = NightTextSecondary)
+                    }
                 }
-                Box(Modifier.padding(16.dp)) {
-                    when {
-                        ev.statusEnum() == EventStatus.Ended ->
-                            PrimaryGradientButton(text = if (ratingSent) "Спасибо за оценку ✓" else "Оценить событие", onClick = { showRating = true })
-                        ev.statusEnum() == EventStatus.Live ->
-                            PrimaryGradientButton(text = if (attended) "Вы здесь ✓" else "Я тоже здесь", onClick = { vm.attend() })
-                        !ev.price.isFree ->
-                            PrimaryGradientButton(
-                                text = when (ticketStatus) { "paid" -> "Билет оформлен ✓"; "pending" -> "Ожидает оплаты…"; else -> "Купить билет · ${ev.price.label()}" },
-                                loading = purchasing,
-                                onClick = { if (ticketStatus != "paid") vm.purchase() },
-                            )
-                        else ->
-                            PrimaryGradientButton(text = if (attended) "Вы идёте ✓" else "Пойду", onClick = { vm.attend() })
+
+                // Правая колонка реакций
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    ReactionBtn("❤️", event.likes.toString(), onClick = {})
+                    ReactionBtn("💬", event.comments.toString(), onClick = {})
+                    ReactionBtn("👥", event.attending.toString(), onClick = onShowAttendees)
+                    ReactionBtn("↗️", "", onClick = onShare)
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // Кнопка записи
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.weight(1f).height(52.dp).clip(RoundedCornerShape(14.dp))
+                        .background(Brush.linearGradient(if (event.isLive) LiveGradient else BrandGradient))
+                        .clickableNoRipple(onAttend),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(if (event.isFree) "✓ Иду бесплатно" else "Купить · ${event.price}", color = Color.White,
+                        fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                Box(
+                    Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.10f)).clickableNoRipple {},
+                    contentAlignment = Alignment.Center,
+                ) { Text("🔖", fontSize = 20.sp) }
+            }
+        }
+
+        // Большой emoji-превью по центру сверху
+        Box(
+            Modifier.fillMaxWidth().height(300.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text(event.emoji, fontSize = 100.sp, textAlign = TextAlign.Center) }
+    }
+}
+
+@Composable
+private fun ReactionBtn(emoji: String, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickableNoRipple(onClick)) {
+        Text(emoji, fontSize = 26.sp)
+        if (label.isNotEmpty()) Text(label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  D2: CreateEventScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val eventCategories = listOf(
+    "🎵" to "Музыка", "🎨" to "Арт", "🛍" to "Маркет", "🏋️" to "Спорт",
+    "🎤" to "Стендап", "🎬" to "Кино", "☕" to "Встреча", "🎮" to "Игры",
+)
+
+/** D2 v2 — полностью переработанный экран создания события */
+class CreateEventV2Screen : Screen {
+    @Composable
+    override fun Content() {
+        val nav = LocalNavigator.currentOrThrow
+        var title by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var location by remember { mutableStateOf("") }
+        var selectedCategory by remember { mutableStateOf<Int?>(null) }
+        var isFree by remember { mutableStateOf(true) }
+        var price by remember { mutableStateOf("") }
+        var step by remember { mutableStateOf(0) }
+
+        val fieldColors = OutlinedTextFieldDefaults.colors(
+            unfocusedContainerColor = NightSurface, focusedContainerColor = NightSurface,
+            unfocusedTextColor = Color.White, focusedTextColor = Color.White,
+            unfocusedLabelColor = NightTextSecondary, focusedLabelColor = Violet400,
+            unfocusedBorderColor = Color.White.copy(alpha = 0.10f), focusedBorderColor = Violet600, cursorColor = Violet600,
+        )
+
+        Column(Modifier.fillMaxSize().background(NightBackground).verticalScroll(rememberScrollState())) {
+            // Топ-бар
+            Row(
+                Modifier.fillMaxWidth().padding(top = 56.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.08f))
+                    .clickableNoRipple { nav.pop() }, contentAlignment = Alignment.Center) {
+                    Text("✕", color = Color.White, fontSize = 16.sp)
+                }
+                Spacer(Modifier.width(12.dp))
+                Text("Новое событие", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.08f)).clickableNoRipple {}.padding(horizontal = 12.dp, vertical = 8.dp),
+                ) { Text("Черновик", fontSize = 12.sp, color = NightTextSecondary) }
+            }
+
+            // Превью обложки
+            Box(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(180.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        if (selectedCategory != null) Brush.verticalGradient(listOf(Color(0xFF1A0D2A), NightBackground))
+                        else Brush.verticalGradient(listOf(NightSurface, NightBackground))
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+                    .clickableNoRipple {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(selectedCategory?.let { eventCategories[it].first } ?: "🖼", fontSize = 44.sp)
+                    Text(if (title.isNotBlank()) title else "Название события", fontSize = 16.sp,
+                        color = if (title.isNotBlank()) Color.White else NightTextSecondary, fontWeight = FontWeight.Bold)
+                    if (selectedCategory == null) Text("+ Выбери категорию ниже", fontSize = 11.sp, color = NightTextTertiary)
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Категория
+            SLabel("КАТЕГОРИЯ")
+            val rows = eventCategories.chunked(4)
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                rows.forEachIndexed { ri, row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEachIndexed { ci, (emoji, label) ->
+                            val i = ri * 4 + ci
+                            val sel = i == selectedCategory
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                                    .background(if (sel) Violet600.copy(alpha = 0.20f) else NightSurface)
+                                    .border(1.dp, if (sel) Violet600.copy(alpha = 0.55f) else Color.Transparent, RoundedCornerShape(12.dp))
+                                    .clickableNoRipple { selectedCategory = i }.padding(vertical = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(emoji, fontSize = 20.sp)
+                                Text(label, fontSize = 10.sp, color = if (sel) Violet400 else NightTextSecondary, modifier = Modifier.padding(top = 3.dp))
+                            }
+                        }
                     }
                 }
             }
 
-            if (showRating) {
-                ModalBottomSheet(onDismissRequest = { showRating = false }, sheetState = rememberModalBottomSheetState()) {
-                    RatingSheet(onSubmit = { value, review -> vm.submitRating(value, review) })
+            Spacer(Modifier.height(20.dp))
+
+            SLabel("ОСНОВНОЕ")
+            Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Название") },
+                    singleLine = true, shape = RoundedCornerShape(12.dp), colors = fieldColors, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Описание") },
+                    minLines = 3, maxLines = 5, shape = RoundedCornerShape(12.dp), colors = fieldColors, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = location, onValueChange = { location = it }, label = { Text("Место проведения") },
+                    singleLine = true, shape = RoundedCornerShape(12.dp), colors = fieldColors, modifier = Modifier.fillMaxWidth())
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Цена
+            SLabel("СТОИМОСТЬ")
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(14.dp)).background(NightSurface).padding(4.dp),
+            ) {
+                listOf("Бесплатно", "Платное").forEachIndexed { i, label ->
+                    val sel = (i == 0) == isFree
+                    Box(
+                        Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(10.dp))
+                            .background(if (sel) Brush.linearGradient(BrandGradient) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+                            .clickableNoRipple { isFree = i == 0 },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(label, color = if (sel) Color.White else NightTextSecondary, fontSize = 14.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal) }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun RatingSheet(onSubmit: (Int, String) -> Unit) {
-    var stars by remember { mutableStateOf(0) }
-    var review by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
-        Text("Оцените событие", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(12.dp))
-        Row {
-            (1..5).forEach { i ->
-                Text(
-                    if (i <= stars) "★" else "☆",
-                    fontSize = 34.sp,
-                    color = if (i <= stars) EventMapTheme.colors.warning else EventMapTheme.colors.textTertiary,
-                    modifier = Modifier.clickableNoRipple { stars = i }.padding(end = 6.dp),
-                )
+            if (!isFree) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Цена, ₸") },
+                    singleLine = true, shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = NightSurface, focusedContainerColor = NightSurface,
+                        unfocusedTextColor = Color.White, focusedTextColor = Color.White,
+                        unfocusedLabelColor = NightTextSecondary, focusedLabelColor = Violet400,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.10f), focusedBorderColor = Violet600, cursorColor = Violet600,
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = review, onValueChange = { review = it },
-            label = { Text("Отзыв (необязательно)") },
-            modifier = Modifier.fillMaxWidth().height(110.dp),
-        )
-        Spacer(Modifier.height(16.dp))
-        PrimaryGradientButton(text = "Отправить", enabled = stars > 0, onClick = { onSubmit(stars, review.trim()) })
-    }
-}
 
-@Composable
-private fun Header(ev: EventDetail, onBack: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(200.dp)
-            .background(Brush.linearGradient(EventMapTheme.colors.brandGradient)),
-    ) {
-        Box(
-            Modifier.padding(16.dp).size(40.dp).clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.25f)).clickableNoRipple(onBack),
-            contentAlignment = Alignment.Center,
-        ) { Text("‹", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.height(24.dp))
 
-        Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
-            StatusPill(ev.statusEnum().toPill())
-            Spacer(Modifier.height(8.dp))
-            Text(ev.title, style = MaterialTheme.typography.displaySmall, color = Color.White, fontWeight = FontWeight.Bold)
-            Text(ev.category, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.9f))
-        }
-    }
-}
-
-@Composable
-private fun TabRow(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val tabs = listOf("О событии", "Галерея", "Участники")
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        tabs.forEachIndexed { i, t ->
-            val sel = i == selected
+            val canPublish = title.length >= 3 && selectedCategory != null && location.isNotBlank()
             Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(999.dp))
-                    .background(if (sel) EventMapTheme.colors.accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-                    .clickableNoRipple { onSelect(i) }.padding(vertical = 10.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(54.dp).clip(RoundedCornerShape(16.dp))
+                    .background(if (canPublish) Brush.linearGradient(BrandGradient) else Brush.linearGradient(listOf(NightSurface, NightSurface)))
+                    .clickableNoRipple { },
                 contentAlignment = Alignment.Center,
-            ) {
-                Text(t, style = MaterialTheme.typography.labelLarge, color = if (sel) EventMapTheme.colors.accent else MaterialTheme.colorScheme.onSurface, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal)
-            }
+            ) { Text("🚀 Опубликовать", color = if (canPublish) Color.White else NightTextSecondary, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) }
+            Spacer(Modifier.height(40.dp))
         }
     }
 }
 
 @Composable
-private fun AboutTab(ev: EventDetail, onOpenOrganizer: (String) -> Unit) {
-    Column {
-        Text(ev.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(16.dp))
-        InfoRow("📍", ev.location.name)
-        InfoRow("🎟️", ev.price.label())
-        InfoRow("👥", "${ev.goingCount} идут")
-        if (ev.ratingCount > 0) InfoRow("⭐", "${ev.ratingAvg} (${ev.ratingCount} оценок)")
-        if (ev.organizerName.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
+private fun SLabel(text: String) {
+    Text(text, color = NightTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp,
+        modifier = Modifier.padding(start = 20.dp, bottom = 8.dp))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  D3: EventAttendeesScreen
+// ─────────────────────────────────────────────────────────────────────────────
+
+data class EventAttendeesV2Screen(val eventId: String) : Screen {
+    @Composable
+    override fun Content() {
+        val nav = LocalNavigator.currentOrThrow
+        val tabs = listOf("Идут (184)", "Хотят (56)", "Были раньше (320)")
+        var selectedTab by remember { mutableStateOf(0) }
+
+        val attendees = remember {
+            List(10) { i ->
+                Triple("Пользователь ${i + 1}", "@user${i + 1}", listOf("Алматы", "Астана", "Шымкент")[i % 3])
+            }
+        }
+
+        Column(Modifier.fillMaxSize().background(NightBackground)) {
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickableNoRipple { if (ev.organizerId.isNotBlank()) onOpenOrganizer(ev.organizerId) }
-                    .padding(12.dp),
+                Modifier.fillMaxWidth().padding(top = 56.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Mic, contentDescription = null, tint = EventMapTheme.colors.accent, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.size(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Организатор", style = MaterialTheme.typography.bodySmall, color = EventMapTheme.colors.textTertiary)
-                    Text(ev.organizerName, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.08f))
+                    .clickableNoRipple { nav.pop() }, contentAlignment = Alignment.Center) {
+                    Text("‹", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
-                Text("›", color = EventMapTheme.colors.textTertiary, fontSize = 20.sp)
+                Spacer(Modifier.width(12.dp))
+                Text("Участники", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            }
+
+            // Табы
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(tabs.indices.toList()) { i ->
+                    val sel = i == selectedTab
+                    Box(
+                        Modifier.height(36.dp).clip(RoundedCornerShape(999.dp))
+                            .background(if (sel) Brush.linearGradient(BrandGradient) else Brush.linearGradient(listOf(NightSurface, NightSurface)))
+                            .border(1.dp, if (!sel) Color.White.copy(alpha = 0.08f) else Color.Transparent, RoundedCornerShape(999.dp))
+                            .clickableNoRipple { selectedTab = i }.padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text(tabs[i], fontSize = 13.sp, color = if (sel) Color.White else NightTextSecondary, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal) }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(attendees) { (name, handle, city) ->
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(NightSurface).padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(Violet600.copy(alpha = 0.20f)), contentAlignment = Alignment.Center) {
+                            Text(name.take(1), fontSize = 16.sp, color = Violet400, fontWeight = FontWeight.ExtraBold)
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(name, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("$handle · $city", fontSize = 11.sp, color = NightTextSecondary, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Box(
+                            Modifier.clip(RoundedCornerShape(10.dp)).background(Color.White.copy(alpha = 0.07f)).clickableNoRipple {}.padding(horizontal = 12.dp, vertical = 7.dp),
+                        ) { Text("Подписаться", fontSize = 11.sp, color = Violet400) }
+                    }
+                }
             }
         }
     }
 }
 
-@Composable
-private fun InfoRow(icon: String, text: String) {
-    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(icon, fontSize = 15.sp)
-        Spacer(Modifier.size(10.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
-private fun GalleryTab(media: List<MediaItem>) {
-    if (media.isEmpty()) {
-        EmptyState("Пока нет медиа", "Будь первым — добавь фото или видео")
-        return
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier.height(320.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(media) { m ->
-            Box(
-                Modifier.aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) { Text(if (m.type == "video") "▶" else "🖼", fontSize = 22.sp) }
-        }
-    }
-}
-
-@Composable
-private fun ParticipantsTab(participants: List<Participant>) {
-    if (participants.isEmpty()) {
-        EmptyState("Пока никто не идёт", "Стань первым участником")
-        return
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        participants.forEach { p ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape).background(Brush.linearGradient(EventMapTheme.colors.brandGradient)),
-                    contentAlignment = Alignment.Center,
-                ) { Text(p.name.take(1), color = Color.White, fontWeight = FontWeight.Bold) }
-                Spacer(Modifier.size(12.dp))
-                Text(p.name, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyState(title: String, subtitle: String) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(4.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = EventMapTheme.colors.textSecondary)
-    }
-}
-
-private fun EventStatus.toPill(): PillStatus = when (this) {
-    EventStatus.Live -> PillStatus.Live
-    EventStatus.Soon -> PillStatus.Soon
-    EventStatus.Ended -> PillStatus.Was
-}
+private val Live = Color(0xFFFF4757)

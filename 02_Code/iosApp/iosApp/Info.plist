@@ -6,5 +6,15 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Используется для входа по биометрии</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Подключение к локальному серверу разработки</string>
+	<!-- DEV ONLY: разрешает HTTP к локальному бэкенду. Убрать перед релизом. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

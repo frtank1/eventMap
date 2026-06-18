@@ -76,6 +76,7 @@ kotlin {
             implementation(projects.common.feature.auth.data)
             implementation(projects.common.feature.event.ui)
             implementation(projects.common.feature.event.data)
+            implementation(projects.common.feature.event.domain)
             implementation(projects.common.feature.profile.ui)
             implementation(projects.common.feature.profile.data)
             implementation(projects.common.feature.feed.ui)
@@ -84,6 +85,14 @@ kotlin {
             implementation(projects.common.feature.search.data)
             implementation(projects.common.feature.video.ui)
             implementation(projects.common.feature.video.data)
+            implementation(projects.common.feature.business.ui)
+            implementation(projects.common.feature.quest.ui)
+            implementation(projects.common.feature.payment.ui)
+            implementation(projects.common.feature.game.ui)
+            implementation(projects.common.feature.invite.ui)
+            implementation(projects.common.feature.chat.ui)
+            implementation(projects.common.feature.moderation.ui)
+            implementation(projects.common.feature.settings.ui)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

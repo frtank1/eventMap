@@ -31,6 +31,10 @@ data class Event(
     val organizerId: String? = null,
     val organizerName: String = "",
     val capacity: Int? = null,
+    // ревизия 11.06.2026
+    val isAdult: Boolean = false,
+    val visibility: String = "public", // public | private (раздел N)
+    val geoRadiusM: Int = 300,         // радиус «Я тоже здесь» / гео-чекинов
 )
 
 data class Organizer(
@@ -51,3 +55,171 @@ data class User(
 )
 
 data class AuthTokens(val accessToken: String, val refreshToken: String, val expiresIn: Long, val user: User)
+
+// ===== Рилс-соцслой (D9–D11, API §8.6) =====
+
+data class EventComment(
+    val id: String,
+    val eventId: String,
+    val authorId: String,
+    val authorName: String = "",
+    val parentId: String? = null,
+    val body: String,
+    val likeCount: Int = 0,
+    val likedByMe: Boolean = false,
+    val createdAtMs: Long = 0,
+)
+
+// Присутствие: going («приду»/«я тоже здесь») | was (история)
+data class Attendance(val userId: String, val eventId: String, val type: String)
+
+// ===== Бизнес-аккаунты (M, API §8.1) =====
+
+data class BusinessAccount(
+    val id: String,
+    val userId: String,
+    val bin: String,
+    val legalName: String,
+    val brandName: String,
+    val category: String,
+    val phone: String? = null,
+    val social: String? = null,
+    val status: String = "pending",     // pending | approved | rejected
+    val rejectReason: String? = null,
+    val logoUrl: String? = null,
+    val pinColor: String = "#FF5C8A",
+    val animationId: String? = null,
+    val documents: List<BusinessDocument> = emptyList(),
+)
+
+data class BusinessDocument(val id: String, val kind: String, val fileUrl: String)
+
+data class PinAnimation(val id: String, val category: String, val name: String, val lottieKey: String)
+
+// ===== Геймификация (R, API §8.4) =====
+
+data class Badge(val code: String, val title: String, val emoji: String? = null)
+
+data class GameProfile(
+    val xp: Long,
+    val level: Int,
+    val levelTitle: String,
+    val nextLevelXp: Long,
+    val badges: List<Badge>,
+    val districtsVisited: Int,
+    val districtsTotal: Int,
+)
+
+data class Mission(
+    val id: String,
+    val kind: String,
+    val progress: Int,
+    val target: Int,
+    val rewardXp: Int,
+    val multiplier: Float,
+    val status: String,
+)
+
+data class TimeCapsule(
+    val id: String,
+    val ownerId: String,
+    val lat: Double,
+    val lng: Double,
+    val mediaUrl: String? = null,
+    val bodyText: String? = null,
+    val recipientType: String,   // user | self_1y | public
+    val recipientId: String? = null,
+    val opensAtMs: Long? = null,
+    val opened: Boolean = false,
+)
+
+// ===== Друзья и приглашения (N, API §8.7) =====
+
+data class Friend(
+    val userId: String,
+    val name: String,
+    val status: String,          // accepted | pending_in (ждёт моего ответа) | pending_out (я отправил)
+)
+
+data class InvitationGuest(
+    val id: String,
+    val userId: String?,         // null = гость по ссылке
+    val name: String,            // имя из профиля или guest_name
+    val rsvp: String?,           // yes | no | null (молчит)
+    val plusOne: Int = 0,
+)
+
+data class Invitation(
+    val id: String,
+    val eventId: String,
+    val eventTitle: String = "",
+    val templateId: String,
+    val linkToken: String? = null,
+    val guests: List<InvitationGuest> = emptyList(),
+)
+
+// ===== Промо-квесты (Q, API §8.3) =====
+
+data class QuestPoint(
+    val id: String,
+    val ord: Int,
+    val lat: Double,
+    val lng: Double,
+    val placeName: String? = null,
+    val condition: String,            // geo | photo | purchase
+    val checkedByMe: Boolean = false,
+)
+
+data class Quest(
+    val id: String,
+    val businessId: String,
+    val businessBrand: String = "",
+    val title: String,
+    val emoji: String? = null,
+    val orderedChain: Boolean = false,
+    val startsAt: String? = null,
+    val endsAt: String? = null,
+    val prizeTitle: String,
+    val prizeCount: Int? = null,
+    val participantLimit: Int? = null,
+    val status: String = "moderation",
+    val points: List<QuestPoint> = emptyList(),
+    val finishersCount: Long = 0,
+    val myRun: QuestRun? = null,
+)
+
+data class QuestRun(
+    val id: String,
+    val questId: String,
+    val userId: String,
+    val finished: Boolean = false,
+    val prizeQr: String? = null,
+    val checkedPointIds: Set<String> = emptySet(),
+)
+
+// ===== Билеты (P, API §8.2) =====
+
+/** Гость покупки: userId — друг с аккаунтом (видим в списке) | null — анонимный «+N» */
+data class TicketGuest(val userId: String?)
+
+data class Ticket(
+    val id: String,
+    val orderId: String,
+    val eventId: String,
+    val eventTitle: String = "",
+    val ownerUserId: String?,   // null = анонимный
+    val qrSecret: String,
+    val status: String,         // active | used | refunded
+)
+
+data class TicketOrder(
+    val id: String,
+    val eventId: String,
+    val buyerId: String,
+    val qty: Int,
+    val amount: Int,
+    val currency: String,
+    val provider: String,
+    val status: String,
+    val tickets: List<Ticket> = emptyList(),
+)

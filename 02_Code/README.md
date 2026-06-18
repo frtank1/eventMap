@@ -98,3 +98,14 @@ iOS — открыть `iosApp/` в Xcode.
 - D2/D5 — полноэкранная галерея и добавление медиа; E5 — архив видео в профиле.
 - Платёжный провайдер (cloudpayments/epay) для P.
 - F5/I3 — настройки уведомлений per-channel на бэке.
+
+## Ревизия 11.06.2026: рилс-карточка события
+
+`feature/event/ui/screens/EventReelScreen.kt` — новый экран D1a/D1b/D1c (дизайн: Figma «🎬 D · Событие», спека: `03_UI_UX/screens/D_event.md`):
+
+- `VerticalPager` — свайп ↕ между событиями (как VideoFeedScreen);
+- шторка-описание: drag/tap, свёрнута (чипы+CTA) ↔ раскрыта (инфо-строки, описание) с анимацией;
+- `GeoCtaButton` — клиентская CTA-логика D1c (`ctaFor`): Приду / Купить / Я тоже здесь / далеко-disabled, с подсказками; сервер перепроверяет (422 PAID_ONLY / TOO_FAR / NOT_LIVE);
+- реакции ❤️💬↗🔔 и FeedContextPill «похожие → сегодня → завтра».
+
+TODO для подключения: data-слой `/feed/reels` + переход с пина карты (`EventReelScreen(events, startIndex)`), видео-плеер вместо градиента, гео-поток для `distanceM`, D9-комментарии (бэкенд готов: `GET/POST /events/{id}/comments`).

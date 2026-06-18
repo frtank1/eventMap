@@ -13,6 +13,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.andWhere
 import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.util.UUID
 
@@ -25,7 +26,8 @@ class EventRepositoryImpl : EventRepository {
     )
 
     override suspend fun search(query: EventQuery): List<Event> = tx {
-        val q = joined.selectAll()
+        // приватные события (раздел N) не попадают в публичную выдачу карты
+        val q = joined.selectAll().where { EventsTable.visibility eq "public" }
         query.bbox?.let { b ->
             q.andWhere {
                 (EventsTable.lat greaterEq b.swLat) and (EventsTable.lat lessEq b.neLat) and
@@ -64,6 +66,8 @@ class EventRepositoryImpl : EventRepository {
             it[cover] = draft.cover
             it[organizerId] = draft.organizerId
             it[capacity] = draft.capacity
+            it[isAdult] = draft.isAdult
+            it[visibility] = draft.visibility
         }
         draft.copy(id = eid)
     }
@@ -88,5 +92,8 @@ class EventRepositoryImpl : EventRepository {
         organizerId = r[EventsTable.organizerId],
         organizerName = r.getOrNull(OrganizersTable.name) ?: "",
         capacity = r[EventsTable.capacity],
+        isAdult = r[EventsTable.isAdult],
+        visibility = r[EventsTable.visibility],
+        geoRadiusM = r[EventsTable.geoRadiusM],
     )
 }

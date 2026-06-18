@@ -4,6 +4,7 @@ import com.eventmap.map.EventCategory
 import com.eventmap.map.EventState
 import com.eventmap.map.LatLng
 import com.eventmap.map.MapEvent
+import com.eventmap.map.PinAnimation
 
 enum class WhenFilter(val label: String) {
     Now("Сейчас"), Today("Сегодня"), Tomorrow("Завтра"), Week("Неделя")
@@ -69,6 +70,7 @@ fun sampleEvents(): List<MapEvent> = listOf(
         state = EventState.Live, title = "Концерт у Байтерека",
         subtitle = "Indie-вечер под открытым небом", timeLabel = "Идёт · до 23:00",
         priceLabel = "от 3 000 ₸", isFree = false, distanceKm = 1.2, watching = 128,
+        animation = PinAnimation.Glow,
     ),
     MapEvent(
         id = "2", location = LatLng(51.1083, 71.4156), category = EventCategory.Stadium,
@@ -81,12 +83,14 @@ fun sampleEvents(): List<MapEvent> = listOf(
         state = EventState.Soon, title = "Йога в парке Первого Президента",
         subtitle = "Утренняя практика", timeLabel = "Завтра · 08:00",
         priceLabel = "Бесплатно", isFree = true, distanceKm = 5.1,
+        animation = PinAnimation.Wave,
     ),
     MapEvent(
         id = "4", location = LatLng(51.1326, 71.3960), category = EventCategory.FoodDiscount,
         state = EventState.Soon, title = "−50% в Coffee BOOM",
         subtitle = "Счастливые часы", timeLabel = "Сегодня · 18:00–20:00",
         priceLabel = "Скидка", isFree = true, distanceKm = 0.8,
+        animation = PinAnimation.Blink,
     ),
     MapEvent(
         id = "5", location = LatLng(51.1450, 71.4300), category = EventCategory.Quiz,
@@ -99,5 +103,6 @@ fun sampleEvents(): List<MapEvent> = listOf(
         state = EventState.Soon, title = "Открытая лекция: AI и город",
         subtitle = "Лекторий", timeLabel = "Сегодня · 20:00",
         priceLabel = "Бесплатно", isFree = true, distanceKm = 1.6,
+        animation = PinAnimation.Glow,
     ),
 )

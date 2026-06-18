@@ -1,6 +1,6 @@
 # EventMap — Спека для разработки (Compose)
 
-Извлечено из hi-fi макетов (`03_UI_UX/mockups/`). Дизайн-система **Aurora Violet**, ночная тема. Цель: перенести токены, компоненты и навигацию в KMP/Compose-проект.
+Источник дизайна — Figma; текстовые описания экранов — `03_UI_UX/screens/`. Дизайн-система **Aurora Violet**, ночная тема. Цель: перенести токены, компоненты и навигацию в KMP/Compose-проект.
 
 ---
 
@@ -100,8 +100,36 @@ val PhoneFrame = 34.dp  // только для макета телефона
 | `TextField` | A, I | фон Surface radius 12, placeholder Text3, eye-иконка |
 | `Chip / InterestChip` | A8, G | выбираемый pill |
 | `EmptyState` | J3, K1–K4 | emoji 64 + h3 + p + primary + ghost |
-| `EventCover` | D1 | 200dp, градиент-оверлей, заголовок снизу |
-| `MetaRow` | D1 | ic-чип 34 + текст |
+| `EventReel` | D1a | фуллскрин-рилс 9:16 (TikTok-style), свайп ↕ между событиями, реакции справа |
+| `EventSheet` | D1a/D1b | шторка снизу (grab-handle): свёрнута = чипы+CTA, потянул вверх = полное описание |
+| `GeoCtaButton` | D1c | состояния: «Приду» (до старта, free) / «Купить» (платное) / «Я тоже здесь» (идёт, гео ≤300м) / disabled (идёт, далеко) |
+| `FeedContextPill` | D1a | пилюля порядка ленты: похожие → сегодня (утро→вечер) → завтра… или по фильтру C8 |
+| `MetaRow` | D1b | ic-чип 34 + текст |
+| `BizPin` | M4, C | пин бизнеса: логотип в кружке, цвет подсветки, анимация категории, пульс-кольцо |
+| `AnimPicker` | M4 | сетка анимаций пина, отфильтрована по категории бизнеса (наборы грузит админ) |
+| `QuestCard` | Q1 | карточка игры: бренд-градиент, условия, награда-пилюля |
+| `QuestMapRoute` | Q2/Q5 | мини-карта с точками (✓/активная/🔒) и пунктирным маршрутом |
+| `CheckinScanner` | Q3 | рамка-сканер QR + переключатель типа проверки (гео/фото/QR) |
+| `PrizeQR` | Q4/P2 | карточка приза/билета с QR |
+| `PulseGlow` | C2.0 | радиальное свечение события, диаметр/яркость ∝ людям (G1) |
+| `CrowdDots` | C2.0 | анонимные точки-люди, анимация стекания к событию (G2/G9) |
+| `FogLayer` | C2.0 | туман войны над неисследованными районами + % исследования (G3) |
+| `BeaconBeam` | C2.0 | столб света мега-ивента (G5) |
+| `QuestCompass` | C1/C2.0 | пилюля-компас «движ по вкусу · N м →» (G6) |
+| `EmberTrace` | C1/C2.0 | остывающий след события: тусклое свечение + 🔥, тап → галерея (G4) |
+| `ForecastZone` | C2.0 | пунктирная зона прогноза «через час будет жарко» (G8) |
+| `WaveRipple` | C2.0 | концентрические кольца city-wide вспышки (G7) |
+| `GhostPin` | C2.0 | пунктирный пин секретного дропа, виден ≤500 м, таймер (G11) |
+| `XPBar` / `LevelPill` | R1/H1 | уровень, прогресс XP, титул |
+| `BadgeChip` | R1/H1/Q4 | значок-ачивка (🍔 Бургер-босс и т.п.) |
+| `SeasonPassTrack` | R1 | прогресс пасса + слоты лута от бизнесов (G13) |
+| `MissionCard` | R1 | миссия с наградой, в т.ч. совместная 2×XP (G14) |
+| `TimeCapsuleSheet` | R3 | шторка капсулы: фото/текст + получатель (G15) |
+| `FriendItem` | N1 | друг со статусом присутствия («на событии», «рядом») + 💌 |
+| `InviteTemplateCard` | N2/N4 | анимированная открытка-шаблон по типу праздника |
+| `GuestPicker` | N3 | чек-лист друзей + группы-чипы + ссылка/QR для не-юзеров |
+| `RsvpButtons` | N4 | «✓ Приду» / «Не смогу» + календарь |
+| `RsvpDashboard` | N5 | статы + список гостей со статус-пилюлями |
 | `StatusPill` | J2 | `rev`(warning) / `done`(soft) / `rej`(серый) |
 | `LivePlayerOverlay` | C6/E2 | top(аватар+views) + side(actions) + bottom(caption+cta) |
 | `RecordControls` | E3 | таймер-pill, shutter 74 (border 5, in 30 radius 8) |
@@ -113,7 +141,9 @@ Permission-экраны (B): `illu` с концентрическими коль
 
 ## 3. Карта экранов и навигация
 
-67 экранов, разделы A–K. Реестр статусов — `SCREENS.md`. Горячий путь интерактивно собран в `mockups/PROTOTYPE_hotpath.html`.
+89 экранов, разделы A–M, P, Q, R (геймификация). Реестр статусов — `SCREENS.md`. Hi-fi и прототипы — в Figma (источник правды): https://www.figma.com/design/Lf0iBDnxz7x80uA4LAAyDJ. Горячий путь также в `mockups/PROTOTYPE_hotpath.html` (легаси).
+
+Ключевые правила D-раздела: карточка события = рилс; порядок свайпа = похожие → сегодня → завтра (или фильтр C8); CTA по времени/гео/цене (см. D1c); 18+ тумблер в D8 → бейдж на рилсе и скрытие у несовершеннолетних; платное = только «Купить» (покупка = «иду», билеты друзьям: с аккаунтом — видны, без — учтены анонимно «+N»).
 
 ### Главные переходы
 
@@ -154,7 +184,12 @@ J1 жалоба · J2 мои жалобы · J3 бан    K1 нет сети · 
     "profile": ["H1","H2","H3","H4","H5","H6","H7","H8","H9","H10","H11"],
     "settings":["I1","I2","I3","I4","I5"],
     "moderation":["J1","J2","J3"],
-    "errors":  ["K1","K2","K3","K4"]
+    "errors":  ["K1","K2","K3","K4"],
+    "business":["M1","M2","M3","M4","M5","M6"],
+    "payments":["P1","P2","P3","P4"],
+    "quests":["Q1","Q2","Q3","Q4","Q5","Q6"],
+    "game":["R1","R2","R3"],
+    "friends":["N1","N2","N3","N4","N5"]
   },
   "edges": [
     {"from":"A8","to":"B1"},{"from":"B3","to":"C1"},
@@ -172,7 +207,14 @@ J1 жалоба · J2 мои жалобы · J3 бан    K1 нет сети · 
     {"from":"H8","to":"H9"},{"from":"H8","to":"H10"},
     {"from":"G1","to":"G2"},{"from":"G2","to":"G3"},
     {"from":"F1","to":"F2"},{"from":"F1","to":"F3"},
-    {"from":"I1","to":"I2"},{"from":"I1","to":"I3"},{"from":"I1","to":"I4"},{"from":"I1","to":"I5"}
+    {"from":"I1","to":"I2"},{"from":"I1","to":"I3"},{"from":"I1","to":"I4"},{"from":"I1","to":"I5"},
+    {"from":"H1","to":"M1","trigger":"become_business"},
+    {"from":"M1","to":"M2"},{"from":"M2","to":"M3"},{"from":"M3","to":"M4"},{"from":"M4","to":"M5"},{"from":"M5","to":"M6"},
+    {"from":"D1","to":"P1","trigger":"buy_ticket"},{"from":"P1","to":"P2"},{"from":"P1","to":"P3"},{"from":"P2","to":"P4","trigger":"after_event"},
+    {"from":"C1","to":"Q1","trigger":"quests_nearby"},{"from":"Q1","to":"Q2"},{"from":"Q2","to":"Q3","trigger":"checkin"},{"from":"Q3","to":"Q4","trigger":"last_point"},
+    {"from":"M1","to":"Q5","trigger":"create_quest"},{"from":"Q5","to":"Q6","trigger":"published"},
+    {"from":"H1","to":"R1","trigger":"level_pill"},{"from":"R1","to":"Q1"},{"from":"R1","to":"R2","trigger":"december"},{"from":"C1","to":"R3","trigger":"long_press_place"},
+    {"from":"H1","to":"N1","trigger":"friends"},{"from":"N1","to":"N2","trigger":"create_invite"},{"from":"N2","to":"N3"},{"from":"N3","to":"N4","trigger":"sent_preview"},{"from":"N4","to":"N5","trigger":"organizer_view"}
   ],
   "bottomNav": {"items":["C1","E1","centerFab=E3","F2","H1"]}
 }

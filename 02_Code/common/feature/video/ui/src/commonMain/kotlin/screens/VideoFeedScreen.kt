@@ -1,7 +1,11 @@
 package com.eventmap.video.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,19 +16,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -34,11 +44,18 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.eventmap.theme.BrandGradient
+import com.eventmap.theme.LiveGradient
+import com.eventmap.theme.NightTextSecondary
+import com.eventmap.theme.Violet600
+import com.eventmap.theme.ui_kit.clickableNoRipple
 import com.eventmap.video.models.VideoItem
 import com.eventmap.video.ui.viewmodel.VideoViewModel
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Icon
+
+// =====================================================================
+//  E1 «Прямо сейчас» — вертикальная лента live-рилсов (TikTok-стиль)
+//  E2 Плеер из события — контекст-пилюля «Из события · …»
+// =====================================================================
 
 class VideoFeedScreen : Screen {
     @Composable
@@ -49,77 +66,207 @@ class VideoFeedScreen : Screen {
         val loading by vm.loading.collectAsState()
 
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            if (loading) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
-            } else if (items.isEmpty()) {
-                Text("Сейчас никто не в эфире", color = Color.White, modifier = Modifier.align(Alignment.Center))
-            } else {
-                val pager = rememberPagerState(pageCount = { items.size })
-                VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-                    VideoPage(items[page], onLike = { vm.toggleLike(items[page].id) })
+
+            when {
+                loading -> CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+                items.isEmpty() -> Column(
+                    Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("📭", fontSize = 48.sp)
+                    Text("Сейчас никто не в эфире", color = NightTextSecondary, fontSize = 14.sp)
+                }
+                else -> {
+                    val pager = rememberPagerState(pageCount = { items.size })
+                    VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+                        VideoPage(item = items[page], onLike = { vm.toggleLike(items[page].id) }, onMap = { nav.pop() })
+                    }
                 }
             }
 
-            // Топ-бар
+            // ── Топ-бар ─────────────────────────────────────────────────
             Row(
-                Modifier.fillMaxWidth().padding(top = 44.dp, start = 16.dp, end = 16.dp),
+                Modifier.fillMaxWidth().padding(top = 52.dp, start = 16.dp, end = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("‹", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { nav.pop() })
-                Text("Прямо сейчас", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("⦿", color = Color.White, fontSize = 24.sp, modifier = Modifier.clickable { nav.push(RecordVideoScreen()) })
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))
+                        .clickableNoRipple { nav.pop() },
+                    contentAlignment = Alignment.Center,
+                ) { Text("‹", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) {
+                    LivePulseDot()
+                    Spacer(Modifier.width(6.dp))
+                    Text("Прямо сейчас", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient))
+                        .clickableNoRipple { nav.push(RecordVideoScreen()) },
+                    contentAlignment = Alignment.Center,
+                ) { Text("🎬", fontSize = 16.sp) }
             }
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Один слайд VerticalPager
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun VideoPage(item: VideoItem, onLike: () -> Unit) {
+private fun VideoPage(item: VideoItem, onLike: () -> Unit, onMap: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        // плейсхолдер видео (реальный плеер — после подключения стрим-инфры)
+
+        // Видео-плейсхолдер
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color(0xFF1A1030), Color(0xFF301030), Color(0xFF101020))),
+                Brush.verticalGradient(listOf(Color(0xFF0D0818), Color(0xFF1A0D2E), Color(0xFF0A0D1A))),
             ),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.25f), modifier = Modifier.size(72.dp)) }
-
-        // правый столбец реакций
-        Column(
-            Modifier.align(Alignment.CenterEnd).padding(end = 12.dp, bottom = 120.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            ReactionButton(if (item.liked) "❤️" else "🤍", "${item.likes}", onLike)
-            ReactionButton("💬", "0") {}
-            ReactionButton("↗", "") {}
+            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.10f), modifier = Modifier.size(80.dp))
         }
 
-        // низ: автор/событие/подпись
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 80.dp, bottom = 90.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                    Text(item.authorName.take(1), color = Color.White, fontWeight = FontWeight.Bold)
+        // Нижний скрим
+        Box(
+            Modifier.fillMaxWidth().height(340.dp).align(Alignment.BottomCenter)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f)))),
+        )
+
+        // ── Правый столбец реакций ───────────────────────────────────
+        Column(
+            Modifier.align(Alignment.CenterEnd).padding(end = 12.dp, bottom = 130.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            ReactionBtn(if (item.liked) "❤️" else "🤍", item.likes.takeIf { it > 0 }?.toString() ?: "", onLike)
+            ReactionBtn("💬", "0") {}
+            ReactionBtn("↗️", "") {}
+            // 📍 Карта
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickableNoRipple(onMap)) {
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Map, contentDescription = "Карта", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.size(8.dp))
-                Text(item.authorName, color = Color.White, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.size(8.dp))
-                Box(Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFFFF4757)).padding(horizontal = 8.dp, vertical = 2.dp)) {
-                    Text("LIVE · ${item.viewers}", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text("карта", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+            }
+        }
+
+        // ── Нижняя секция: автор + событие + подпись ─────────────────
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 72.dp, bottom = 100.dp)) {
+            // LIVE-пилюля
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Brush.linearGradient(LiveGradient))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LivePulseDot()
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    "LIVE · ${formatViewers(item.viewers)}",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp,
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Автор + «Следить»
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(38.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(item.authorName.take(1).uppercase(), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(item.authorName, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    Modifier.clip(RoundedCornerShape(999.dp)).background(Color.White.copy(alpha = 0.15f))
+                        .clickableNoRipple { }.padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text("Следить", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+
             Spacer(Modifier.height(8.dp))
-            Text(item.eventTitle, color = Color.White, fontWeight = FontWeight.SemiBold)
-            if (item.caption.isNotBlank()) Text(item.caption, color = Color.White.copy(alpha = 0.85f))
+
+            // Контекст-пилюля события (E2)
+            if (item.eventTitle.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Violet600.copy(alpha = 0.30f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("📍", fontSize = 11.sp)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Из события · ${item.eventTitle}",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("›", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+
+            if (item.caption.isNotBlank()) {
+                Text(item.caption, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, lineHeight = 18.sp)
+            }
         }
     }
 }
 
 @Composable
-private fun ReactionButton(icon: String, label: String, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
-        Text(icon, fontSize = 28.sp)
-        if (label.isNotBlank()) Text(label, color = Color.White, fontSize = 11.sp)
+private fun ReactionBtn(icon: String, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickableNoRipple(onClick)) {
+        Box(
+            Modifier.size(44.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) { Text(icon, fontSize = 22.sp) }
+        if (label.isNotBlank()) {
+            Spacer(Modifier.height(3.dp))
+            Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
     }
+}
+
+@Composable
+private fun LivePulseDot() {
+    val t = rememberInfiniteTransition()
+    val pulse by t.animateFloat(0.7f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse))
+    Box(Modifier.size(7.dp).scale(pulse).alpha(pulse).clip(CircleShape).background(Color.White))
+}
+
+private fun formatViewers(n: Int): String = when {
+    n >= 1000 -> "${n / 1000}.${(n % 1000) / 100}к"
+    n > 0     -> "$n"
+    else      -> "0"
 }
