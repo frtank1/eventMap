@@ -1,5 +1,31 @@
 package com.eventmap.server.domain.model
 
+// ===== Медиа (хранилище R2/S3) =====
+data class Media(
+    val id: String,
+    val ownerUserId: String,
+    val url: String,
+    val contentType: String = "",
+    val kind: String = "image",   // image | video
+    val eventId: String? = null,
+    val createdAt: Long = 0,
+)
+
+// ===== Видео-рилсы («Сейчас») =====
+data class Video(
+    val id: String,
+    val eventId: String = "",
+    val eventTitle: String = "",
+    val authorName: String = "",
+    val caption: String = "",
+    val mediaUrl: String,
+    val thumb: String? = null,
+    val viewers: Int = 0,
+    val likes: Int = 0,
+    val liked: Boolean = false,
+    val category: String = "",
+)
+
 data class GeoPoint(val lat: Double, val lng: Double, val name: String = "")
 data class Money(val type: String = "free", val amount: Int = 0, val currency: String = "KZT")
 

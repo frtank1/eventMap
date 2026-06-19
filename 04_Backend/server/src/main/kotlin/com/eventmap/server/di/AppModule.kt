@@ -85,6 +85,11 @@ import org.koin.dsl.module
 val appModule = module {
     single { AppConfig() }
     single { JwtService(get()) }
+    single<com.eventmap.server.domain.repository.StoragePort> { com.eventmap.server.data.storage.StorageService(get()) }
+    single<com.eventmap.server.domain.repository.MediaRepository> { com.eventmap.server.data.repository.MediaRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.VideoRepository> { com.eventmap.server.data.repository.VideoRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.DeviceTokenRepository> { com.eventmap.server.data.repository.DeviceTokenRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.NotificationPort> { com.eventmap.server.data.push.FcmPushSender(get(), get()) }
 
     single<EventRepository> { EventRepositoryImpl() }
     single<OrganizerRepository> { OrganizerRepositoryImpl() }
@@ -122,6 +127,20 @@ val appModule = module {
     factory { ToggleReminderUseCase(get()) }
     factory { AttendUseCase(get(), get()) }
 
+    // медиа-хранилище (§8 storage)
+    factory { com.eventmap.server.domain.usecase.PresignUploadUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.ConfirmMediaUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetEventMediaUseCase(get()) }
+
+    // видео-рилсы (E1/E2)
+    factory { com.eventmap.server.domain.usecase.GetVideoFeedUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.ReactVideoUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.CreateVideoUseCase(get(), get()) }
+
+    // push (FCM/APNS)
+    factory { com.eventmap.server.domain.usecase.RegisterPushTokenUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.SendPushUseCase(get()) }
+
     // билеты с гостями (P, §8.2)
     factory { PurchaseTicketsUseCase(get(), get(), get(), get()) }
     factory { GetMyTicketsUseCase(get()) }
@@ -145,10 +164,10 @@ val appModule = module {
     factory { ReviewQuestUseCase(get()) }
 
     // друзья и приглашения (N, §8.7)
-    factory { SendFriendRequestUseCase(get()) }
+    factory { SendFriendRequestUseCase(get(), get()) }
     factory { RespondFriendRequestUseCase(get()) }
     factory { GetFriendsUseCase(get()) }
-    factory { CreateInvitationUseCase(get(), get()) }
+    factory { CreateInvitationUseCase(get(), get(), get()) }
     factory { GetInvitationForGuestUseCase(get()) }
     factory { GetInvitationByTokenUseCase(get()) }
     factory { RsvpUseCase(get()) }

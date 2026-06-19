@@ -81,8 +81,7 @@ class CreateEventViewModel(
                 is KtorResponse.Success -> { _loading.value = false; _created.value = true }
                 is KtorResponse.Failure -> {
                     _loading.value = false
-                    // без бэка — считаем успешно созданным локально
-                    _created.value = true
+                    // событие НЕ создано — показываем ошибку, экран остаётся открытым
                     emitError(r.error)
                 }
             }

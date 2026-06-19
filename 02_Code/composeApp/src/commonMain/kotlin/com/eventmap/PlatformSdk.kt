@@ -33,7 +33,10 @@ import org.koin.dsl.module
 // Бэкенд EventMap: Ktor + JWT, эндпоинты /auth/* (см. 05_Docs/API_CONTRACT.md).
 private val defaultCoreConfig = CoreConfig(
     // ВАЖНО: без /v1 — сервер отдаёт роуты с корня (/auth, /events). Слэш в конце обязателен.
-    baseUrl = "http://192.168.1.29:8080/",
+    // TODO: вставить публичный URL после деплоя на Render (см. DEPLOY.md).
+    // Формат: "https://eventmap-staging.onrender.com/" — со слэшем в конце, без /v1.
+    // Для локального бэка: Android-эмулятор → "http://10.0.2.2:8080/", реальный телефон → "http://<IP-Mac>:8080/".
+    baseUrl = "https://REPLACE-ME.onrender.com/",
     // на эти пути bearer-токен не вешаем
     authExcludedPaths = listOf(
         "/auth/login",

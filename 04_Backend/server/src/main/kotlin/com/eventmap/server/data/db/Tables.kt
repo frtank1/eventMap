@@ -12,6 +12,48 @@ object OrganizersTable : Table("organizers") {
     override val primaryKey = PrimaryKey(id)
 }
 
+// ===== Видео-рилсы · миграция V7 =====
+object VideosTable : Table("videos") {
+    val id = varchar("id", 64)
+    val authorUserId = varchar("author_user_id", 64).index()
+    val eventId = varchar("event_id", 64).nullable().index()
+    val mediaUrl = varchar("media_url", 1024)
+    val thumbUrl = varchar("thumb_url", 1024).nullable()
+    val caption = varchar("caption", 500).default("")
+    val category = varchar("category", 64).default("")
+    val viewers = integer("viewers").default(0)
+    val likeCount = integer("like_count").default(0)
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object VideoLikesTable : Table("video_likes") {
+    val videoId = varchar("video_id", 64)
+    val userId = varchar("user_id", 64)
+    override val primaryKey = PrimaryKey(videoId, userId)
+}
+
+// ===== Push-токены устройств · миграция V8 =====
+object DeviceTokensTable : Table("device_tokens") {
+    val token = varchar("token", 512)
+    val userId = varchar("user_id", 64).index()
+    val platform = varchar("platform", 16).default("android")
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(token)
+}
+
+// ===== Медиа (R2/S3) · миграция V6 =====
+object MediaTable : Table("media") {
+    val id = varchar("id", 64)
+    val ownerUserId = varchar("owner_user_id", 64).index()
+    val url = varchar("url", 1024)
+    val contentType = varchar("content_type", 128).default("")
+    val kind = varchar("kind", 16).default("image")
+    val eventId = varchar("event_id", 64).nullable().index()
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(id)
+}
+
 object EventsTable : Table("events") {
     val id = varchar("id", 64)
     val title = varchar("title", 255)

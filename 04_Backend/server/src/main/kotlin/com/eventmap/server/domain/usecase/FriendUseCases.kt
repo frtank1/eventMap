@@ -5,6 +5,7 @@ import com.eventmap.server.domain.model.Invitation
 import com.eventmap.server.domain.repository.EventRepository
 import com.eventmap.server.domain.repository.FriendRepository
 import com.eventmap.server.domain.repository.InvitationRepository
+import com.eventmap.server.domain.repository.NotificationPort
 import java.util.UUID
 
 // ===== Друзья (N1) и приглашения (N2–N5, API §8.7) =====
@@ -16,14 +17,19 @@ import java.util.UUID
 //  - гости без приложения — по link_token: открытка в браузере, RSVP с именем;
 //  - RSVP виден только организатору (дашборд N5).
 
-class SendFriendRequestUseCase(private val friends: FriendRepository) {
+class SendFriendRequestUseCase(
+    private val friends: FriendRepository,
+    private val notifications: NotificationPort,
+) {
     sealed interface Result { data object Ok : Result; data class Rejected(val code: String, val message: String) : Result }
 
     suspend operator fun invoke(fromId: String, toId: String): Result {
         if (fromId == toId) return Result.Rejected("SELF", "Нельзя добавить в друзья себя")
         if (toId.isBlank()) return Result.Rejected("BAD_REQUEST", "userId обязателен")
-        return if (friends.request(fromId, toId)) Result.Ok
-        else Result.Rejected("ALREADY", "Заявка уже есть или вы уже друзья")
+        if (!friends.request(fromId, toId)) return Result.Rejected("ALREADY", "Заявка уже есть или вы уже друзья")
+        // Пуш адресату (fire-and-forget: no-op если FCM выключен, ошибка не валит запрос)
+        runCatching { notifications.sendToUser(toId, "Новая заявка в друзья", "Вас добавили в друзья в EventMap") }
+        return Result.Ok
     }
 }
 
@@ -40,6 +46,7 @@ class GetFriendsUseCase(private val friends: FriendRepository) {
 class CreateInvitationUseCase(
     private val invitations: InvitationRepository,
     private val events: EventRepository,
+    private val notifications: NotificationPort,
 ) {
     sealed interface Result {
         data class Ok(val invitation: Invitation, val link: String?) : Result
@@ -66,7 +73,11 @@ class CreateInvitationUseCase(
         }
         val token = if (allowLink) UUID.randomUUID().toString().replace("-", "") else null
         val inv = invitations.create(eventId, templateId.ifBlank { "classic" }, guestUserIds, token)
-        // TODO: events.markPrivate(eventId) — отдельным PATCH; пуши гостям
+        // Пуш приглашённым гостям с аккаунтом (fire-and-forget, no-op если FCM выключен)
+        guestUserIds.forEach { gid ->
+            runCatching { notifications.sendToUser(gid, "Вас пригласили на событие", event.title) }
+        }
+        // TODO: events.markPrivate(eventId) — отдельным PATCH
         return Result.Ok(inv, token?.let { "/i/$it" })
     }
 }

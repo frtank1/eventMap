@@ -28,7 +28,6 @@ class AuthRepositoryImpl(
         safeRequest<AuthResult> {
             remote.register(RegisterRequest(email, password, name))
         }.also { it.persistTokens() }
-            .orDevBypass(name.ifBlank { email.substringBefore("@") })
 
     override suspend fun login(
         email: String,
@@ -37,7 +36,6 @@ class AuthRepositoryImpl(
         safeRequest<AuthResult> {
             remote.login(LoginRequest(email, password))
         }.also { it.persistTokens() }
-            .orDevBypass(email.substringBefore("@"))
 
     override suspend fun forgotPassword(email: String): KtorResponse<Unit> =
         unitRequest { remote.forgotPassword(ForgotRequest(email)) }
@@ -66,16 +64,6 @@ class AuthRepositoryImpl(
         }
     }
 
-    // TODO(dev): УБРАТЬ ПЕРЕД ПРОДОМ. Пока бэкенда нет — при сетевой ошибке пускаем
-    // внутрь с фейковым токеном, чтобы можно было потыкать приложение любым логином.
-    private fun KtorResponse<AuthResult>.orDevBypass(name: String): KtorResponse<AuthResult> {
-        if (this is KtorResponse.Failure) {
-            val fake = AuthResult(accessToken = "dev-token", refreshToken = "dev-refresh")
-            tokenStorage.saveTokens(UserType.EXTERNAL, fake.accessToken, fake.refreshToken)
-            return KtorResponse.Success(fake.copy(user = fake.user.copy(name = name)))
-        }
-        return this
-    }
 
     private suspend inline fun unitRequest(
         call: () -> HttpResponse,

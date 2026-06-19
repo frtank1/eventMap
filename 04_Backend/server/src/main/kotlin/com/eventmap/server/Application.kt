@@ -37,9 +37,17 @@ import com.eventmap.server.domain.usecase.CreateEventUseCase
 import com.eventmap.server.domain.usecase.GetMyTicketsUseCase
 import com.eventmap.server.domain.usecase.GetTicketQrUseCase
 import com.eventmap.server.domain.usecase.PurchaseTicketsUseCase
+import com.eventmap.server.domain.usecase.ConfirmMediaUseCase
+import com.eventmap.server.domain.usecase.CreateVideoUseCase
 import com.eventmap.server.domain.usecase.GetCommentsUseCase
+import com.eventmap.server.domain.usecase.GetEventMediaUseCase
 import com.eventmap.server.domain.usecase.GetEventUseCase
 import com.eventmap.server.domain.usecase.GetEventsUseCase
+import com.eventmap.server.domain.usecase.GetVideoFeedUseCase
+import com.eventmap.server.domain.usecase.PresignUploadUseCase
+import com.eventmap.server.domain.usecase.ReactVideoUseCase
+import com.eventmap.server.domain.usecase.RegisterPushTokenUseCase
+import com.eventmap.server.domain.usecase.SendPushUseCase
 import com.eventmap.server.domain.usecase.ToggleCommentLikeUseCase
 import com.eventmap.server.domain.usecase.ToggleReminderUseCase
 import com.eventmap.server.domain.usecase.GetOrganizerEventsUseCase
@@ -57,6 +65,9 @@ import com.eventmap.server.presentation.routes.friendRoutes
 import com.eventmap.server.data.pulse.PulseService
 import com.eventmap.server.presentation.routes.gameRoutes
 import com.eventmap.server.presentation.routes.mapRoutes
+import com.eventmap.server.presentation.routes.mediaRoutes
+import com.eventmap.server.presentation.routes.pushRoutes
+import com.eventmap.server.presentation.routes.videoRoutes
 import com.eventmap.server.presentation.routes.organizerRoutes
 import com.eventmap.server.presentation.routes.questRoutes
 import com.eventmap.server.presentation.routes.socialRoutes
@@ -137,6 +148,14 @@ fun Application.module() {
     val issueTokens: IssueTokensUseCase by inject()
     val refreshSession: RefreshSessionUseCase by inject()
     val logout: LogoutUseCase by inject()
+    val presignUpload: PresignUploadUseCase by inject()
+    val confirmMedia: ConfirmMediaUseCase by inject()
+    val eventMedia: GetEventMediaUseCase by inject()
+    val videoFeed: GetVideoFeedUseCase by inject()
+    val reactVideo: ReactVideoUseCase by inject()
+    val createVideo: CreateVideoUseCase by inject()
+    val registerPushToken: RegisterPushTokenUseCase by inject()
+    val sendPush: SendPushUseCase by inject()
     val getComments: GetCommentsUseCase by inject()
     val addComment: AddCommentUseCase by inject()
     val toggleLike: ToggleCommentLikeUseCase by inject()
@@ -181,6 +200,9 @@ fun Application.module() {
         get("/health") { call.respondText("OK") }
         authRoutes(register, login, issueTokens, refreshSession, logout)
         eventRoutes(getEvents, getEvent, createEvent)
+        mediaRoutes(presignUpload, confirmMedia, eventMedia)
+        videoRoutes(videoFeed, reactVideo, createVideo)
+        pushRoutes(registerPushToken, sendPush, config.adminKey)
         organizerRoutes(getOrganizer, getOrganizerEvents)
         socialRoutes(getComments, addComment, toggleLike, toggleReminder, attend)
         ticketRoutes(purchase, myTickets, ticketQr, checkinTicket)

@@ -6,6 +6,8 @@ import com.eventmap.server.domain.model.EventComment
 import com.eventmap.server.domain.model.Friend
 import com.eventmap.server.domain.model.GameProfile
 import com.eventmap.server.domain.model.Invitation
+import com.eventmap.server.domain.model.Media
+import com.eventmap.server.domain.model.Video
 import com.eventmap.server.domain.model.Mission
 import com.eventmap.server.domain.model.TimeCapsule
 import com.eventmap.server.domain.model.Organizer
@@ -200,6 +202,54 @@ fun Invitation.toDto(showGuests: Boolean = true) = InvitationDto(
     declined = guests.count { it.rsvp == "no" },
     silent = guests.count { it.rsvp == null },
 )
+// ===== Медиа (§8 storage) =====
+@Serializable data class PresignRequest(val kind: String, val contentType: String)
+@Serializable data class PresignResponse(val mediaId: String, val uploadUrl: String, val publicUrl: String)
+@Serializable data class ConfirmMediaRequest(
+    val mediaId: String,
+    val url: String,
+    val contentType: String,
+    val kind: String,
+    val eventId: String? = null,
+)
+@Serializable data class MediaDto(
+    val id: String,
+    val url: String,
+    val contentType: String,
+    val kind: String,
+    val eventId: String? = null,
+    val createdAt: Long = 0,
+)
+fun Media.toDto() = MediaDto(id, url, contentType, kind, eventId, createdAt)
+
+// ===== Видео-рилсы (E1/E2) — зеркало клиентского VideoItem =====
+@Serializable data class VideoDto(
+    val id: String,
+    val eventId: String,
+    val eventTitle: String = "",
+    val authorName: String = "",
+    val caption: String = "",
+    val thumb: String? = null,
+    val viewers: Int = 0,
+    val likes: Int = 0,
+    val liked: Boolean = false,
+    val category: String = "",
+)
+fun Video.toDto() = VideoDto(id, eventId, eventTitle, authorName, caption, thumb, viewers, likes, liked, category)
+
+@Serializable data class CreateVideoRequest(
+    val mediaUrl: String,
+    val eventId: String? = null,
+    val thumb: String? = null,
+    val caption: String = "",
+    val category: String = "",
+)
+
+// ===== Push (FCM/APNS) =====
+@Serializable data class RegisterTokenRequest(val token: String, val platform: String = "android")
+@Serializable data class PushTestRequest(val userId: String, val title: String, val body: String)
+@Serializable data class PushResultResponse(val sent: Int)
+
 fun Quest.toDto() = QuestDto(
     id, businessBrand, title, emoji, orderedChain, startsAt, endsAt, prizeTitle, status,
     points.map { it.toDto() }, finishersCount,

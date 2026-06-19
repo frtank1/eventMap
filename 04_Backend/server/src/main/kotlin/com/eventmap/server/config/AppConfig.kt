@@ -17,6 +17,21 @@ data class AppConfig(
     // Пусто = anyHost — допустимо только в dev.
     val corsHosts: List<String> = env("CORS_HOSTS", "")
         .split(",").map { it.trim() }.filter { it.isNotEmpty() },
+
+    // Object storage (Cloudflare R2 / MinIO) для фото и видео. Пусто = хранилище выключено
+    // (эндпоинты /media/* вернут 503). См. data/storage/StorageService.kt.
+    val s3Endpoint: String = env("S3_ENDPOINT", ""),    // https://<account>.r2.cloudflarestorage.com
+    val s3Region: String = env("S3_REGION", "auto"),    // R2: "auto"
+    val s3Bucket: String = env("S3_BUCKET", ""),
+    val s3AccessKey: String = env("S3_ACCESS_KEY", ""),
+    val s3SecretKey: String = env("S3_SECRET_KEY", ""),
+    val s3PublicBase: String = env("S3_PUBLIC_BASE", ""), // публичный CDN-домен бакета (опц.)
+
+    // Push (FCM HTTP v1). Из service-account JSON Firebase: project_id, client_email, private_key.
+    // Пусто = пуши выключены (отправка — no-op). private_key с \n-экранированием — нормализуется.
+    val fcmProjectId: String = env("FCM_PROJECT_ID", ""),
+    val fcmClientEmail: String = env("FCM_CLIENT_EMAIL", ""),
+    val fcmPrivateKey: String = env("FCM_PRIVATE_KEY", ""),
 ) {
     init {
         require(!(appEnv == "prod" && jwtSecret == DEV_SECRET)) {

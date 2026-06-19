@@ -46,6 +46,13 @@ app doesn't build).
 1. **Get the client compiling** (`02_Code`) — see `references/android-build.md`
 2. **Finish and run the backend** (`04_Backend/server`) — see `references/backend.md`
 3. **Verify screens against Figma** — see `references/figma-verify.md`
+4. **Deploy & wire the app (go-live)** — see `references/deploy.md`
+
+Phase 4 is what makes the app stop being "raw": deploy the backend to a public URL and
+point the Compose app at it so auth and event creation actually persist. Before any
+go-live work, read `STATE.md` (next to this file) for what's already done and what is
+still blocked on the user (Render/GitHub access, secrets). The live gap list with
+priorities is `05_Docs/GAPS_2026-06-18.md`.
 
 Read the relevant reference file in full before starting that phase. They contain the
 exact commands, the known gotchas (Mapbox token, JDK versions, dev auth bypass), and the

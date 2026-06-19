@@ -1,5 +1,7 @@
 package com.eventmap.server.domain.repository
 
+import com.eventmap.server.domain.model.Media
+import com.eventmap.server.domain.model.Video
 import com.eventmap.server.domain.model.Attendance
 import com.eventmap.server.domain.model.Badge
 import com.eventmap.server.domain.model.BusinessAccount
@@ -174,4 +176,72 @@ interface TicketRepository {
     suspend fun byId(ticketId: String): Ticket?
     /** Чек-ин по QR на входе. @return билет после отметки; null — не найден/не совпал/уже использован */
     suspend fun checkin(ticketId: String, qrSecret: String): Ticket?
+}
+
+// ===== Медиа-хранилище (R2/S3, §8 storage) =====
+
+/** Порт object-storage. Реализация — SigV4-presign на чистом JDK (data/storage). */
+interface StoragePort {
+    /** true, если заданы env S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY. */
+    val configured: Boolean
+    /** Временная ссылка для прямой загрузки файла клиентом (HTTP PUT). */
+    fun presignPut(key: String, contentType: String): String
+    /** Публичная ссылка для чтения загруженного файла. */
+    fun publicUrl(key: String): String
+}
+
+interface MediaRepository {
+    suspend fun create(
+        id: String,
+        ownerUserId: String,
+        url: String,
+        contentType: String,
+        kind: String,
+        eventId: String?,
+    ): Media
+
+    suspend fun byEvent(eventId: String): List<Media>
+    suspend fun byId(id: String): Media?
+}
+
+// ===== Видео-рилсы (E1/E2 «Сейчас») =====
+
+interface VideoRepository {
+    /** Лента «Сейчас»: свежие рилсы; viewerId — для отметки liked. */
+    suspend fun feedNow(viewerId: String?): List<Video>
+
+    suspend fun create(
+        id: String,
+        authorUserId: String,
+        eventId: String?,
+        mediaUrl: String,
+        thumb: String?,
+        caption: String,
+        category: String,
+    ): Video
+
+    /** Тоггл ♡. @return новый счётчик лайков; null — видео не найдено. */
+    suspend fun toggleReaction(videoId: String, userId: String): Int?
+}
+
+// ===== Push-уведомления (FCM/APNS) =====
+
+interface DeviceTokenRepository {
+    /** Регистрирует/обновляет токен устройства (upsert по token). */
+    suspend fun register(userId: String, token: String, platform: String)
+    suspend fun tokensFor(userId: String): List<String>
+    suspend fun delete(token: String)
+}
+
+/** Порт отправки пушей. Реализация — FCM HTTP v1 (data/push), включается env-секретами. */
+interface NotificationPort {
+    /** true, если заданы FCM_PROJECT_ID/FCM_CLIENT_EMAIL/FCM_PRIVATE_KEY. */
+    val configured: Boolean
+    /** Шлёт пуш на все устройства пользователя. @return число успешных отправок. */
+    suspend fun sendToUser(
+        userId: String,
+        title: String,
+        body: String,
+        data: Map<String, String> = emptyMap(),
+    ): Int
 }

@@ -53,7 +53,7 @@ fun Route.eventRoutes(getEvents: GetEventsUseCase, getEvent: GetEventUseCase, cr
         }
     }
     get("/events/{id}/participants") { call.respond(emptyList<String>()) }
-    get("/events/{id}/media") { call.respond(emptyList<String>()) }
+    // GET /events/{id}/media — реализован в MediaRoutes (реальные медиа из object storage)
     get("/events/{id}/ratings") { call.respond(emptyList<String>()) }
     // attend → SocialRoutes (честная гео-логика D1c)
     post("/events/{id}/rating") { call.respond(HttpStatusCode.OK) }
