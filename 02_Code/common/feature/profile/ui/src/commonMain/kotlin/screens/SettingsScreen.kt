@@ -88,7 +88,7 @@ class SettingsScreen : Screen {
             // ── Приватность ──────────────────────────────────────────────
             SectionHeader("ПРИВАТНОСТЬ")
             SettingsToggle("Публичный профиль", "Виден всем пользователям", s.publicProfile) { vm.setPublic(it) }
-            SettingsToggle("Sharing «сейчас здесь»", "Показывать мою геопозицию друзьям", s.sharingEnabled) { vm.setSharing(it) }
+            SettingsToggle("Sharing «сейчас здесь»", "Анонимный пульс города + твоя позиция на карте друзей", s.sharingEnabled) { vm.setSharing(it) }
 
             Spacer(Modifier.height(8.dp))
 

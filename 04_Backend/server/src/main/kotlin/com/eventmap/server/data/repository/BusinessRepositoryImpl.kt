@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
@@ -32,16 +33,35 @@ class BusinessRepositoryImpl : BusinessRepository {
         social: String?,
         documents: List<Pair<String, String>>,
     ): BusinessAccount = btx {
-        val bid = UUID.randomUUID().toString()
-        BusinessAccountsTable.insert {
-            it[id] = bid
-            it[BusinessAccountsTable.userId] = userId
-            it[BusinessAccountsTable.bin] = bin
-            it[BusinessAccountsTable.legalName] = legalName
-            it[BusinessAccountsTable.brandName] = brandName
-            it[BusinessAccountsTable.category] = category
-            it[BusinessAccountsTable.phone] = phone
-            it[BusinessAccountsTable.social] = social
+        // Повторная подача после reject — upsert: userId имеет uniqueIndex,
+        // insert упал бы; обновляем строку и возвращаем статус pending.
+        val existingId = BusinessAccountsTable.selectAll()
+            .where { BusinessAccountsTable.userId eq userId }
+            .singleOrNull()?.get(BusinessAccountsTable.id)
+        val bid = existingId ?: UUID.randomUUID().toString()
+        if (existingId == null) {
+            BusinessAccountsTable.insert {
+                it[id] = bid
+                it[BusinessAccountsTable.userId] = userId
+                it[BusinessAccountsTable.bin] = bin
+                it[BusinessAccountsTable.legalName] = legalName
+                it[BusinessAccountsTable.brandName] = brandName
+                it[BusinessAccountsTable.category] = category
+                it[BusinessAccountsTable.phone] = phone
+                it[BusinessAccountsTable.social] = social
+            }
+        } else {
+            BusinessAccountsTable.update({ BusinessAccountsTable.id eq bid }) {
+                it[BusinessAccountsTable.bin] = bin
+                it[BusinessAccountsTable.legalName] = legalName
+                it[BusinessAccountsTable.brandName] = brandName
+                it[BusinessAccountsTable.category] = category
+                it[BusinessAccountsTable.phone] = phone
+                it[BusinessAccountsTable.social] = social
+                it[status] = "pending"
+                it[rejectReason] = null
+            }
+            BusinessDocumentsTable.deleteWhere { BusinessDocumentsTable.businessId eq bid }
         }
         val docs = documents.map { (kind, url) ->
             val did = UUID.randomUUID().toString()
@@ -95,6 +115,13 @@ class BusinessRepositoryImpl : BusinessRepository {
         BusinessAccountsTable.selectAll()
             .where { BusinessAccountsTable.id eq bid }
             .single().toBusiness(loadDocs(bid))
+    }
+
+    override suspend fun listByStatus(status: String, limit: Int): List<BusinessAccount> = btx {
+        BusinessAccountsTable.selectAll()
+            .where { BusinessAccountsTable.status eq status }
+            .limit(limit)
+            .map { it.toBusiness(loadDocs(it[BusinessAccountsTable.id])) }
     }
 
     private fun loadDocs(businessId: String): List<BusinessDocument> =

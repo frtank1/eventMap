@@ -71,6 +71,7 @@ fun ProfileContent(
     onEditProfile: (name: String, bio: String) -> Unit = { _, _ -> },
     onOpenSettings: () -> Unit = {},
     onOpenOrganizer: () -> Unit = {},
+    onOpenMyEvents: () -> Unit = {},
 ) {
     val vm = remember { getKoin().get<ProfileViewModel>() }
     val profile by vm.profile.collectAsState()
@@ -114,6 +115,19 @@ fun ProfileContent(
             }
         }
         Spacer(Modifier.height(28.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(46.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(Color.White.copy(alpha = 0.05f))
+                .clickableNoRipple { onOpenMyEvents() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Мои события · правка и удаление", color = Color(0xFFB794F6), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(12.dp))
         Box(
             Modifier
                 .fillMaxWidth()

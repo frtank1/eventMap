@@ -18,6 +18,16 @@ enum class MapLayer(val label: String) {
     Heatmap("Тепловая карта"),
 }
 
+// Режимы живой карты (C1 · G1–G3): переключатель «✨ Пульс · 🌫️ Туман · 🫂 Люди»
+enum class MapMode(val label: String, val emoji: String) {
+    None("Карта", "🗺"),
+    Pulse("Пульс", "✨"),
+    Flow("Поток", "🌊"),
+    Heat("Тепло", "🔥"),
+    Fog("Туман", "🌫️"),
+    People("Люди", "🫂"),
+}
+
 data class MapFilter(
     val whenFilter: WhenFilter = WhenFilter.Today,
     val categories: Set<EventCategory> = emptySet(), // пусто = все

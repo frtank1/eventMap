@@ -4,12 +4,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -18,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -30,17 +40,40 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import com.eventmap.event.ui.viewmodel.CreateEventViewModel
 import com.eventmap.event.ui.viewmodel.CreateForm
+import com.eventmap.event.ui.viewmodel.MAX_COVER_BYTES
+import com.eventmap.event.ui.viewmodel.MAX_REEL_BYTES
+import com.eventmap.event.ui.viewmodel.PickedMedia
+import com.eventmap.event.ui.viewmodel.UploadStage
 import com.eventmap.theme.*
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import com.eventmap.map.EventMap
+import com.eventmap.map.EventMapController
+import com.eventmap.map.LatLng
+import com.eventmap.map.MapStyle
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import com.eventmap.views.media.compressImage
+import com.eventmap.views.media.writeTempMedia
+import com.eventmap.views.video.VideoPlayer
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import io.github.vinceglb.filekit.core.FileKit
+import io.github.vinceglb.filekit.core.PickerMode
+import io.github.vinceglb.filekit.core.PickerType
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 // =====================================================================
 //  D6 / D7 / D8 — Создание события (3 шага)
 //  Figma «🎬 D · Событие»  nodes 51:107 / 51:124 / 51:147
 // =====================================================================
 
-private val eventCategories = listOf("🎵 Музыка", "🧘 Спорт", "🍔 Скидки", "📚 Лекция", "🎤 Стендап", "🎨 Арт", "🎮 Игры", "🌿 Природа")
+private val eventCategories = listOf("Музыка", "Спорт", "Еда", "Лекция", "Стендап", "Арт", "Игры", "Природа")
 
-class CreateEventScreen : Screen {
+data class CreateEventScreen(val editEventId: String? = null) : Screen {
 
     @Composable
     override fun Content() {
@@ -50,11 +83,55 @@ class CreateEventScreen : Screen {
         val form by vm.form.collectAsState()
         val loading by vm.loading.collectAsState()
         val created by vm.created.collectAsState()
+        var errorText by remember { mutableStateOf<String?>(null) }
 
+        val cover by vm.cover.collectAsState()
+        val reel by vm.reel.collectAsState()
+        val uploadStage by vm.uploadStage.collectAsState()
+        val uploadProgress by vm.uploadProgress.collectAsState()
+        val scope = rememberCoroutineScope()
+
+        // Режим правки: префилл формы полями события (D6 переиспользуется)
+        LaunchedEffect(editEventId) { editEventId?.let { vm.loadForEdit(it) } }
         LaunchedEffect(created) { if (created) nav.pop() }
+        // показываем ошибки валидации/сети (раньше они молча терялись → «кнопка не работает»)
+        LaunchedEffect(Unit) { vm.errorMessage.collect { errorText = it } }
+        var showPicker by remember { mutableStateOf(false) }
 
+        // Пикеры медиа (FileKit, только галерея). Фото сжимаем до ≤1600px JPEG —
+        // 8 МБ с камеры превращаются в ~300 КБ, загрузка на мобильном интернете не мучает.
+        fun pickCover() = scope.launch {
+            val file = FileKit.pickFile(type = PickerType.Image, mode = PickerMode.Single) ?: return@launch
+            val raw = file.readBytes()
+            if (raw.size > 25 * 1024 * 1024) {
+                errorText = "Картинка больше 25 МБ — выбери поменьше"
+                return@launch
+            }
+            val bytes = compressImage(raw) // длинная сторона ≤1600, JPEG q85
+            if (bytes.size > MAX_COVER_BYTES) {
+                errorText = "Картинка слишком большая даже после сжатия — выбери другую"
+                return@launch
+            }
+            vm.setCover(PickedMedia(bytes, "image/jpeg", file.name))
+        }
+        fun pickReel() = scope.launch {
+            val file = FileKit.pickFile(type = PickerType.Video, mode = PickerMode.Single) ?: return@launch
+            val bytes = file.readBytes()
+            if (bytes.size > MAX_REEL_BYTES) {
+                errorText = "Видео больше 60 МБ — нужно покороче (до 30 сек)"
+                return@launch
+            }
+            vm.setReel(
+                PickedMedia(
+                    bytes, videoContentType(file.name), file.name,
+                    localUrl = writeTempMedia(bytes, ".mp4"), // превью в тайле
+                ),
+            )
+        }
+
+        Box(Modifier.fillMaxSize().background(NightBackground)) {
         Column(
-            Modifier.fillMaxSize().background(NightBackground),
+            Modifier.fillMaxSize(),
         ) {
             // Step progress bar (3 equal segments)
             Row(
@@ -95,24 +172,59 @@ class CreateEventScreen : Screen {
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             ) {
                 when (step) {
-                    0 -> StepBasics(form.title, form.description,
+                    0 -> StepBasics(
+                        kind = form.kind,
+                        title = form.title,
+                        description = form.description,
                         onTitle = { v -> vm.update { it.copy(title = v) } },
                         onDesc = { v -> vm.update { it.copy(description = v) } },
+                        onKind = { value ->
+                            vm.update {
+                                it.copy(
+                                    kind = value,
+                                    sourceType = if (value == "live_signal") "witness" else "initiator",
+                                    visibility = if (value == "private") "invite" else "public",
+                                    joinPolicy = if (value == "private") "invite" else it.joinPolicy,
+                                    expiresInMinutes = if (value == "live_signal" && it.expiresInMinutes.isBlank()) "120" else it.expiresInMinutes,
+                                )
+                            }
+                        },
+                        cover = cover,
+                        reel = reel,
+                        onPickCover = { pickCover() },
+                        onPickReel = { pickReel() },
+                        onClearReel = { vm.setReel(null) },
                     )
-                    1 -> StepLocation(form.locationName,
+                    1 -> StepLocation(form.locationName, form.landmark, form.lat != 0.0,
                         onAddress = { v -> vm.update { it.copy(locationName = v) } },
+                        onLandmark = { v -> vm.update { it.copy(landmark = v) } },
+                        onOpenPicker = { showPicker = true },
                     )
                     else -> StepDetails(
                         form = form,
                         onDate = { v -> vm.update { it.copy(date = v) } },
                         onTime = { v -> vm.update { it.copy(time = v) } },
                         onCategory = { v -> vm.update { it.copy(category = v) } },
-                        onPaid = { v -> vm.update { it.copy(isPaid = v) } },
                         onPrice = { v -> vm.update { it.copy(priceAmount = v) } },
                         onLimit = { v -> vm.update { it.copy(limit = v) } },
+                        onJoinPolicy = { v -> vm.update { it.copy(joinPolicy = v) } },
+                        onVisibility = { v -> vm.update { it.copy(visibility = v) } },
+                        onAudience = { v -> vm.update { it.copy(audience = v, minAge = if (v == "adults") "18" else "") } },
+                        onExpires = { v -> vm.update { it.copy(expiresInMinutes = v) } },
                     )
                 }
                 Spacer(Modifier.height(24.dp))
+            }
+
+            // Баннер ошибки (валидация/сеть)
+            errorText?.let { msg ->
+                Box(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF4757).copy(alpha = 0.15f))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) { Text(msg, color = Color(0xFFFF6B7A), fontSize = 13.sp) }
+                Spacer(Modifier.height(8.dp))
             }
 
             // Bottom CTA row
@@ -133,14 +245,18 @@ class CreateEventScreen : Screen {
                     Modifier.weight(1f).height(50.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(Brush.linearGradient(BrandGradient))
-                        .clickableNoRipple { if (step < 2) vm.next() else vm.publish() },
+                        .clickableNoRipple { errorText = null; if (step < 2) vm.next() else vm.publish() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = when (step) {
                             0 -> "Далее → локация"
                             1 -> "Далее → детали"
-                            else -> if (loading) "Публикуем…" else "✓ Опубликовать"
+                            else -> when {
+                                loading -> uploadLabel(uploadStage, uploadProgress)
+                                editEventId != null -> "✓ Сохранить изменения"
+                                else -> "✓ Опубликовать"
+                            }
                         },
                         color = Color.White,
                         fontSize = 15.sp,
@@ -148,6 +264,20 @@ class CreateEventScreen : Screen {
                     )
                 }
             }
+        }
+
+        // Полноэкранный пикер точки на карте (overlay поверх формы)
+        if (showPicker) {
+            LocationPickerOverlay(
+                initialLat = if (form.lat != 0.0) form.lat else 51.1282,
+                initialLng = if (form.lng != 0.0) form.lng else 71.4307,
+                onPicked = { lat, lng ->
+                    vm.update { it.copy(lat = lat, lng = lng) }
+                    showPicker = false
+                },
+                onDismiss = { showPicker = false },
+            )
+        }
         }
     }
 }
@@ -157,12 +287,56 @@ class CreateEventScreen : Screen {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun StepBasics(title: String, description: String, onTitle: (String) -> Unit, onDesc: (String) -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().height(120.dp).clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.06f)).clickableNoRipple { /* open picker */ },
-        contentAlignment = Alignment.Center,
-    ) { Text("🖼️  Добавить обложку", color = NightTextSecondary, fontSize = 13.sp) }
+@OptIn(org.jetbrains.compose.resources.ExperimentalResourceApi::class) // decodeToImageBitmap
+private fun StepBasics(
+    kind: String,
+    title: String,
+    description: String,
+    onTitle: (String) -> Unit,
+    onDesc: (String) -> Unit,
+    onKind: (String) -> Unit,
+    cover: PickedMedia?,
+    reel: PickedMedia?,
+    onPickCover: () -> Unit,
+    onPickReel: () -> Unit,
+    onClearReel: () -> Unit,
+) {
+    FormLabel("ЧТО ТЫ СОЗДАЁШЬ")
+    ChoiceChips(
+        value = kind,
+        options = listOf(
+            "planned" to "Запланировано",
+            "gathering" to "Собрать людей",
+            "live_signal" to "Я это вижу",
+            "private" to "Закрытое",
+        ),
+        onSelect = onKind,
+    )
+    Spacer(Modifier.height(16.dp))
+    // Обложка: показываем саму картинку (декод из выбранных байтов)
+    val coverBitmap = remember(cover) {
+        cover?.bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
+    }
+    MediaPickCard(
+        pickedLabel = cover?.name?.let { "Обложка · $it" },
+        idleIcon = EventMapIcons.Camera,
+        idleText = "Добавить обложку",
+        height = 160.dp,
+        onClick = onPickCover,
+        onClear = null,
+        imagePreview = coverBitmap,
+    )
+    Spacer(Modifier.height(12.dp))
+    // Ролик: мини-плеер из временного файла (muted, loop)
+    MediaPickCard(
+        pickedLabel = reel?.name?.let { "Ролик · $it" },
+        idleIcon = EventMapIcons.Video,
+        idleText = "Добавить ролик · до 30 сек",
+        height = if (reel?.localUrl != null) 160.dp else 88.dp,
+        onClick = onPickReel,
+        onClear = if (reel != null) onClearReel else null,
+        videoPreviewUrl = reel?.localUrl,
+    )
     Spacer(Modifier.height(20.dp))
     FormLabel("НАЗВАНИЕ")
     FormInput("Напр. «Йога на рассвете»", title, onTitle)
@@ -171,31 +345,141 @@ private fun StepBasics(title: String, description: String, onTitle: (String) -> 
     FormInput("Расскажи, что будет, для кого…", description, onDesc, height = 80.dp)
 }
 
+// Карточка выбора медиа: пустая (тап → пикер) или с именем выбранного файла (+✕ для очистки).
+@Composable
+private fun MediaPickCard(
+    pickedLabel: String?,
+    idleIcon: ImageVector,
+    idleText: String,
+    height: Dp,
+    onClick: () -> Unit,
+    onClear: (() -> Unit)?,
+    imagePreview: ImageBitmap? = null,
+    videoPreviewUrl: String? = null,
+) {
+    val picked = pickedLabel != null
+    val hasPreview = imagePreview != null || videoPreviewUrl != null
+    Box(
+        Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))
+            .background(if (picked) Violet600.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
+            .clickableNoRipple(onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Само медиа фоном тайла: картинка обложки или зацикленный ролик без звука
+        if (imagePreview != null) {
+            Image(
+                bitmap = imagePreview,
+                contentDescription = pickedLabel,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (videoPreviewUrl != null) {
+            VideoPlayer(url = videoPreviewUrl, playing = true, muted = true, modifier = Modifier.fillMaxSize())
+        }
+        if (hasPreview) {
+            // подпись поверх медиа — на градиенте, чтобы читалась
+            Box(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "✓ $pickedLabel · нажми, чтобы заменить",
+                    color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (picked && !hasPreview) {
+                Text(
+                    "✓ $pickedLabel",
+                    color = Violet400,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 36.dp),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text("нажми, чтобы заменить", color = NightTextSecondary, fontSize = 11.sp)
+            } else if (!picked) {
+                Icon(idleIcon, contentDescription = null, tint = NightTextSecondary, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(idleText, color = NightTextSecondary, fontSize = 13.sp)
+            }
+        }
+        if (onClear != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp)
+                    .clip(CircleShape).background(Color.Black.copy(alpha = 0.35f))
+                    .clickableNoRipple(onClear),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    EventMapIcons.Close,
+                    contentDescription = "Удалить",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  D7 — Шаг 2: Локация
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun StepLocation(address: String, onAddress: (String) -> Unit) {
+private fun StepLocation(
+    address: String,
+    landmark: String,
+    picked: Boolean,
+    onAddress: (String) -> Unit,
+    onLandmark: (String) -> Unit,
+    onOpenPicker: () -> Unit,
+) {
     Box(
         Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0C1825)),
+            .background(Color(0xFF0C1825))
+            .clickableNoRipple(onOpenPicker),   // тап по карте → полноэкранный пикер
     ) {
         Box(Modifier.fillMaxWidth().height(2.dp).align(Alignment.Center).background(Color.White.copy(alpha = 0.08f)))
         Box(Modifier.fillMaxHeight().width(2.dp).align(Alignment.Center).background(Color.White.copy(alpha = 0.08f)))
-        Text("📍", fontSize = 28.sp, modifier = Modifier.align(Alignment.Center).offset(y = (-14).dp))
+        Icon(
+            EventMapIcons.Place,
+            contentDescription = null,
+            tint = Violet400,
+            modifier = Modifier.align(Alignment.Center).offset(y = (-14).dp).size(30.dp),
+        )
         Box(
             Modifier.fillMaxWidth().padding(14.dp).height(38.dp).clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF11212F)).padding(horizontal = 13.dp),
             contentAlignment = Alignment.CenterStart,
-        ) { Text("🔍  Поиск адреса или точка на карте", color = NightTextSecondary, fontSize = 12.sp) }
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (picked) EventMapIcons.Place else EventMapIcons.Search,
+                    contentDescription = null,
+                    tint = if (picked) Violet400 else NightTextSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    if (picked) "Точка выбрана — нажми, чтобы изменить" else "Выбрать точку на карте",
+                    color = if (picked) Violet400 else NightTextSecondary,
+                    fontSize = 12.sp,
+                )
+            }
+        }
     }
     Spacer(Modifier.height(16.dp))
     FormLabel("АДРЕС")
     FormInput("Триатлон-парк, главный вход", address, onAddress)
     Spacer(Modifier.height(16.dp))
     FormLabel("МЕТКА")
-    FormInput("Доп. ориентир (необязательно)", "", {})
+    FormInput("Доп. ориентир (необязательно)", landmark, onLandmark)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,15 +492,18 @@ private fun StepDetails(
     onDate: (String) -> Unit,
     onTime: (String) -> Unit,
     onCategory: (String) -> Unit,
-    onPaid: (Boolean) -> Unit,
     onPrice: (String) -> Unit,
     onLimit: (String) -> Unit,
+    onJoinPolicy: (String) -> Unit,
+    onVisibility: (String) -> Unit,
+    onAudience: (String) -> Unit,
+    onExpires: (String) -> Unit,
 ) {
     FormLabel("ДАТА")
-    FormInput("5 июля", form.date, onDate)
+    DateField(form.date, onDate)
     Spacer(Modifier.height(16.dp))
     FormLabel("ВРЕМЯ")
-    FormInput("08:30", form.time, onTime, keyboardType = KeyboardType.Number)
+    TimeField(form.time, onTime)
     Spacer(Modifier.height(16.dp))
     FormLabel("КАТЕГОРИЯ")
     Spacer(Modifier.height(8.dp))
@@ -243,38 +530,152 @@ private fun StepDetails(
     }
     Spacer(Modifier.height(10.dp))
     FormLabel("ЦЕНА")
-    FormInput("Бесплатно", form.priceAmount, onPrice, keyboardType = KeyboardType.Number)
+    FormInput("Бесплатно", form.priceAmount, onPrice, keyboardType = KeyboardType.Number, digitsOnly = true)
     Spacer(Modifier.height(16.dp))
     FormLabel("ЛИМИТ МЕСТ")
-    FormInput("∞", form.limit, onLimit, keyboardType = KeyboardType.Number)
+    FormInput("∞", form.limit, onLimit, keyboardType = KeyboardType.Number, digitsOnly = true)
     Spacer(Modifier.height(16.dp))
 
-    // 18+ toggle row
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("🔞", fontSize = 18.sp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text("Только 18+", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "скроется у несовершеннолетних, бейдж на рилсе",
-                color = NightTextSecondary,
-                fontSize = 11.sp,
-            )
+    if (form.kind == "live_signal") {
+        FormLabel("СИГНАЛ ИСЧЕЗНЕТ")
+        ChoiceChips(
+            value = form.expiresInMinutes,
+            options = listOf("30" to "30 мин", "120" to "2 часа", "480" to "До вечера"),
+            onSelect = onExpires,
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+
+    FormLabel("КТО МОЖЕТ УВИДЕТЬ")
+    ChoiceChips(
+        value = form.visibility,
+        options = listOf("public" to "Все", "unlisted" to "По ссылке", "invite" to "Приглашённые"),
+        onSelect = onVisibility,
+    )
+    Spacer(Modifier.height(16.dp))
+
+    FormLabel("КАК ВСТУПАЮТ")
+    ChoiceChips(
+        value = form.joinPolicy,
+        options = listOf("open" to "Сразу", "approval" to "После одобрения", "invite" to "По приглашению"),
+        onSelect = onJoinPolicy,
+    )
+    Spacer(Modifier.height(16.dp))
+
+    FormLabel("АУДИТОРИЯ")
+    ChoiceChips(
+        value = form.audience,
+        options = listOf("everyone" to "Для всех", "family" to "Семьи", "adults" to "18+"),
+        onSelect = onAudience,
+    )
+}
+
+@Composable
+private fun ChoiceChips(
+    value: String,
+    options: List<Pair<String, String>>,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        options.chunked(2).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                row.forEach { (key, label) ->
+                    val selected = value == key
+                    Box(
+                        Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(11.dp))
+                            .background(if (selected) Violet600.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.06f))
+                            .clickableNoRipple { onSelect(key) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            label,
+                            color = if (selected) Violet400 else NightTextSecondary,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
-        Switch(
-            checked = form.isPaid,
-            onCheckedChange = { onPaid(it) },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = Violet600,
-                uncheckedThumbColor = NightTextTertiary,
-                uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
-            ),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Дата (календарь, только будущее) и время (часы)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateField(isoDate: String, onPick: (String) -> Unit) {
+    var show by remember { mutableStateOf(false) }
+    PickerField(value = isoDate, placeholder = "Выбери дату") { show = true }
+    if (show) {
+        // граница «сегодня» в UTC-миллисекундах (DatePicker оперирует UTC-полуночью)
+        val todayStart = remember {
+            val nowMs = Clock.System.now().toEpochMilliseconds()
+            (nowMs / 86_400_000L) * 86_400_000L
+        }
+        val state = rememberDatePickerState(
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean = utcTimeMillis >= todayStart
+                override fun isSelectableYear(year: Int): Boolean = true
+            },
+        )
+        DatePickerDialog(
+            onDismissRequest = { show = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { ms ->
+                        val d = Instant.fromEpochMilliseconds(ms).toLocalDateTime(TimeZone.UTC).date
+                        onPick(d.toString()) // ISO yyyy-MM-dd
+                    }
+                    show = false
+                }) { Text("Готово", color = Violet400) }
+            },
+            dismissButton = { TextButton(onClick = { show = false }) { Text("Отмена", color = NightTextSecondary) } },
+        ) {
+            DatePicker(state = state)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimeField(time: String, onPick: (String) -> Unit) {
+    var show by remember { mutableStateOf(false) }
+    PickerField(value = time, placeholder = "Выбери время") { show = true }
+    if (show) {
+        val state = rememberTimePickerState(initialHour = 12, initialMinute = 0, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { show = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val hh = state.hour.toString().padStart(2, '0')
+                    val mm = state.minute.toString().padStart(2, '0')
+                    onPick("$hh:$mm")
+                    show = false
+                }) { Text("Готово", color = Violet400) }
+            },
+            dismissButton = { TextButton(onClick = { show = false }) { Text("Отмена", color = NightTextSecondary) } },
+            text = { TimePicker(state = state) },
+        )
+    }
+}
+
+// Поле-кнопка: показывает значение или плейсхолдер, по клику открывает пикер.
+@Composable
+private fun PickerField(value: String, placeholder: String, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.06f))
+            .clickableNoRipple(onClick).padding(horizontal = 14.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            value.ifEmpty { placeholder },
+            color = if (value.isEmpty()) NightTextSecondary else Color.White,
+            fontSize = 14.sp,
         )
     }
 }
@@ -302,6 +703,7 @@ private fun FormInput(
     onValue: (String) -> Unit,
     height: Dp = 46.dp,
     keyboardType: KeyboardType = KeyboardType.Text,
+    digitsOnly: Boolean = false,   // фильтр ввода: пропускать только цифры (цена, лимит)
 ) {
     val multiline = height > 50.dp
     Box(
@@ -311,7 +713,7 @@ private fun FormInput(
     ) {
         BasicTextField(
             value = value,
-            onValueChange = onValue,
+            onValueChange = { v -> onValue(if (digitsOnly) v.filter { it.isDigit() } else v) },
             singleLine = !multiline,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
@@ -327,3 +729,115 @@ private fun FormInput(
         )
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  D7a — Полноэкранный пикер точки на карте (по макету Figma)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LocationPickerOverlay(
+    initialLat: Double,
+    initialLng: Double,
+    onPicked: (Double, Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var controller by remember { mutableStateOf<EventMapController?>(null) }
+    var center by remember { mutableStateOf(initialLat to initialLng) }
+    // следим за центром карты (это и есть выбираемая точка)
+    LaunchedEffect(controller) {
+        controller?.viewport?.collect { center = it.center.lat to it.center.lon }
+    }
+
+    Box(Modifier.fillMaxSize().background(NightBackground)) {
+        // настоящая карта Mapbox
+        EventMap(
+            initialCenter = LatLng(initialLat, initialLng),
+            initialZoom = 14.0,
+            style = MapStyle.NightDark,
+            modifier = Modifier.fillMaxSize(),
+            onMapReady = { controller = it },
+        )
+
+        // центральный пин — всегда по центру экрана
+        Text(
+            "📍",
+            fontSize = 34.sp,
+            modifier = Modifier.align(Alignment.Center).offset(y = (-16).dp),
+        )
+
+        // подсказка
+        Box(
+            Modifier.align(Alignment.Center).offset(y = 28.dp)
+                .clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.55f))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) { Text("Двигай карту — точка в центре", color = Color.White, fontSize = 12.sp) }
+
+        // шапка
+        Row(
+            Modifier.fillMaxWidth().padding(start = 8.dp, top = 48.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(44.dp).clickableNoRipple(onDismiss),
+                contentAlignment = Alignment.Center,
+            ) { Text("‹", color = Color.White, fontSize = 30.sp) }
+            Text("Выбор точки на карте", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // нижняя карточка с координатами и «Готово»
+        Column(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                .background(NightSurface)
+                .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 20.dp),
+        ) {
+            FormLabel("ВЫБРАННАЯ ТОЧКА")
+            Text(
+                "📍 ${formatCoord(center.first)}, ${formatCoord(center.second)}",
+                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(16.dp))
+            Box(
+                Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(BrandGradient))
+                    .clickableNoRipple { onPicked(center.first, center.second) },
+                contentAlignment = Alignment.Center,
+            ) { Text("✓  Готово", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold) }
+        }
+    }
+}
+
+// Формат координаты с 4 знаками без platform-зависимого String.format (commonMain).
+private fun formatCoord(v: Double): String {
+    val scaled = (v * 10000).toLong()
+    val whole = scaled / 10000
+    val frac = (if (scaled < 0) -scaled else scaled) % 10000
+    return "$whole." + frac.toString().padStart(4, '0')
+}
+
+// Подпись на кнопке во время публикации (этап загрузки медиа).
+private fun uploadLabel(stage: UploadStage, progress: Float): String {
+    val pct = "${(progress * 100).toInt().coerceIn(0, 100)}%"
+    return when (stage) {
+        UploadStage.Cover -> "Обложка… $pct"
+        UploadStage.Reel -> "Ролик… $pct"
+        UploadStage.Creating, UploadStage.Idle -> "Публикуем…"
+    }
+}
+
+// content-type по расширению — должен совпадать с белым списком бэка (MediaUseCases).
+private fun imageContentType(name: String): String =
+    when (name.substringAfterLast('.', "").lowercase()) {
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        "heic", "heif" -> "image/heic"
+        else -> "image/jpeg"
+    }
+
+private fun videoContentType(name: String): String =
+    when (name.substringAfterLast('.', "").lowercase()) {
+        "mov" -> "video/quicktime"
+        "webm" -> "video/webm"
+        else -> "video/mp4"
+    }

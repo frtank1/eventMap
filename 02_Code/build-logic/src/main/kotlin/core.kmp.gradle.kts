@@ -1,18 +1,31 @@
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Общая конфигурация KMP-библиотечного модуля: таргеты + android-блок.
-// Каждый модуль задаёт только свой android.namespace и свои зависимости.
+// Миграция на AGP 9: вместо com.android.library — новый KMP-плагин
+// com.android.kotlin.multiplatform.library; android-конфиг переехал внутрь kotlin { android { } }.
+// Каждый модуль задаёт только свой namespace через kotlin { android { namespace = "..." } }.
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
 }
 
 // единый источник версий — каталог libs (gradle/libs.versions.toml)
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 kotlin {
-    androidTarget()
+    android {
+        compileSdk = libs.findVersion("android-compileSdk").get().requiredVersion.toInt()
+        minSdk = libs.findVersion("android-minSdk").get().requiredVersion.toInt()
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+        // ресурсы в новом плагине по умолчанию выключены — включаем (некоторые модули их используют)
+        androidResources {
+            enable = true
+        }
+    }
 
     iosX64()
     iosArm64()
@@ -22,11 +35,4 @@ kotlin {
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs { browser() }
-}
-
-android {
-    compileSdk = libs.findVersion("android-compileSdk").get().requiredVersion.toInt()
-    defaultConfig {
-        minSdk = libs.findVersion("android-minSdk").get().requiredVersion.toInt()
-    }
 }

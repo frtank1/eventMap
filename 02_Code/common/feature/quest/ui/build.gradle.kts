@@ -1,8 +1,7 @@
-// ДРАФТ (создан при аудите 13.06.2026). Модуль НЕ активен, пока не добавишь
-// include(":common:feature:quest:ui") в settings.gradle.kts и зависимость в composeApp.
-// Перед первой сборкой сверь набор зависимостей с реальными импортами экранов.
+// Активен (include в settings.gradle.kts). Подключён к бэку /quests/* (01.07.2026).
 plugins {
     id("core.kmp.compose")
+    alias(libs.plugins.serialization) // DTO квестов (data/QuestData.kt)
 }
 kotlin {
     sourceSets {
@@ -19,8 +18,11 @@ kotlin {
             implementation(libs.voyager.koin)
 
             implementation(libs.koin.core)
+            implementation(libs.filekit) // фото-чекин Q3: выбор снимка из галереи
             implementation(projects.common.core.ui)
             implementation(projects.common.core.network)
+            implementation(projects.common.core.platform) // GeoProvider для гео-чекина
+
         }
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -28,4 +30,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.quest.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.quest.ui"
+    }
+}

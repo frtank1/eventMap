@@ -11,13 +11,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -35,14 +33,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.eventmap.game.ui.viewmodel.LeaderboardViewModel
 import com.eventmap.theme.BrandGradient
 import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightSurface
 import com.eventmap.theme.NightTextSecondary
-import com.eventmap.theme.Soft
 import com.eventmap.theme.Violet400
 import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
@@ -57,7 +57,6 @@ private val NightTextTertiary = Color(0xFF56657A)
 private val Gold = Color(0xFFFFD700)
 private val Silver = Color(0xFFC0C0C0)
 private val Bronze = Color(0xFFCD7F32)
-private val Coral500 = Color(0xFFFF5C8A)
 
 private data class LeaderUser(
     val rank: Int,
@@ -93,12 +92,29 @@ private val friendsBoard = listOf(
 //  LeaderboardScreen
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Эмодзи-аватар: у бэка аватаров нет — детерминированно от имени
+private val avatarEmojis = listOf("😎", "🥰", "✨", "🤓", "😄", "🦁", "🏆", "🎵", "🎨", "🌿", "🚀", "🔥")
+private fun emojiFor(name: String): String {
+    var h = 0
+    for (c in name) h = h * 31 + c.code
+    val idx = h % avatarEmojis.size
+    return avatarEmojis[if (idx < 0) idx + avatarEmojis.size else idx]
+}
+
 class LeaderboardScreen : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
+        val vm = koinScreenModel<LeaderboardViewModel>()
+        val globalLive by vm.global.collectAsState()
+        val friendsLive by vm.friends.collectAsState()
         var selectedTab by remember { mutableStateOf(0) }
-        val board = if (selectedTab == 0) globalBoard else friendsBoard
+
+        // Живые данные бэка; офлайн-фолбэк — демо (паттерн проекта)
+        val liveBoard = (if (selectedTab == 0) globalLive else friendsLive).map { r ->
+            LeaderUser(rank = r.rank, name = r.name, emoji = emojiFor(r.name), xp = r.xp, level = r.level, events = 0, isMe = r.isMe)
+        }
+        val board = liveBoard.ifEmpty { if (selectedTab == 0) globalBoard else friendsBoard }
 
         Column(Modifier.fillMaxSize().background(NightBackground)) {
             // Хедер
@@ -191,7 +207,7 @@ private fun PodiumItem(user: LeaderUser, rank: Int, avatarSize: androidx.compose
             ) { Text(medalEmoji, fontSize = 12.sp) }
         }
         Text(user.name.split(" ").first(), fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-        Text("${user.xp / 1000}K XP", fontSize = 10.sp, color = medalColor, fontWeight = FontWeight.Bold)
+        Text(xpLabel(user.xp), fontSize = 10.sp, color = medalColor, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -229,11 +245,17 @@ private fun LeaderRow(user: LeaderUser, highlight: Boolean) {
                     }
                 }
             }
-            Text("Ур. ${user.level} · ${user.events} событий", fontSize = 10.sp, color = NightTextSecondary)
+            Text(
+                if (user.events > 0) "Ур. ${user.level} · ${user.events} событий" else "Ур. ${user.level}",
+                fontSize = 10.sp, color = NightTextSecondary,
+            )
         }
-        Text("${user.xp / 1000}K XP", fontSize = 12.sp, color = if (highlight) Violet400 else NightTextSecondary, fontWeight = FontWeight.SemiBold)
+        Text(xpLabel(user.xp), fontSize = 12.sp, color = if (highlight) Violet400 else NightTextSecondary, fontWeight = FontWeight.SemiBold)
     }
 }
+
+// «12K XP» для больших чисел, «340 XP» для маленьких (реальные значения с бэка скромнее демо)
+private fun xpLabel(xp: Int): String = if (xp >= 1000) "${xp / 1000}K XP" else "$xp XP"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  AchievementsScreen — все бейджи

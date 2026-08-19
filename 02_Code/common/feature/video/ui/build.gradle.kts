@@ -19,4 +19,8 @@ kotlin { sourceSets {
         implementation(libs.androidx.activity.compose)
     }
 } }
-android { namespace = "com.eventmap.feature.video.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.video.ui"
+    }
+}

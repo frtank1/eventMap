@@ -2,16 +2,22 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+// Миграция на AGP 9: composeApp стал KMP-БИБЛИОТЕКОЙ (com.android.kotlin.multiplatform.library).
+// Android-приложение вынесено в модуль :androidApp. Здесь — общий UI (commonMain) + входы desktop/iOS/wasm.
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
 }
 
 kotlin {
-    androidTarget {
+    // Android-таргет через новый KMP-плагин (конфиг внутри kotlin{})
+    android {
+        namespace = "com.eventmap"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
@@ -37,11 +43,6 @@ kotlin {
 
 
     sourceSets {
-        androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.fragment)
-        }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -74,6 +75,7 @@ kotlin {
             implementation(projects.common.feature.map.ui)
             implementation(projects.common.feature.auth.ui)
             implementation(projects.common.feature.auth.data)
+            implementation(projects.common.feature.auth.domain)
             implementation(projects.common.feature.event.ui)
             implementation(projects.common.feature.event.data)
             implementation(projects.common.feature.event.domain)
@@ -105,38 +107,6 @@ kotlin {
             implementation(libs.kotlinx.browser)
         }
     }
-}
-
-android {
-    namespace = "com.eventmap"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-
-    defaultConfig {
-        applicationId = "com.eventmap"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
-    }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-}
-
-dependencies {
-    debugImplementation(libs.compose.uiTooling)
 }
 
 compose.desktop {

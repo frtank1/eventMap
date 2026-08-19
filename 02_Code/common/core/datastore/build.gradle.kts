@@ -33,6 +33,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.datastore"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.datastore"
+    }
 }

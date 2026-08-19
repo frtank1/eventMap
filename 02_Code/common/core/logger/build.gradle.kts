@@ -11,6 +11,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.logger"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.logger"
+    }
 }

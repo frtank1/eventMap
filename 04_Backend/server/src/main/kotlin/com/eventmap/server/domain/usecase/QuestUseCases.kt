@@ -5,6 +5,7 @@ import com.eventmap.server.domain.model.Quest
 import com.eventmap.server.domain.model.QuestPoint
 import com.eventmap.server.domain.model.QuestRun
 import com.eventmap.server.domain.repository.BusinessRepository
+import com.eventmap.server.domain.repository.NotificationRepository
 import com.eventmap.server.domain.repository.QuestRepository
 import com.eventmap.server.domain.repository.XpRepository
 import javax.crypto.Mac
@@ -86,6 +87,7 @@ class CheckinQuestPointUseCase(
     private val quests: QuestRepository,
     private val xp: XpRepository,
     private val secret: String, // HMAC-секрет QR-кодов покупок (ADMIN_KEY)
+    private val inbox: NotificationRepository,
 ) {
     sealed interface Result {
         data class Ok(val run: QuestRun, val finished: Boolean, val xpGained: Int) : Result
@@ -139,6 +141,8 @@ class CheckinQuestPointUseCase(
         if (updated.finished) {
             xp.add(userId, "quest_finish", questId, XP_FINISH)
             gained += XP_FINISH
+            // уведомление F4: финиш квеста Q4
+            runCatching { inbox.add(userId, "info", "🎉 Квест «${quest.title}» пройден! Приз и +$gained XP у тебя в профиле") }
         }
         return Result.Ok(updated, updated.finished, gained)
     }

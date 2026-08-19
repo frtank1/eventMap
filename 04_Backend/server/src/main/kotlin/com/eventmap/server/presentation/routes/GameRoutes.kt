@@ -7,6 +7,7 @@ import com.eventmap.server.domain.usecase.GetDistrictLeaderboardUseCase
 import com.eventmap.server.domain.usecase.GetFogUseCase
 import com.eventmap.server.domain.usecase.GetGameProfileUseCase
 import com.eventmap.server.domain.usecase.GetMissionsUseCase
+import com.eventmap.server.domain.usecase.GetUserLeaderboardUseCase
 import com.eventmap.server.domain.usecase.OpenCapsuleUseCase
 import com.eventmap.server.presentation.dto.CreateCapsuleRequest
 import com.eventmap.server.presentation.dto.DistrictScoreDto
@@ -24,6 +25,14 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import kotlinx.serialization.Serializable
+
+// Лидерборд игроков (R2): рейтинг по XP
+@Serializable
+data class UserScoreDto(
+    val userId: String, val name: String, val xp: Long,
+    val level: Int, val rank: Int, val isMe: Boolean,
+)
 
 private fun ApplicationCall.uid(): String? =
     principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
@@ -39,6 +48,7 @@ fun Route.gameRoutes(
     missions: GetMissionsUseCase,
     fog: GetFogUseCase,
     leaderboard: GetDistrictLeaderboardUseCase,
+    userLeaderboard: GetUserLeaderboardUseCase,
     createCapsule: CreateCapsuleUseCase,
     capsulesNearby: GetCapsulesNearbyUseCase,
     openCapsule: OpenCapsuleUseCase,
@@ -61,6 +71,14 @@ fun Route.gameRoutes(
         get("/map/fog") {
             val uid = call.uid() ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
             call.respond(mapOf("visitedDistrictIds" to fog(uid)))
+        }
+
+        // Лидерборд игроков R2: топ-50 по XP; ?scope=friends — только друзья + я
+        get("/game/leaderboard/users") {
+            val uid = call.uid() ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            val scope = call.request.queryParameters["scope"] ?: "global"
+            val rows = userLeaderboard(uid, scope)
+            call.respond(rows.mapIndexed { i, r -> UserScoreDto(r.userId, r.name, r.xp, r.level, i + 1, r.isMe) })
         }
 
         post("/capsules") {

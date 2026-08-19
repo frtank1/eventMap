@@ -18,6 +18,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.utils"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.utils"
+    }
 }

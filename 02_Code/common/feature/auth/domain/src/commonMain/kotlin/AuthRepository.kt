@@ -32,4 +32,12 @@ interface AuthRepository {
 
     /** Залогинен ли пользователь (есть валидная сессия в TokenStorage). */
     fun isLoggedIn(): Boolean
+
+    /**
+     * Проверка сессии НА СЕРВЕРЕ (GET /users/me с bearer): протухший access
+     * тихо обновится refresh'ем внутри Ktor Auth; мёртвая пара → хранилище чистится.
+     * @return true — сессия жива; false — токены мертвы (нужен новый вход);
+     *         null — сеть недоступна/прочее (оффлайн не наказываем — пускаем).
+     */
+    suspend fun validateSession(): Boolean?
 }

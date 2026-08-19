@@ -5,6 +5,33 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Place
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Spa
+import androidx.compose.material.icons.rounded.Water
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -12,70 +39,45 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathFillType
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
-// Единый набор иконок EventMap («живой город» v1).
-// Глифы заданы в системе координат 120×120 (как в Figma-проекте Иконки v1),
-// рисуются белым и тонируются в местах использования (Icon tint).
-private fun glyph(path: String, fillType: PathFillType = PathFillType.NonZero): ImageVector =
-    ImageVector.Builder(
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 120f,
-        viewportHeight = 120f,
-    ).addPath(
-        pathData = PathParser().parsePathString(path).toNodes(),
-        fill = SolidColor(Color.White),
-        pathFillType = fillType,
-    ).build()
-
+/**
+ * Единый набор Material Rounded для интерфейса EventMap.
+ * Emoji остаются только контентом (реакции и категории), но не кнопками навигации.
+ */
 object EventMapIcons {
-    // Навигация
-    val Map: ImageVector = glyph(
-        "M60 30c-13 0-23 10-23 23 0 16 23 37 23 37s23-21 23-37c0-13-10-23-23-23z " +
-            "M60 44a9 9 0 100 18 9 9 0 100-18z",
-        PathFillType.EvenOdd,
-    )
-    val Reels: ImageVector = glyph(
-        "M50 33h20a17 17 0 0117 17v20a17 17 0 01-17 17H50a17 17 0 01-17-17V50a17 17 0 0117-17z " +
-            "M53 48l22 12-22 12z",
-        PathFillType.EvenOdd,
-    )
-    val Video: ImageVector = glyph(
-        "M40 46h8l4-6h16l4 6h8a10 10 0 0110 10v22a10 10 0 01-10 10H40a10 10 0 01-10-10V56a10 10 0 0110-10z " +
-            "M60 58a11 11 0 100 22 11 11 0 100-22z",
-        PathFillType.EvenOdd,
-    )
-    val Profile: ImageVector = glyph(
-        "M60 33a15 15 0 100 30 15 15 0 100-30z M34 92c0-15 12-24 26-24s26 9 26 24z",
-    )
+    val Map: ImageVector = Icons.Rounded.Map
+    val Reels: ImageVector = Icons.Rounded.EmojiEvents
+    val Video: ImageVector = Icons.Rounded.Bolt
+    val Profile: ImageVector = Icons.Rounded.Person
+    val Flame: ImageVector = Icons.Rounded.LocalFireDepartment
+    val Bell: ImageVector = Icons.Rounded.Notifications
+    val Plus: ImageVector = Icons.Rounded.Add
+    val Heart: ImageVector = Icons.Rounded.Favorite
+    val Comment: ImageVector = Icons.Rounded.ChatBubble
+    val Share: ImageVector = Icons.Rounded.Share
+    val Food: ImageVector = Icons.Rounded.Restaurant
+    val Leaf: ImageVector = Icons.Rounded.Spa
 
-    // Дополнительно (категории / экшены) — для следующего этапа
-    val Flame: ImageVector = glyph(
-        "M63 28c11 13 17 21 17 33a20 20 0 11-40 0c0-9 5-15 11-19-2 9 4 13 9 11-5-11 1-19 3-25z",
-    )
-    val Bell: ImageVector = glyph(
-        "M60 28a19 19 0 00-19 19c0 17-7 23-7 23h52s-7-6-7-23a19 19 0 00-19-19z " +
-            "M60 78a8 8 0 100 16 8 8 0 100-16z",
-        PathFillType.EvenOdd,
-    )
-    val Plus: ImageVector = glyph("M51 32H69V51H88V69H69V88H51V69H32V51H51Z")
-    val Heart: ImageVector = glyph("M60 86C44 74 33 64 33 50a13 13 0 0127-9 13 13 0 0127 9c0 14-11 24-27 36z")
-    val Comment: ImageVector = glyph(
-        "M36 40h48a7 7 0 017 7v22a7 7 0 01-7 7H56l-13 11v-11h-7a7 7 0 01-7-7V47a7 7 0 017-7z",
-    )
-    val Share: ImageVector = glyph("M88 32L32 55l21 7 6 21 9-14 16 12z")
-    val Food: ImageVector = glyph(
-        "M36 50c0-9 11-16 24-16s24 7 24 16z M36 58h48v9H36z M36 74c0 9 11 14 24 14s24-5 24-14z",
-    )
-    val Leaf: ImageVector = glyph("M42 82c-2-26 16-48 40-48 2 26-12 50-40 48z")
+    val Pulse: ImageVector = Icons.Rounded.Bolt
+    val Flow: ImageVector = Icons.Rounded.Water
+    val Heat: ImageVector = Icons.Rounded.LocalFireDepartment
+    val Fog: ImageVector = Icons.Rounded.BlurOn
+    val People: ImageVector = Icons.Rounded.Groups
+    val Compass: ImageVector = Icons.Rounded.Explore
+    val Day: ImageVector = Icons.Rounded.WbSunny
+    val Night: ImageVector = Icons.Rounded.DarkMode
+    val Calendar: ImageVector = Icons.Rounded.CalendarMonth
+    val Camera: ImageVector = Icons.Rounded.PhotoCamera
+    val Edit: ImageVector = Icons.Rounded.Edit
+    val Delete: ImageVector = Icons.Rounded.Delete
+    val Place: ImageVector = Icons.Rounded.Place
+    val Search: ImageVector = Icons.Rounded.Search
+    val Close: ImageVector = Icons.Rounded.Close
+    val Star: ImageVector = Icons.Rounded.Star
 }
 
-/** Цветная плитка-сквиркл с белым глифом — «живой» стиль для категорий/входных точек. */
 @Composable
 fun GradientIconTile(
     icon: ImageVector,

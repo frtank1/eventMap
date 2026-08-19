@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,8 +37,11 @@ import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.eventmap.applock.AppLockController
 import com.eventmap.auth.ui.screens.SplashScreen
+import org.koin.mp.KoinPlatform.getKoin
 import com.eventmap.event.ui.screens.CreateEventScreen
+import com.eventmap.event.ui.screens.MyEventsScreen
 import com.eventmap.event.ui.screens.EventReelScreen
 import com.eventmap.event.models.EventDetail
 import com.eventmap.feed.ui.FeedContent
@@ -50,10 +53,12 @@ import com.eventmap.profile.ui.screens.EditProfileScreen
 import com.eventmap.profile.ui.screens.SettingsScreen
 import com.eventmap.search.ui.screens.SearchScreen
 import com.eventmap.video.ui.screens.VideoFeedScreen
+import com.eventmap.video.ui.screens.RecordVideoScreen
+import com.eventmap.quest.ui.screens.QuestCatalogScreen
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.eventmap.theme.BrandGradient
-import com.eventmap.business.ui.screens.BusinessOrganizerScreen
+import com.eventmap.business.ui.screens.BusinessGateScreen
 import com.eventmap.theme.EventMapIcons
 import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightSurface
@@ -62,7 +67,8 @@ import com.eventmap.theme.ui_kit.clickableNoRipple
 
 // =====================================================================
 //  Главный экран — Aurora Violet v2
-//  5 вкладок: Карта · Лента · [+ FAB] · Видео · Профиль
+//  Таббар по дизайн-прототипу (BOTTOM NAV): Карта · ⚡Сейчас · [🎬 запись] · 🎮Квесты · Профиль
+//  Лента/уведомления F4 — по колокольчику на вкладке «Сейчас»
 // =====================================================================
 
 private val NightTextTertiary = Color(0xFF56657A)
@@ -71,9 +77,9 @@ private data class NavTab(val icon: ImageVector?, val label: String)
 
 private val navTabs = listOf(
     NavTab(EventMapIcons.Map, "Карта"),
-    NavTab(EventMapIcons.Reels, "Лента"),
-    NavTab(null, ""),   // центральный FAB
-    NavTab(EventMapIcons.Video, "Видео"),
+    NavTab(EventMapIcons.Video, "Сейчас"),   // ⚡ live-лента (E1/E2)
+    NavTab(null, ""),                         // центральный FAB — 🎬 снять момент (E3)
+    NavTab(EventMapIcons.Reels, "Квесты"),   // 🎮 Q1 каталог
     NavTab(EventMapIcons.Profile, "Профиль"),
 )
 
@@ -83,6 +89,10 @@ class MainScreen : Screen {
         val nav = LocalNavigator.currentOrThrow
         var selected by remember { mutableStateOf(0) }
 
+        // Дошли до главного экрана после входа — один раз предложим настроить PIN.
+        val appLock = remember { getKoin().get<AppLockController>() }
+        LaunchedEffect(Unit) { appLock.onHomeEntered() }
+
         Column(Modifier.fillMaxSize().background(NightBackground)) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 when (selected) {
@@ -91,20 +101,41 @@ class MainScreen : Screen {
                         onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
                         onSearchClick = { nav.push(SearchScreen()) },
                         onOpenLive = { nav.push(VideoFeedScreen()) },
+                        // «Я тоже здесь · снять момент»: рилс с привязкой к событию
+                        onRecordMoment = { id, title -> nav.push(RecordVideoScreen(eventId = id, eventTitle = title)) },
                     )
-                    1 -> FeedContent(
-                        modifier = Modifier.fillMaxSize(),
-                        onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
-                        onOpenSubscriptions = { nav.push(SubscriptionsScreen()) },
-                    )
-                    3 -> VideoFeedScreen().Content()
+                    // ⚡ «Сейчас»: live-видео + колокольчик (лента/уведомления F4)
+                    1 -> Box(Modifier.fillMaxSize()) {
+                        VideoFeedScreen().Content()
+                        Box(
+                            Modifier.align(Alignment.TopEnd)
+                                .padding(top = 52.dp, end = 16.dp)
+                                .size(40.dp).clip(CircleShape)
+                                .background(NightSurface.copy(alpha = 0.85f))
+                                .clickableNoRipple { nav.push(FeedScreen()) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                EventMapIcons.Bell,
+                                contentDescription = "Уведомления",
+                                tint = Color.White,
+                                modifier = Modifier.size(21.dp),
+                            )
+                        }
+                    }
+                    // 🎮 Квесты (Q1, по дизайну — своя вкладка)
+                    3 -> QuestCatalogScreen().Content()
                     4 -> ProfileContent(
                         modifier = Modifier.fillMaxSize(),
-                        onLogout = { nav.replaceAll(SplashScreen()) },
+                        onLogout = {
+                            appLock.onLogout()
+                            nav.replaceAll(SplashScreen())
+                        },
                         onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
                         onEditProfile = { name, bio -> nav.push(EditProfileScreen(name, bio)) },
                         onOpenSettings = { nav.push(SettingsScreen()) },
-                        onOpenOrganizer = { nav.push(BusinessOrganizerScreen()) },
+                        onOpenOrganizer = { nav.push(BusinessGateScreen()) }, // гейт: промо / статус заявки / дашборд
+                        onOpenMyEvents = { nav.push(MyEventsScreen()) },
                     )
                     else -> NotificationsContent(Modifier.fillMaxSize())
                 }
@@ -113,6 +144,8 @@ class MainScreen : Screen {
             BottomNavBar(
                 selected = selected,
                 onSelect = { selected = it },
+                // Центр таббара — ＋ создать событие (привычный UX);
+                // съёмка момента 🎬 — из ленты «Сейчас» (кнопка в топбаре VideoFeedScreen).
                 onCreateClick = { nav.push(CreateEventScreen()) },
             )
         }
@@ -189,7 +222,55 @@ private fun CreateFab(onClick: () -> Unit) {
             .clickableNoRipple(onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text("+", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.offset(y = (-1).dp))
+        Icon(
+            EventMapIcons.Plus,
+            contentDescription = "Создать событие",
+            tint = Color.White,
+            modifier = Modifier.size(28.dp),
+        )
+    }
+}
+
+// Обёртка «Лента / Уведомления» (F1/F4) — вход по колокольчику с вкладки «Сейчас»
+private class FeedScreen : Screen {
+    @Composable
+    override fun Content() {
+        val nav = LocalNavigator.currentOrThrow
+        var tab by remember { mutableStateOf(0) }
+
+        Column(Modifier.fillMaxSize().background(NightBackground)) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 52.dp, start = 20.dp, end = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf("Лента", "Уведомления").forEachIndexed { i, label ->
+                    val active = tab == i
+                    Box(
+                        Modifier.clip(RoundedCornerShape(999.dp))
+                            .background(if (active) Violet600.copy(alpha = 0.28f) else NightSurface)
+                            .clickableNoRipple { tab = i }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    ) {
+                        Text(
+                            label,
+                            color = if (active) Color.White else NightTextTertiary,
+                            fontSize = 13.sp,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+            Box(Modifier.fillMaxSize()) {
+                if (tab == 0) {
+                    FeedContent(
+                        modifier = Modifier.fillMaxSize(),
+                        onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
+                        onOpenSubscriptions = { nav.push(SubscriptionsScreen()) },
+                    )
+                } else {
+                    NotificationsContent(Modifier.fillMaxSize())
+                }
+            }
+        }
     }
 }

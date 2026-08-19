@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,7 +88,7 @@ private val sampleOrgEvents = listOf(
 //  M7 · BusinessOrganizerScreen — дашборд организатора
 // ─────────────────────────────────────────────────────────────────────────────
 
-class BusinessOrganizerScreen : Screen {
+data class BusinessOrganizerScreen(val brand: String = "Мой бизнес") : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
@@ -111,7 +109,7 @@ class BusinessOrganizerScreen : Screen {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Дашборд организатора", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                    Text("AlmatyConcerts", fontSize = 12.sp, color = NightTextSecondary)
+                    Text(brand, fontSize = 12.sp, color = NightTextSecondary)
                 }
                 Box(
                     Modifier.size(36.dp).clip(CircleShape)
@@ -183,7 +181,26 @@ class BusinessOrganizerScreen : Screen {
                         Text("Создать событие", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+
+                // Промо-квест (конструктор; квест уйдёт на модерацию)
+                Box(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(54.dp)
+                        .clip(RoundedCornerShape(16.dp)).background(NightSurface)
+                        .border(1.dp, Violet600.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                        .clickableNoRipple { nav.push(QuestBuilderScreen()) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("🎮", fontSize = 16.sp)
+                        Text("Создать промо-квест", color = Violet400, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+                Text(
+                    "Цифры выше — демо до подключения реальной аналитики.",
+                    fontSize = 10.sp, color = NightTextTertiary,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                )
+                Spacer(Modifier.height(16.dp))
             }
         }
     }

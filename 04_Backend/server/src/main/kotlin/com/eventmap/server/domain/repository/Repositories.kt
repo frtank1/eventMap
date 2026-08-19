@@ -9,12 +9,16 @@ import com.eventmap.server.domain.model.Mission
 import com.eventmap.server.domain.model.TimeCapsule
 import com.eventmap.server.domain.model.Event
 import com.eventmap.server.domain.model.EventComment
+import com.eventmap.server.domain.model.EventRating
+import com.eventmap.server.domain.model.Notification
+import com.eventmap.server.domain.model.SubscriptionRequest
 import com.eventmap.server.domain.model.Bbox
 import com.eventmap.server.domain.model.PinAnimation
 import com.eventmap.server.domain.model.Quest
 import com.eventmap.server.domain.model.QuestRun
 import com.eventmap.server.domain.model.EventQuery
 import com.eventmap.server.domain.model.Friend
+import com.eventmap.server.domain.model.FriendLocation
 import com.eventmap.server.domain.model.Invitation
 import com.eventmap.server.domain.model.Organizer
 import com.eventmap.server.domain.model.Ticket
@@ -25,17 +29,70 @@ import com.eventmap.server.domain.model.User
 interface EventRepository {
     suspend fun search(query: EventQuery): List<Event>
     suspend fun byId(id: String): Event?
+    suspend fun byIds(ids: List<String>): List<Event>
     suspend fun byOrganizer(organizerId: String): List<Event>
+    suspend fun byOrganizers(organizerIds: List<String>, limit: Int = 50): List<Event>
+    suspend fun searchText(q: String, limit: Int = 20): List<Event>
+    /** Отличные категории событий, содержащие q (жанры для поиска G2) */
+    suspend fun categoriesLike(q: String, limit: Int = 20): List<String>
     suspend fun create(draft: Event): Event
+    /** Обновить контент-поля события (счётчики/статус не трогаем). @return null — не найдено */
+    suspend fun update(id: String, draft: Event): Event?
+    /** @return false — события не было */
+    suspend fun delete(id: String): Boolean
+    /** Переключить независимый сигнал пользователя: confirm | interest. enabled + новый счётчик. */
+    suspend fun toggleSignal(eventId: String, userId: String, type: String): Pair<Boolean, Int>?
+    /** Запрос на вступление; open сразу approved, approval остаётся pending, invite отклоняется. */
+    suspend fun requestJoin(eventId: String, userId: String, message: String): String?
+    /** Автор принимает/отклоняет заявку. null — событие/заявка не найдены или не автор. */
+    suspend fun reviewJoin(eventId: String, ownerId: String, userId: String, approve: Boolean): String?
+    /** Ближайший живой сигнал той же категории/темы для объединения свидетельств. */
+    suspend fun findLiveSignalCandidate(draft: Event, radiusDegrees: Double = 0.002): Event?
 }
 
 interface OrganizerRepository {
     suspend fun byId(id: String): Organizer?
+    suspend fun searchByName(q: String, limit: Int = 20): List<Organizer>
 }
 
 interface UserRepository {
     suspend fun byEmail(email: String): User?
     suspend fun create(email: String, name: String, passwordHash: String): User
+    suspend fun byId(id: String): User?
+    suspend fun byIds(ids: List<String>): List<User>
+    suspend fun searchByName(q: String, limit: Int = 20): List<User>
+    /** @return null — пользователь не найден */
+    suspend fun updateProfile(id: String, displayName: String?, bio: String?): User?
+    suspend fun saveInterests(id: String, interests: List<String>): Boolean
+}
+
+// ===== Профиль/подписки/уведомления/оценки (H, F, G · V9) =====
+
+interface SubscriptionRepository {
+    /** @return true — подписка создана сейчас (false — уже была) */
+    suspend fun subscribe(userId: String, organizerId: String): Boolean
+    suspend fun unsubscribe(userId: String, organizerId: String)
+    suspend fun isSubscribed(userId: String, organizerId: String): Boolean
+    suspend fun organizersOf(userId: String): List<Organizer>
+    suspend fun countFor(userId: String): Int
+    suspend fun subscriberCount(organizerId: String): Int
+    /** ids организаторов, на которых подписан userId (для ленты F1→feed) */
+    suspend fun organizerIdsOf(userId: String): List<String>
+    suspend fun requestsFor(userId: String): List<SubscriptionRequest>
+    /** @return false — заявка не найдена или уже обработана */
+    suspend fun respondRequest(id: String, targetUserId: String, approve: Boolean): Boolean
+}
+
+interface NotificationRepository {
+    suspend fun add(userId: String, type: String, text: String)
+    suspend fun listFor(userId: String, limit: Int = 50): List<Notification>
+    suspend fun markAllRead(userId: String)
+}
+
+interface RatingRepository {
+    /** Upsert оценки; пересчитывает events.rating_avg / rating_count. @return null — событие не найдено */
+    suspend fun rate(eventId: String, userId: String, value: Int, review: String, tags: List<String> = emptyList()): EventRating?
+    suspend fun byEvent(eventId: String, limit: Int = 50): List<EventRating>
 }
 
 data class RefreshTokenRecord(val tokenHash: String, val userId: String, val expiresAtMs: Long, val revoked: Boolean)
@@ -68,6 +125,10 @@ interface AttendanceRepository {
     suspend fun get(userId: String, eventId: String): Attendance?
     /** going из attendance + анонимные билеты «+N»; результат кэшируется в events.going_count */
     suspend fun countGoing(eventId: String): Long
+    /** История посещений юзера (H1 «История»): id событий с отметкой type */
+    suspend fun eventIdsOf(userId: String, type: String): List<String>
+    /** Участники события (D1c): id юзеров с отметкой type */
+    suspend fun userIdsOf(eventId: String, type: String): List<String>
 }
 
 // ===== Бизнес-аккаунты (M, API §8.1) =====
@@ -90,6 +151,8 @@ interface BusinessRepository {
     suspend fun review(id: String, approved: Boolean, reason: String?): BusinessAccount?
     /** Пин (M4). @return null — нет аккаунта */
     suspend fun updatePin(userId: String, logoUrl: String?, pinColor: String?, animationId: String?): BusinessAccount?
+    /** Заявки по статусу — для админ-модерации (/admin) */
+    suspend fun listByStatus(status: String, limit: Int = 200): List<BusinessAccount>
 }
 
 interface PinAnimationRepository {
@@ -119,6 +182,16 @@ interface CapsuleRepository {
 }
 
 // ===== Друзья и приглашения (N, API §8.7) =====
+
+/** Гео-шеринг друзей (C10/L5, V12). Приватность: см. FriendLocationRepositoryImpl. */
+interface FriendLocationRepository {
+    /** Upsert моей позиции (клиент шлёт только при включённом тумблере I2) */
+    suspend fun share(userId: String, lat: Double, lng: Double)
+    /** Перестать делиться (тумблер выключен) */
+    suspend fun stop(userId: String)
+    /** Свежие (≤ maxAgeMs) позиции МОИХ друзей, которые делятся */
+    suspend fun friendsOf(userId: String, maxAgeMs: Long): List<FriendLocation>
+}
 
 interface FriendRepository {
     /** @return false — заявка/дружба уже существует */
@@ -152,11 +225,17 @@ interface QuestRepository {
     /** Отметить точку; @return обновлённый run. Если все точки закрыты — finished + prizeQr */
     suspend fun checkin(runId: String, pointId: String, proofType: String, mediaUrl: String?): QuestRun
     suspend fun review(questId: String, approved: Boolean): Quest?
+    /** Квесты по статусу — для админ-модерации (/admin) */
+    suspend fun listByStatus(status: String, limit: Int = 200): List<Quest>
 }
 
 interface XpRepository {
     suspend fun add(userId: String, source: String, sourceId: String?, amount: Int)
     suspend fun totalFor(userId: String): Long
+    /** Топ игроков по XP: (userId, name, xp) по убыванию — лидерборд R2 */
+    suspend fun topUsers(limit: Int = 50): List<Triple<String, String, Long>>
+    /** Суммы XP по конкретным юзерам (скоуп «друзья») */
+    suspend fun totalsFor(userIds: List<String>): Map<String, Long>
 }
 
 // ===== Билеты (P, API §8.2) =====
@@ -202,6 +281,12 @@ interface MediaRepository {
 
     suspend fun byEvent(eventId: String): List<Media>
     suspend fun byId(id: String): Media?
+}
+
+/** Фолбэк-хранилище байтов в Postgres (V10) — когда S3/R2 не настроены. */
+interface MediaBlobRepository {
+    suspend fun save(key: String, contentType: String, bytes: ByteArray)
+    suspend fun get(key: String): Pair<String, ByteArray>? // contentType to bytes
 }
 
 // ===== Видео-рилсы (E1/E2 «Сейчас») =====

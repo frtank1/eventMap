@@ -16,11 +16,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import cafe.adriel.voyager.koin.koinScreenModel
+import com.eventmap.quest.ui.viewmodel.QuestCheckInViewModel
+import com.eventmap.views.qr.QrScannerView
+import com.eventmap.views.qr.qrScannerAvailable
+import io.github.vinceglb.filekit.core.FileKit
+import io.github.vinceglb.filekit.core.PickerMode
+import io.github.vinceglb.filekit.core.PickerType
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,14 +65,48 @@ data class QuestCheckInScreen(val point: QuestPoint, val quest: QuestItem) : Scr
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
-        var checked by remember { mutableStateOf(false) }
-        val isLast = quest.pointsDone + 1 >= quest.pointsTotal
+        // Реальный чек-ин через POST /quests/{id}/points/{pid}/checkin (sample-квесты — локально)
+        val vm = koinScreenModel<QuestCheckInViewModel>()
+        val state by vm.state.collectAsState()
+        var photoTooBig by remember { mutableStateOf(false) }
 
-        if (checked) {
-            if (isLast) QuestFinishView(quest = quest, onClose = { nav.popUntil { it is QuestCatalogScreen } })
-            else CheckedView(point = point, onContinue = { nav.pop() })
-        } else {
-            CheckInView(point = point, onCheckIn = { checked = true }, onBack = { nav.pop() })
+        when (val s = state) {
+            is QuestCheckInViewModel.State.Success ->
+                if (s.finished) {
+                    QuestFinishView(
+                        quest = quest,
+                        xpGained = s.xpGained,
+                        prizeQr = s.prizeQr,
+                        onClose = { nav.popUntilRoot() }, // каталог квестов — таб MainScreen, не в стеке
+                    )
+                } else {
+                    CheckedView(point = point, onContinue = { nav.pop() })
+                }
+            else -> {
+                val scope = rememberCoroutineScope()
+                CheckInView(
+                    point = point,
+                    loadingStage = (state as? QuestCheckInViewModel.State.Loading)?.stage,
+                    error = (state as? QuestCheckInViewModel.State.Error)?.message,
+                    onCheckIn = { qr -> vm.checkin(point, qrPayload = qr) },
+                    // Q3 photo: снимок из галереи (как обложка в CreateEvent) → upload → чек-ин
+                    onPickPhoto = {
+                        scope.launch {
+                            val file = FileKit.pickFile(type = PickerType.Image, mode = PickerMode.Single) ?: return@launch
+                            val bytes = file.readBytes()
+                            if (bytes.size > MAX_PHOTO_BYTES) {
+                                vm.reset() // сбросим прошлую ошибку, покажем актуальную
+                                photoTooBig = true
+                                return@launch
+                            }
+                            photoTooBig = false
+                            vm.checkinWithPhoto(point, bytes, imageContentType(file.name))
+                        }
+                    },
+                    photoTooBig = photoTooBig,
+                    onBack = { nav.pop() },
+                )
+            }
         }
     }
 }
@@ -70,7 +116,17 @@ data class QuestCheckInScreen(val point: QuestPoint, val quest: QuestItem) : Scr
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CheckInView(point: QuestPoint, onCheckIn: () -> Unit, onBack: () -> Unit) {
+private fun CheckInView(
+    point: QuestPoint,
+    loadingStage: String?,
+    error: String?,
+    onCheckIn: (qrPayload: String?) -> Unit,
+    onPickPhoto: () -> Unit,
+    photoTooBig: Boolean,
+    onBack: () -> Unit,
+) {
+    val loading = loadingStage != null
+    var qrCode by remember { mutableStateOf("") }
     Column(
         Modifier
             .fillMaxSize()
@@ -143,6 +199,58 @@ private fun CheckInView(point: QuestPoint, onCheckIn: () -> Unit, onBack: () -> 
 
         Spacer(Modifier.weight(1f))
 
+        // QR-условие: сканер камерой (Android/iOS); ручной ввод — фолбэк и для desktop
+        if (point.checkInType == CheckInType.Qr) {
+            if (qrScannerAvailable && !loading) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(1.dp, Violet600.copy(alpha = 0.35f), RoundedCornerShape(16.dp)),
+                ) {
+                    QrScannerView(
+                        onResult = { code -> onCheckIn(code) }, // распознали → сразу чек-ин
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Text(
+                        "Наведи на QR на чеке",
+                        color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            TextField(
+                value = qrCode,
+                onValueChange = { qrCode = it },
+                placeholder = { Text("Или введи код вручную", color = NightTextSecondary, fontSize = 14.sp) },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = NightSurface,
+                    unfocusedContainerColor = NightSurface,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Violet400,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
+        // Ошибка бэка (TOO_FAR / QR_INVALID / CHAIN_LOCKED / гео / загрузка фото)
+        val shownError = if (photoTooBig) "Фото больше 8 МБ — выбери поменьше" else error
+        if (shownError != null) {
+            Text(
+                shownError,
+                color = Color(0xFFFF6B81), fontSize = 13.sp, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+            )
+        }
+
         // CTA
         Box(
             Modifier
@@ -150,14 +258,20 @@ private fun CheckInView(point: QuestPoint, onCheckIn: () -> Unit, onBack: () -> 
                 .height(54.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Brush.linearGradient(BrandGradient))
-                .clickableNoRipple(onCheckIn),
+                .clickableNoRipple {
+                    if (!loading) {
+                        if (point.checkInType == CheckInType.Photo) onPickPhoto()
+                        else onCheckIn(qrCode.trim().ifEmpty { null })
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                when (point.checkInType) {
-                    CheckInType.Geo   -> "✓ Я здесь"
-                    CheckInType.Photo -> "📷 Сделать фото"
-                    CheckInType.Qr    -> "📷 Сканировать QR"
+                when {
+                    loading -> loadingStage ?: "Проверяем…"
+                    point.checkInType == CheckInType.Geo -> "✓ Я здесь"
+                    point.checkInType == CheckInType.Photo -> "📷 Выбрать фото"
+                    else -> "✓ Подтвердить код"
                 },
                 color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
             )
@@ -202,7 +316,7 @@ private fun CheckedView(point: QuestPoint, onContinue: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun QuestFinishView(quest: QuestItem, onClose: () -> Unit) {
+private fun QuestFinishView(quest: QuestItem, xpGained: Int, prizeQr: String?, onClose: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(NightBackground).padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -229,12 +343,18 @@ private fun QuestFinishView(quest: QuestItem, onClose: () -> Unit) {
         ) {
             Text("🎁", fontSize = 36.sp)
             Text(quest.rewardLabel, fontSize = 18.sp, color = Soft, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
-            // QR-заглушка
+            // QR-код приза с бэка (prize_qr) — показываем кассиру
             Box(
                 Modifier.size(100.dp).clip(RoundedCornerShape(10.dp)).background(Color.White),
                 contentAlignment = Alignment.Center,
-            ) { Text("QR", fontSize = 14.sp, color = Color.Black, fontWeight = FontWeight.Bold) }
-            Text("Действует 24 часа", fontSize = 11.sp, color = NightTextSecondary)
+            ) {
+                Text(
+                    prizeQr?.take(8) ?: "QR",
+                    fontSize = if (prizeQr != null) 11.sp else 14.sp,
+                    color = Color.Black, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                )
+            }
+            Text(if (xpGained > 0) "🏅 +$xpGained XP · действует 24 часа" else "Действует 24 часа", fontSize = 11.sp, color = NightTextSecondary)
         }
 
         Spacer(Modifier.height(24.dp))
@@ -269,4 +389,18 @@ private fun QuestFinishView(quest: QuestItem, onClose: () -> Unit) {
             ) { Text("На главную", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold) }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Фото-чекин: лимит и content-type (как в CreateEventScreen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+private const val MAX_PHOTO_BYTES = 8 * 1024 * 1024
+
+private fun imageContentType(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+    "png" -> "image/png"
+    "webp" -> "image/webp"
+    "heic", "heif" -> "image/heic"
+    "gif" -> "image/gif"
+    else -> "image/jpeg"
 }

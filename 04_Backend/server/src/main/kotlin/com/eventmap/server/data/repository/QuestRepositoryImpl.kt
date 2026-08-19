@@ -5,6 +5,7 @@ import com.eventmap.server.data.db.QuestCheckinsTable
 import com.eventmap.server.data.db.QuestPointsTable
 import com.eventmap.server.data.db.QuestRunsTable
 import com.eventmap.server.data.db.QuestsTable
+import com.eventmap.server.data.db.UsersTable
 import com.eventmap.server.data.db.XpEventsTable
 import com.eventmap.server.domain.model.Bbox
 import com.eventmap.server.domain.model.Quest
@@ -13,7 +14,9 @@ import com.eventmap.server.domain.model.QuestRun
 import com.eventmap.server.domain.repository.QuestRepository
 import com.eventmap.server.domain.repository.XpRepository
 import kotlinx.coroutines.Dispatchers
+import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
@@ -122,6 +125,14 @@ class QuestRepositoryImpl : QuestRepository {
         if (updated == 0) null else byIdInternal(questId, null)
     }
 
+    override suspend fun listByStatus(status: String, limit: Int): List<Quest> = qtx {
+        QuestsTable.selectAll()
+            .where { QuestsTable.status eq status }
+            .limit(limit)
+            .map { it[QuestsTable.id] }
+            .mapNotNull { byIdInternal(it, null) }
+    }
+
     // внутри открытой транзакции
     private fun byIdInternal(id: String, viewerId: String?): Quest? {
         val q = QuestsTable.selectAll().where { QuestsTable.id eq id }.singleOrNull() ?: return null
@@ -189,5 +200,25 @@ class XpRepositoryImpl : XpRepository {
         XpEventsTable.select(sumCol)
             .where { XpEventsTable.userId eq userId }
             .single()[sumCol]?.toLong() ?: 0L
+    }
+
+    override suspend fun topUsers(limit: Int): List<Triple<String, String, Long>> = qtx {
+        val sumCol = XpEventsTable.amount.sum()
+        XpEventsTable
+            .join(UsersTable, JoinType.INNER, onColumn = XpEventsTable.userId, otherColumn = UsersTable.id)
+            .select(XpEventsTable.userId, UsersTable.name, sumCol)
+            .groupBy(XpEventsTable.userId, UsersTable.name)
+            .orderBy(sumCol, SortOrder.DESC)
+            .limit(limit)
+            .map { Triple(it[XpEventsTable.userId], it[UsersTable.name], it[sumCol]?.toLong() ?: 0L) }
+    }
+
+    override suspend fun totalsFor(userIds: List<String>): Map<String, Long> = qtx {
+        if (userIds.isEmpty()) return@qtx emptyMap()
+        val sumCol = XpEventsTable.amount.sum()
+        XpEventsTable.select(XpEventsTable.userId, sumCol)
+            .where { XpEventsTable.userId inList userIds }
+            .groupBy(XpEventsTable.userId)
+            .associate { it[XpEventsTable.userId] to (it[sumCol]?.toLong() ?: 0L) }
     }
 }

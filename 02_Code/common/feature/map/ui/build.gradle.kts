@@ -1,5 +1,6 @@
 plugins {
     id("core.kmp.compose")
+    alias(libs.plugins.serialization) // DTO пульса карты (data/MapPulseData.kt)
 }
 
 kotlin {
@@ -15,6 +16,8 @@ kotlin {
             implementation(libs.voyager.screenModel) // ScreenModel — супертип BaseScreenModel
             implementation(projects.common.core.ui)
             implementation(projects.common.core.network)
+            implementation(projects.common.core.platform) // GeoProvider (гео-пинг I2)
+            implementation(projects.common.core.datastore) // PulseSettings (opt-in)
             implementation(projects.common.feature.event.domain)
         }
 
@@ -34,6 +37,8 @@ kotlin {
     // Mapbox iOS SDK подключается через cocoapods — см. MAPBOX_SETUP.md
 }
 
-android {
-    namespace = "com.eventmap.feature.map.ui"
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.map.ui"
+    }
 }

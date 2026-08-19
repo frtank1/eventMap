@@ -1,7 +1,8 @@
-// ДРАФТ (аудит 13.06.2026). Активировать: include(":common:feature:business:ui") в
-// settings.gradle.kts + зависимость в composeApp. До этого Gradle файл не читает.
+// Активен (include в settings.gradle.kts, зависимость composeApp).
+// Подключён к бэку /business/* и POST /quests (07.07.2026).
 plugins {
     id("core.kmp.compose")
+    alias(libs.plugins.serialization) // DTO бизнеса/квестов (data/BusinessData.kt)
 }
 kotlin {
     sourceSets {
@@ -19,7 +20,11 @@ kotlin {
 
             implementation(libs.koin.core)
             implementation(libs.compottie)
+            implementation(libs.filekit) // фото документов для заявки (M5)
+            implementation(libs.kotlinx.datetime) // сроки квеста (endsAt = сегодня + N дней)
             implementation(projects.common.core.ui)
+            implementation(projects.common.core.network)
+            implementation(projects.common.core.platform) // GeoProvider: «моя позиция» в точках квеста
         }
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -27,4 +32,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.business.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.business.ui"
+    }
+}

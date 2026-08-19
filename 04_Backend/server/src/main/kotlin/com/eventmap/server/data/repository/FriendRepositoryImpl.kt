@@ -1,16 +1,20 @@
 package com.eventmap.server.data.repository
 
 import com.eventmap.server.data.db.EventsTable
+import com.eventmap.server.data.db.FriendLocationsTable
 import com.eventmap.server.data.db.FriendshipsTable
 import com.eventmap.server.data.db.InvitationGuestsTable
 import com.eventmap.server.data.db.InvitationsTable
 import com.eventmap.server.data.db.UsersTable
 import com.eventmap.server.domain.model.Friend
+import com.eventmap.server.domain.model.FriendLocation
 import com.eventmap.server.domain.model.Invitation
 import com.eventmap.server.domain.model.InvitationGuest
+import com.eventmap.server.domain.repository.FriendLocationRepository
 import com.eventmap.server.domain.repository.FriendRepository
 import com.eventmap.server.domain.repository.InvitationRepository
 import kotlinx.coroutines.Dispatchers
+import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -19,6 +23,7 @@ import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.upsert
 import java.util.UUID
 
 private suspend fun <T> ftx(block: () -> T) = newSuspendedTransaction(Dispatchers.IO) { block() }
@@ -180,4 +185,58 @@ class InvitationRepositoryImpl : InvitationRepository {
             guests = guests,
         )
     }
+}
+
+// ===== Гео-шеринг друзей (C10/L5, V12) =====
+// Приватность: friendsOf отдаёт только позиции ПОДТВЕРЖДЁННЫХ друзей (accepted)
+// и только свежие (updated_at_ms ≥ now - maxAgeMs). Своя строка удаляется stop()'ом.
+class FriendLocationRepositoryImpl : FriendLocationRepository {
+
+    override suspend fun share(userId: String, lat: Double, lng: Double): Unit =
+        newSuspendedTransaction(Dispatchers.IO) {
+            FriendLocationsTable.upsert {
+                it[FriendLocationsTable.userId] = userId
+                it[FriendLocationsTable.lat] = lat
+                it[FriendLocationsTable.lng] = lng
+                it[updatedAtMs] = System.currentTimeMillis()
+            }
+        }
+
+    override suspend fun stop(userId: String): Unit =
+        newSuspendedTransaction(Dispatchers.IO) {
+            FriendLocationsTable.deleteWhere { FriendLocationsTable.userId eq userId }
+        }
+
+    override suspend fun friendsOf(userId: String, maxAgeMs: Long): List<FriendLocation> =
+        newSuspendedTransaction(Dispatchers.IO) {
+            // id подтверждённых друзей
+            val rows = FriendshipsTable.selectAll()
+                .where {
+                    ((FriendshipsTable.userA eq userId) or (FriendshipsTable.userB eq userId)) and
+                        (FriendshipsTable.status eq "accepted")
+                }
+                .toList()
+            val friendIds = rows.map {
+                if (it[FriendshipsTable.userA] == userId) it[FriendshipsTable.userB] else it[FriendshipsTable.userA]
+            }
+            if (friendIds.isEmpty()) return@newSuspendedTransaction emptyList()
+
+            val freshAfter = System.currentTimeMillis() - maxAgeMs
+            FriendLocationsTable
+                .join(UsersTable, JoinType.LEFT, onColumn = FriendLocationsTable.userId, otherColumn = UsersTable.id)
+                .selectAll()
+                .where {
+                    (FriendLocationsTable.userId inList friendIds) and
+                        (FriendLocationsTable.updatedAtMs greaterEq freshAfter)
+                }
+                .map {
+                    FriendLocation(
+                        userId = it[FriendLocationsTable.userId],
+                        name = it.getOrNull(UsersTable.name) ?: "",
+                        lat = it[FriendLocationsTable.lat],
+                        lng = it[FriendLocationsTable.lng],
+                        updatedAtMs = it[FriendLocationsTable.updatedAtMs],
+                    )
+                }
+        }
 }

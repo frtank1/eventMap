@@ -57,8 +57,25 @@ import com.eventmap.server.domain.usecase.LoginUseCase
 import com.eventmap.server.domain.usecase.LogoutUseCase
 import com.eventmap.server.domain.usecase.RefreshSessionUseCase
 import com.eventmap.server.domain.usecase.RegisterUseCase
+import com.eventmap.server.domain.usecase.GetMyProfileUseCase
+import com.eventmap.server.domain.usecase.UpdateMyProfileUseCase
+import com.eventmap.server.domain.usecase.SaveInterestsUseCase
+import com.eventmap.server.domain.usecase.GetUserHistoryUseCase
+import com.eventmap.server.domain.usecase.GetEventParticipantsUseCase
+import com.eventmap.server.domain.usecase.GetFeedUseCase
+import com.eventmap.server.domain.usecase.GetNotificationsUseCase
+import com.eventmap.server.domain.usecase.MarkNotificationsReadUseCase
+import com.eventmap.server.domain.usecase.GetSubscriptionsUseCase
+import com.eventmap.server.domain.usecase.SubscribeOrganizerUseCase
+import com.eventmap.server.domain.usecase.GetSubscriptionRequestsUseCase
+import com.eventmap.server.domain.usecase.RespondSubscriptionRequestUseCase
+import com.eventmap.server.domain.usecase.SearchUseCase
+import com.eventmap.server.domain.usecase.RateEventUseCase
+import com.eventmap.server.domain.usecase.GetEventRatingsUseCase
+import com.eventmap.server.domain.usecase.GetEventTicketStatusUseCase
 import com.eventmap.server.presentation.dto.ErrorResponse
 import com.eventmap.server.presentation.routes.authRoutes
+import com.eventmap.server.presentation.routes.adminRoutes
 import com.eventmap.server.presentation.routes.businessRoutes
 import com.eventmap.server.presentation.routes.eventRoutes
 import com.eventmap.server.presentation.routes.friendRoutes
@@ -72,6 +89,9 @@ import com.eventmap.server.presentation.routes.organizerRoutes
 import com.eventmap.server.presentation.routes.questRoutes
 import com.eventmap.server.presentation.routes.socialRoutes
 import com.eventmap.server.presentation.routes.ticketRoutes
+import com.eventmap.server.presentation.routes.userRoutes
+import com.eventmap.server.presentation.routes.feedRoutes
+import com.eventmap.server.presentation.routes.searchRoutes
 import com.eventmap.server.security.JwtService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -92,6 +112,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
@@ -109,6 +130,14 @@ fun Application.module() {
 
     val config: AppConfig by inject()
     DatabaseFactory.init(config)
+
+    // Демо-сид (только dev): пустая база после первого деплоя → карта с событиями Астаны.
+    // Идемпотентно — при непустой базе no-op. Прод не трогаем.
+    if (config.appEnv == "dev") {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            runCatching { com.eventmap.server.data.seed.DemoSeed.seedIfEmpty() }
+        }
+    }
 
     install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; prettyPrint = true }) }
     install(CallLogging)
@@ -181,6 +210,10 @@ fun Application.module() {
     val sendFriendRequest: SendFriendRequestUseCase by inject()
     val respondFriend: RespondFriendRequestUseCase by inject()
     val getFriends: GetFriendsUseCase by inject()
+    val shareLocation: com.eventmap.server.domain.usecase.ShareMyLocationUseCase by inject()
+    val stopSharing: com.eventmap.server.domain.usecase.StopSharingLocationUseCase by inject()
+    val friendLocations: com.eventmap.server.domain.usecase.GetFriendLocationsUseCase by inject()
+    val waveToFriend: com.eventmap.server.domain.usecase.WaveToFriendUseCase by inject()
     val createInvitation: CreateInvitationUseCase by inject()
     val invitationForGuest: GetInvitationForGuestUseCase by inject()
     val invitationByToken: GetInvitationByTokenUseCase by inject()
@@ -190,27 +223,60 @@ fun Application.module() {
     val missions: GetMissionsUseCase by inject()
     val fog: GetFogUseCase by inject()
     val districtLeaderboard: GetDistrictLeaderboardUseCase by inject()
+    val userLeaderboard: com.eventmap.server.domain.usecase.GetUserLeaderboardUseCase by inject()
     val createCapsule: CreateCapsuleUseCase by inject()
     val capsulesNearby: GetCapsulesNearbyUseCase by inject()
     val openCapsule: OpenCapsuleUseCase by inject()
     val pulseService: PulseService by inject()
     pulseService.startJob() // агрегация пульса каждые 30 сек + TTL-чистка пингов
 
+    // V9: профиль H1, лента/уведомления F4, подписки F1, поиск G2, оценки P4
+    val getMyProfile: GetMyProfileUseCase by inject()
+    val updateMyProfile: UpdateMyProfileUseCase by inject()
+    val saveInterests: SaveInterestsUseCase by inject()
+    val getUserHistory: GetUserHistoryUseCase by inject()
+    val eventParticipants: GetEventParticipantsUseCase by inject()
+    val getFeed: GetFeedUseCase by inject()
+    val getNotifications: GetNotificationsUseCase by inject()
+    val markNotificationsRead: MarkNotificationsReadUseCase by inject()
+    val getSubscriptions: GetSubscriptionsUseCase by inject()
+    val subscribeOrganizer: SubscribeOrganizerUseCase by inject()
+    val getSubscriptionRequests: GetSubscriptionRequestsUseCase by inject()
+    val respondSubscriptionRequest: RespondSubscriptionRequestUseCase by inject()
+    val searchUseCase: SearchUseCase by inject()
+    val rateEvent: RateEventUseCase by inject()
+    val eventRatings: GetEventRatingsUseCase by inject()
+    val eventTicketStatus: GetEventTicketStatusUseCase by inject()
+    val mediaBlobs: com.eventmap.server.domain.repository.MediaBlobRepository by inject()
+    val businessRepository: com.eventmap.server.domain.repository.BusinessRepository by inject()
+    val questRepository: com.eventmap.server.domain.repository.QuestRepository by inject()
+    val updateEvent: com.eventmap.server.domain.usecase.UpdateEventUseCase by inject()
+    val deleteEvent: com.eventmap.server.domain.usecase.DeleteEventUseCase by inject()
+    val eventRepository: com.eventmap.server.domain.repository.EventRepository by inject()
+
     routing {
         // Health-check для Render/любого хоста — должен возвращать 200 без БД и авторизации.
         get("/health") { call.respondText("OK") }
-        authRoutes(register, login, issueTokens, refreshSession, logout)
-        eventRoutes(getEvents, getEvent, createEvent)
-        mediaRoutes(presignUpload, confirmMedia, eventMedia)
+        authRoutes(register, login, issueTokens, refreshSession, logout, saveInterests)
+        eventRoutes(
+            getEvents, getEvent, createEvent, updateEvent, deleteEvent, getOrganizerEvents,
+            getFriends, eventParticipants, eventRatings, rateEvent, eventTicketStatus, purchase,
+            eventRepository,
+        )
+        mediaRoutes(presignUpload, confirmMedia, eventMedia, mediaBlobs, config)
         videoRoutes(videoFeed, reactVideo, createVideo)
         pushRoutes(registerPushToken, sendPush, config.adminKey)
-        organizerRoutes(getOrganizer, getOrganizerEvents)
+        organizerRoutes(getOrganizer, getOrganizerEvents, subscribeOrganizer)
         socialRoutes(getComments, addComment, toggleLike, toggleReminder, attend)
         ticketRoutes(purchase, myTickets, ticketQr, checkinTicket)
         businessRoutes(applyBusiness, myBusiness, pinAnimations, updateBusinessPin, reviewBusiness, addAnimation, config.adminKey)
         questRoutes(createQuest, questsNearby, getQuest, questCheckin, receiptCode, reviewQuest, config.adminKey)
-        friendRoutes(sendFriendRequest, respondFriend, getFriends, createInvitation, invitationForGuest, invitationByToken, rsvp, rsvpDashboard)
-        gameRoutes(gameProfile, missions, fog, districtLeaderboard, createCapsule, capsulesNearby, openCapsule)
+        friendRoutes(sendFriendRequest, respondFriend, getFriends, createInvitation, invitationForGuest, invitationByToken, rsvp, rsvpDashboard, shareLocation, stopSharing, friendLocations, waveToFriend)
+        gameRoutes(gameProfile, missions, fog, districtLeaderboard, userLeaderboard, createCapsule, capsulesNearby, openCapsule)
         mapRoutes(pulseService)
+        userRoutes(getMyProfile, updateMyProfile, getUserHistory)
+        feedRoutes(getFeed, getNotifications, markNotificationsRead, getSubscriptions, getSubscriptionRequests, respondSubscriptionRequest)
+        searchRoutes(searchUseCase)
+        adminRoutes(businessRepository, questRepository, config.adminKey) // /admin — модерация бизнесов и квестов
     }
 }

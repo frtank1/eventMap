@@ -158,6 +158,20 @@ class AttendanceRepositoryImpl : AttendanceRepository {
             ?.let { Attendance(it[AttendanceTable.userId], it[AttendanceTable.eventId], it[AttendanceTable.type]) }
     }
 
+    // История H1: id событий юзера с отметкой type (was | going)
+    override suspend fun eventIdsOf(userId: String, type: String): List<String> = tx {
+        AttendanceTable.selectAll()
+            .where { (AttendanceTable.userId eq userId) and (AttendanceTable.type eq type) }
+            .map { it[AttendanceTable.eventId] }
+    }
+
+    // Участники D1c: id юзеров с отметкой type
+    override suspend fun userIdsOf(eventId: String, type: String): List<String> = tx {
+        AttendanceTable.selectAll()
+            .where { (AttendanceTable.eventId eq eventId) and (AttendanceTable.type eq type) }
+            .map { it[AttendanceTable.userId] }
+    }
+
     // правило §8.2: счётчик = attendance(going) + анонимные активные билеты;
     // кэшируем в events.going_count, чтобы списки карты не считали на лету
     override suspend fun countGoing(eventId: String): Long = tx {

@@ -14,6 +14,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.feature.auth.data"
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.auth.data"
+    }
 }

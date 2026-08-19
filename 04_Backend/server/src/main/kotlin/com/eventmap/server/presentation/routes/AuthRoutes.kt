@@ -5,9 +5,11 @@ import com.eventmap.server.domain.usecase.LoginUseCase
 import com.eventmap.server.domain.usecase.LogoutUseCase
 import com.eventmap.server.domain.usecase.RefreshSessionUseCase
 import com.eventmap.server.domain.usecase.RegisterUseCase
+import com.eventmap.server.domain.usecase.SaveInterestsUseCase
 import com.eventmap.server.domain.usecase.SessionTokens
 import com.eventmap.server.presentation.dto.AuthResponse
 import com.eventmap.server.presentation.dto.ErrorResponse
+import com.eventmap.server.presentation.dto.InterestsRequest
 import com.eventmap.server.presentation.dto.LoginRequest
 import com.eventmap.server.presentation.dto.RefreshRequest
 import com.eventmap.server.presentation.dto.RefreshResponse
@@ -15,6 +17,9 @@ import com.eventmap.server.presentation.dto.RegisterRequest
 import com.eventmap.server.presentation.dto.UserDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -26,6 +31,7 @@ fun Route.authRoutes(
     issueTokens: IssueTokensUseCase,
     refreshSession: RefreshSessionUseCase,
     logout: LogoutUseCase,
+    saveInterests: SaveInterestsUseCase,
 ) {
     post("/auth/register") {
         val body = call.receive<RegisterRequest>()
@@ -62,7 +68,17 @@ fun Route.authRoutes(
     }
     post("/auth/password/forgot") { call.respond(HttpStatusCode.OK) }
     post("/auth/password/reset") { call.respond(HttpStatusCode.OK) }
-    post("/auth/interests") { call.respond(HttpStatusCode.OK) }
+
+    // Интересы A8: сохраняются в users.interests (персонализация карты/ленты)
+    authenticate("auth-jwt") {
+        post("/auth/interests") {
+            val uid = call.principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
+                ?: return@post call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            val body = call.receive<InterestsRequest>()
+            saveInterests(uid, body.interests)
+            call.respond(HttpStatusCode.OK)
+        }
+    }
 }
 
 private fun SessionTokens.toAuthResponse(userId: String, name: String) = AuthResponse(

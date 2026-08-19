@@ -17,6 +17,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.biometry"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.biometry"
+    }
 }

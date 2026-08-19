@@ -1,62 +1,51 @@
 # EventMap — current state (resume point)
 
-Last updated: 2026-06-18. Update this file whenever you finish a meaningful step so the
-next session resumes instantly. Full gap list: `05_Docs/GAPS_2026-06-18.md`.
+Last updated: **2026-06-23**. Обновляй после каждого значимого шага. Списки: пробелы —
+`05_Docs/GAPS_2026-06-18.md`; design-first бэклог — `05_Docs/BACKLOG_FIGMA_FIRST.md`;
+миграция AGP 9 — `02_Code/MIGRATION_AGP9.md` и `MIGRATION_AGP9_BEFORE_AFTER.md`.
 
-## Where we are
+## ⚠️ КРИТИЧНО: много работы НЕ закоммичено
+GitHub `main` остановился на коммите `6bbc35e` (фикс компиляции бэка). Всё, что после, —
+**только в рабочей папке на Mac, не в git:**
+- вся миграция на AGP 9 (40 модулей, разбиение `composeApp` → `:composeApp` + `:androidApp`,
+  convention-плагины, каталог, settings, root);
+- фикс карты (`EventOverlay` — привязка пинов);
+- создание события (`CreateEventViewModel` — координаты);
+- клиентская обвязка загрузки видео (`video` модуль: `publishReel`, `UploadModels`);
+- `KtorModule` — логирование `HEADERS` (без паролей); `PlatformSdk` baseUrl + debug.
+**Действие:** закоммитить и запушить (риск потери). Команда: `find .git -name '*.lock' -delete`
+(в `02_Code`/корне), потом `git add -A && git commit && git push origin main`.
 
-Chosen path: **deploy backend to the cloud (Render)**, then wire the mobile app to it.
-Backend business logic is largely done (~4500 lines, 40 endpoints, migrations V1–V5,
-JWT + refresh/logout). It has **never been compiled** — the Render Docker build
-(`gradle:8.7-jdk17`) will be the first real compile.
+## ✅ Что работает СЕЙЧАС
+- **Бэкенд live на Render:** https://eventmap-guo1.onrender.com — `/health`→OK, `/events`→сид
+  Астаны. Миграции V1–V8 применены. Авто-деплой по push в `main`. Free-тариф: спит после 15 мин
+  (холодный старт ~30–60с), free-Postgres живёт 30 дней.
+- **Мобилка собирается и запускается на Android** (после миграции AGP 9). Запуск — модуль
+  **`androidApp`** (не `composeApp` — он стал KMP-библиотекой).
+- **Регистрация работает** против боевого бэка (проверено вживую).
+- **Карта** грузит реальные события с `/events`; пины привязаны к гео-координатам (баг «едут с
+  картой» исправлен).
+- **Создание события**: форма → `POST /events`, события получают реальные координаты (центр
+  Астаны + разброс). Появляется на карте после перезахода (авто-refresh — TODO ниже).
 
-## Done
+## Архитектура после миграции AGP 9
+- `:composeApp` — KMP-библиотека (общий UI: App/MainScreen/PlatformSdk + входы desktop/iOS/wasm).
+- `:androidApp` — Android-приложение (`MainActivity`, `EventMapApp`, манифест, ресурсы, токен
+  Mapbox), зависит от `:composeApp`.
+- 40 библ. модулей — на `com.android.kotlin.multiplatform.library`, конфиг в `kotlin{android{}}`.
 
-- Diagnosed why the app is "raw": no live backend; dev stubs masked it.
-- Mobile prepped for go-live (all in `02_Code`):
-  - `PlatformSdk.kt` → `baseUrl = "https://REPLACE-ME.onrender.com/"` (placeholder).
-  - `AuthRepositoryImpl` → `orDevBypass` **removed** (no more fake token on net failure).
-  - `CreateEventViewModel.publish` → Failure no longer fakes `created=true`; shows error.
-- Deploy assets confirmed ready: `render.yaml`, `04_Backend/server/Dockerfile`, `DEPLOY.md`.
-- DI sanity-checked: all 51 `by inject()` in `Application.kt` are registered in `AppModule`.
-- Full static compile-readiness audit (2026-06-18): read all 37 backend `.kt` + build.gradle.kts,
-  cross-checked DI/signatures/DTO-model-table/imports/Exposed types/when-exhaustiveness/suspend/deps.
-  **0 high-confidence compile-breakers → likely-compiles.** Final green = the Render Docker build
-  (can't compile in sandbox: no JDK17, zero network).
-- NEW backend features implemented 2026-06-18 (Clean-arch slices, no new Gradle deps; second static
-  audit of all 18 new/modified files = 0 compile-breakers):
-  - **Media storage (V6):** `media` table, `StorageService` (S3/R2 SigV4 presign, pure JDK), ports
-    StoragePort/MediaRepository, routes `POST /media/presign`, `POST /media/confirm`, real
-    `GET /events/{id}/media`. Env: S3_ENDPOINT/REGION/BUCKET/ACCESS_KEY/SECRET_KEY/PUBLIC_BASE. Off → 503.
-  - **Video reels (V7):** `videos`+`video_likes`, routes `GET /videos/now`, `POST /videos/{id}/react`,
-    `POST /videos` — matches mobile VideoRemoteDataSource contract exactly.
-  - **Push (V8):** `device_tokens`, `FcmPushSender` (FCM HTTP v1 via JDK HttpClient + RS256 SA auth),
-    routes `POST /push/register`, `POST /admin/push/test` (X-Admin-Key). Env: FCM_PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY. Off → no-op.
-  - All wired in AppModule + Application. `.env.example` updated.
-  - Push triggers wired: friend-request (SendFriendRequestUseCase) + event-invitation
-    (CreateInvitationUseCase) → `notifications.sendToUser(...)`, fire-and-forget (runCatching).
-    Remaining triggers (reminders/moderation) use the same one-line pattern.
-  - TODO (follow-up, low-risk): real LIVE streaming needs an external media server
-    (Mux/Cloudflare Stream) — reels cover the in-app video.
-  - RUNTIME-UNVERIFIED: SigV4 presign and FCM RS256/JWT are correctness-sensitive — test against real
-    R2 + Firebase creds after deploy.
+## Дальше: оживляем фичи по одной (UI готов, логика — нет, ~90%)
+Порядок по核心-циклу. Сделано — создание. Очередь:
+1. (опц.) **авто-refresh карты** после создания — сейчас событие видно только после перезахода.
+2. **Карточка события** из пина → реальные данные `GET /events/{id}` (сейчас хардкод).
+3. **«Пойду»/RSVP**, медиа в событии (обложка — design-first), соцслой, видео-лента, бизнес, квесты.
+- Подключение уже нарисованных экранов = просто реализация (Figma не нужна). НОВЫЕ фичи —
+  через Figma (см. BACKLOG_FIGMA_FIRST.md: пикер карты, date-пикер, обложка, «открыть на карте»).
 
-## Blocked on the user (access, not instructions)
-
-1. Render: New → Blueprint → repo `frtank1/repo_event_map` → Apply.
-2. Set `CORS_HOSTS` in both Render services (prod won't boot without it).
-3. Provide the Live URL (`…onrender.com/health` → `OK`).
-
-## Next action (automatable, the moment a Live URL exists)
-
-- Replace the `baseUrl` placeholder in `PlatformSdk.kt` with the real URL.
-- For prod builds set `debug = false` in `PlatformSdk.kt` (debug logs tokens).
-- Smoke-test: register → login → create event → appears in `GET /events` / on the map.
-
-## Known caveats
-
-- Removing the dev-bypass means the app can't log in until a live backend exists. To play
-  with the UI offline again, gate the bypass behind `CoreConfig.demoMode` instead of
-  re-adding it raw.
-- iOS map is still a placeholder (no Mapbox SDK) — separate task, not part of go-live.
-- Render free plan sleeps after 15 min idle; free DB is time-limited.
+## Известные нюансы / долги
+- **Мобилка не запускает бэк локально** — `baseUrl` = боевой Render. Для локалки: `10.0.2.2:8080`.
+- Эмулятор иногда теряет DNS (лечится `-no-snapshot-load -dns-server 8.8.8.8` / реальным телефоном).
+- Перед релизом: `debug=false` в `PlatformSdk`.
+- iOS-карта — заглушка (Mapbox SDK не подключён). Отдельная задача.
+- R2/Firebase для медиа/push не заданы (env пусты) → эти эндпоинты выключены (503/no-op).
+- Безопасность: пароль, светившийся в логах ранее, считать скомпрометированным.

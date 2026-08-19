@@ -1,10 +1,12 @@
 package com.eventmap.map.screen
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +47,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,7 +68,9 @@ import com.eventmap.map.EventOverlay
 import com.eventmap.map.EventState
 import com.eventmap.map.LatLng
 import com.eventmap.map.MapEvent
+import com.eventmap.map.MapStyle
 import com.eventmap.theme.BrandGradient
+import com.eventmap.theme.EventMapIcons
 import com.eventmap.theme.LiveGradient
 import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightSurface
@@ -72,6 +79,7 @@ import com.eventmap.theme.NightTextTertiary
 import com.eventmap.theme.Violet400
 import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import kotlinx.coroutines.launch
 import org.koin.mp.KoinPlatform.getKoin
 
 private val Astana = LatLng(51.1283, 71.4306)
@@ -88,11 +96,22 @@ fun MapContent(
     onOpenEvent: (String) -> Unit = {},
     onSearchClick: () -> Unit = {},
     onOpenLive: () -> Unit = {},
+    onRecordMoment: (eventId: String, title: String) -> Unit = { _, _ -> },
 ) {
     val vm = remember { getKoin().get<MapViewModel>() }
     val events by vm.events.collectAsState()
     val filter by vm.filter.collectAsState()
     val selected by vm.selected.collectAsState()
+    // режимы C1 (G1–G3, G9): пульс/туман/люди — данные с /map/pulse, /map/fog
+    val mode by vm.mode.collectAsState()
+    val anomalies by vm.anomalies.collectAsState()
+    val fogVisited by vm.fogVisited.collectAsState()
+    val friends by vm.friends.collectAsState()
+    val pulse by vm.pulse.collectAsState()
+    val compass by vm.compass.collectAsState()
+    // C2: дефолт — тёмная карта под тему приложения; ☀️ — ручное переключение на день
+    var dayStyle by remember { mutableStateOf(false) }
+    val uiScope = rememberCoroutineScope()
     var showFilters by remember { mutableStateOf(false) }
     var controller by remember { mutableStateOf<EventMapController?>(null) }
 
@@ -111,7 +130,43 @@ fun MapContent(
             modifier = Modifier.fillMaxSize(),
             onMapReady = { controller = it },
         )
-        controller?.let { EventOverlay(controller = it, events = events, onPinClick = { vm.select(it) }) }
+        val shownEvents = when (mode) {
+            MapMode.People -> friends.map { it.toPersonPin() }
+            MapMode.Heat -> emptyList() // C11: только тепло, без пинов
+            else -> events
+        }
+        controller?.let { EventOverlay(controller = it, events = shownEvents, onPinClick = { vm.select(it) }) }
+
+        // ── C11: тепловая карта — радиальные пятна активности ──
+        if (mode == MapMode.Heat) {
+            controller?.let { HeatOverlay(controller = it, points = buildHeatPoints(events, pulse, anomalies)) }
+        }
+
+        // ── G2: поток людей — частицы стягиваются к событиям с притоком ──
+        if (mode == MapMode.Flow) {
+            controller?.let { FlowOverlay(controller = it, targets = buildFlowTargets(events, pulse)) }
+        }
+
+        // ── Слои режимов (G1–G3): затемнение под туман, баннеры пульса/людей ──
+        if (mode == MapMode.Fog) {
+            Box(Modifier.fillMaxSize().background(Color(0xFF060B14).copy(alpha = 0.55f)))
+        }
+        ModeBanner(
+            mode = mode,
+            anomalies = anomalies,
+            fogVisited = fogVisited,
+            friendsCount = friends.size,
+            // пик тепла — самое «горячее» LIVE-событие (по glow, иначе по зрителям)
+            heatPeakLabel = events.maxByOrNull { pulse[it.id]?.glow ?: (it.watching / 1000f) }?.title.orEmpty(),
+            // топ притока за 10 мин (crowd10m из /map/pulse)
+            flowTopLabel = events
+                .mapNotNull { ev -> pulse[ev.id]?.crowd10m?.takeIf { it > 0 }?.let { ev.title to it } }
+                .maxByOrNull { it.second }
+                ?.let { "+${it.second} за 10 мин · ${it.first}" }
+                .orEmpty(),
+            onAnomalyClick = { a -> controller?.animateCamera(LatLng(a.lat, a.lng), 15.0) },
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 158.dp, start = 16.dp, end = 16.dp),
+        )
 
         // ── Верхняя панель: поиск + чипы фильтров ──────────────────────
         Column(
@@ -126,6 +181,57 @@ fun MapContent(
                 onSearchClick = onSearchClick,
             )
             FilterChipsRow(filter = filter, vm = vm, onLiveClick = onOpenLive)
+
+            // G6: квест-компас «движ по вкусу» — тап ведёт камеру к событию
+            compass?.let { hint ->
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(NightSurface.copy(alpha = 0.94f))
+                        .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                        .clickableNoRipple {
+                            controller?.animateCamera(hint.event.location, 15.0)
+                            vm.select(hint.event)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        EventMapIcons.Compass,
+                        contentDescription = null,
+                        tint = Violet400,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        hint.event.title.take(28) +
+                            (hint.distanceM?.let { " · ${formatCompassDist(it)}" } ?: ""),
+                        color = Violet400, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+
+        // ── C2: день/ночь ────────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 288.dp)
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(NightSurface)
+                .clickableNoRipple {
+                    dayStyle = !dayStyle
+                    controller?.setStyle(if (dayStyle) MapStyle.DayLight else MapStyle.NightDark)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (dayStyle) EventMapIcons.Night else EventMapIcons.Day,
+                contentDescription = if (dayStyle) "Тёмная карта" else "Светлая карта",
+                tint = Color.White,
+                modifier = Modifier.size(21.dp),
+            )
         }
 
         // ── FAB локация ─────────────────────────────────────────────────
@@ -146,6 +252,15 @@ fun MapContent(
                 modifier = Modifier.size(20.dp),
             )
         }
+
+        // ── Переключатель режимов C1: ✨ Пульс · 🌫️ Туман · 🫂 Люди ──────
+        // У самого низа; поднимается над каруселью, только когда есть карточки событий
+        val switcherBottom by animateDpAsState(if (events.isEmpty()) 24.dp else 148.dp)
+        ModeSwitcher(
+            mode = mode,
+            onSelect = { vm.setMode(it) },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = switcherBottom),
+        )
 
         // ── Карусель событий ─────────────────────────────────────────────
         EventCarousel(
@@ -168,11 +283,35 @@ fun MapContent(
             containerColor = NightSurface,
             dragHandle = { SheetHandle() },
         ) {
-            when (ev.state) {
-                EventState.Live, EventState.Ending ->
-                    LiveSheet(ev, onOpenReel = { vm.clearSelection(); onOpenEvent(ev.id) })
-                EventState.Soon ->
-                    SoonSheet(ev, onOpen = { vm.clearSelection(); onOpenEvent(ev.id) })
+            if (ev.category == EventCategory.Person) {
+                // C10: друг на карте → «Позвать с собой»
+                FriendSheet(
+                    ev = ev,
+                    onWave = {
+                        val friendId = ev.id.removePrefix("friend-")
+                        vm.clearSelection()
+                        vm.waveToFriend(friendId) { ok ->
+                            uiScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    if (ok) "🫂 Позвали! Другу прилетит уведомление" else "Не получилось — попробуй позже",
+                                )
+                            }
+                        }
+                    },
+                )
+            } else {
+                when (ev.state) {
+                    EventState.Live, EventState.Ending ->
+                        LiveSheet(
+                            ev,
+                            participants = vm.liveParticipants.collectAsState().value,
+                            onOpenReel = { vm.clearSelection(); onOpenEvent(ev.id) },
+                            // C5: «Я тоже здесь · снять момент» — рилс с привязкой к событию
+                            onRecordMoment = { vm.clearSelection(); onRecordMoment(ev.id, ev.title) },
+                        )
+                    EventState.Soon ->
+                        SoonSheet(ev, onOpen = { vm.clearSelection(); onOpenEvent(ev.id) })
+                }
             }
         }
     }
@@ -299,6 +438,351 @@ private fun FilterChip(label: String, emoji: String, selected: Boolean, onClick:
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C11 · Тепловая карта: радиальные пятна активности поверх карты
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class HeatPoint(val location: LatLng, val intensity: Float)
+
+// Источники тепла: LIVE-события (glow из /map/pulse, фолбэк — зрители) + аномалии G9
+private fun buildHeatPoints(
+    events: List<MapEvent>,
+    pulse: Map<String, com.eventmap.map.data.PulseEventNet>,
+    anomalies: List<com.eventmap.map.data.AnomalyNet>,
+): List<HeatPoint> {
+    val eventHeat = events.mapNotNull { ev ->
+        val glow = pulse[ev.id]?.glow
+        val intensity = when {
+            glow != null -> glow
+            ev.state == EventState.Live -> (0.3f + ev.watching / 500f).coerceAtMost(1f)
+            else -> 0.15f
+        }
+        if (intensity <= 0.05f) null else HeatPoint(ev.location, intensity.coerceIn(0f, 1f))
+    }
+    val anomalyHeat = anomalies.map { a ->
+        HeatPoint(LatLng(a.lat, a.lng), (0.25f + a.userCount / 50f).coerceIn(0f, 1f))
+    }
+    return eventHeat + anomalyHeat
+}
+
+// Пятна: цвет от фиолетового (тихо) к красному (пик), радиус и альфа растут с интенсивностью.
+// Как EventOverlay: подписка на viewport — пятна следуют за панорамой/зумом.
+@Composable
+private fun HeatOverlay(controller: EventMapController, points: List<HeatPoint>) {
+    val viewport by controller.viewport.collectAsState()
+
+    Canvas(Modifier.fillMaxSize()) {
+        // viewport читается выше — Compose перерисует Canvas при движении камеры
+        @Suppress("UNUSED_EXPRESSION") viewport
+        points.forEach { point ->
+            val center = controller.project(point.location) ?: return@forEach
+            val radius = (70 + 90 * point.intensity).dp.toPx()
+            val hot = lerp(Violet600, Color(0xFFFF4757), point.intensity)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        hot.copy(alpha = 0.10f + 0.35f * point.intensity),
+                        hot.copy(alpha = 0.04f),
+                        Color.Transparent,
+                    ),
+                    center = center,
+                    radius = radius,
+                ),
+                radius = radius,
+                center = center,
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  G2 · Поток людей: частицы, стягивающиеся к событиям с притоком
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class FlowTarget(val location: LatLng, val strength: Float)
+
+// События с притоком за 10 мин (crowd10m); демо-фолбэк — LIVE со зрителями
+private fun buildFlowTargets(
+    events: List<MapEvent>,
+    pulse: Map<String, com.eventmap.map.data.PulseEventNet>,
+): List<FlowTarget> {
+    val withCrowd = events.mapNotNull { ev ->
+        val crowd = pulse[ev.id]?.crowd10m ?: 0
+        if (crowd > 0) FlowTarget(ev.location, (0.3f + crowd / 40f).coerceAtMost(1f)) else null
+    }
+    if (withCrowd.isNotEmpty()) return withCrowd
+    return events.filter { it.state == EventState.Live }
+        .map { FlowTarget(it.location, (0.3f + it.watching / 500f).coerceAtMost(1f)) }
+}
+
+// 6 частиц на цель: движутся по радиусу к центру, фаза сдвинута — непрерывный поток
+@Composable
+private fun FlowOverlay(controller: EventMapController, targets: List<FlowTarget>) {
+    val viewport by controller.viewport.collectAsState()
+    val transition = rememberInfiniteTransition()
+    val t by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = androidx.compose.animation.core.LinearEasing)),
+    )
+
+    Canvas(Modifier.fillMaxSize()) {
+        @Suppress("UNUSED_EXPRESSION") viewport
+        val flowColor = Color(0xFF4FC3F7)
+        targets.forEach { target ->
+            val center = controller.project(target.location) ?: return@forEach
+            val maxR = (60 + 60 * target.strength).dp.toPx()
+            repeat(6) { i ->
+                val phase = (t + i / 6f) % 1f          // 0 → 1: от края к центру
+                val r = maxR * (1f - phase)
+                val angle = i * (2f * kotlin.math.PI.toFloat() / 6f) + target.strength // фикс. лучи
+                val x = center.x + r * kotlin.math.cos(angle)
+                val y = center.y + r * kotlin.math.sin(angle)
+                drawCircle(
+                    color = flowColor.copy(alpha = 0.15f + 0.5f * phase), // ярче у цели
+                    radius = (2 + 2 * target.strength).dp.toPx(),
+                    center = androidx.compose.ui.geometry.Offset(x, y),
+                )
+            }
+        }
+    }
+}
+
+// «320 м» / «1.2 км» для компаса G6
+private fun formatCompassDist(m: Int): String =
+    if (m >= 1000) "${m / 1000}.${(m % 1000) / 100} км" else "$m м"
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C10 · Друзья на карте: пин + шторка «Позвать с собой»
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FriendLocationNet → пин карты (категория Person рисуется как аватар-кружок)
+private fun com.eventmap.map.data.FriendLocationNet.toPersonPin(): MapEvent = MapEvent(
+    id = "friend-$userId",
+    location = LatLng(lat, lng),
+    category = EventCategory.Person,
+    state = EventState.Soon,
+    title = name.ifEmpty { "Друг" },
+    subtitle = "делится геолокацией",
+    timeLabel = agoLabel,
+    priceLabel = "",
+    isFree = true,
+    distanceKm = 0.0,
+)
+
+@Composable
+private fun FriendSheet(ev: MapEvent, onWave: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(52.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient)),
+                contentAlignment = Alignment.Center,
+            ) { Text("🙂", fontSize = 24.sp) }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(ev.title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Text(
+                    "🫂 делится геолокацией" + if (ev.timeLabel.isNotEmpty()) " · ${ev.timeLabel}" else "",
+                    fontSize = 12.sp, color = NightTextSecondary,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Brush.linearGradient(BrandGradient))
+                .clickableNoRipple(onWave),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("🫂 Позвать с собой", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  C1 · Режимы карты: переключатель + баннеры (G1 пульс · G3 туман · G9 аномалии)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun ModeSwitcher(mode: MapMode, onSelect: (MapMode) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(NightSurface.copy(alpha = 0.94f))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(MapMode.Pulse, MapMode.Flow, MapMode.Heat, MapMode.Fog, MapMode.People).forEach { m ->
+            val selectedMode = mode == m
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .then(
+                        if (selectedMode) Modifier.background(Brush.linearGradient(BrandGradient))
+                        else Modifier,
+                    )
+                    .clickableNoRipple { onSelect(m) }
+                    .padding(horizontal = if (selectedMode) 14.dp else 9.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = m.icon(),
+                    contentDescription = m.label,
+                    tint = if (selectedMode) Color.White else NightTextSecondary,
+                    modifier = Modifier.size(18.dp),
+                )
+                if (selectedMode) {
+                    Text(
+                        m.label,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun MapMode.icon(): ImageVector = when (this) {
+    MapMode.Pulse -> EventMapIcons.Pulse
+    MapMode.Flow -> EventMapIcons.Flow
+    MapMode.Heat -> EventMapIcons.Heat
+    MapMode.Fog -> EventMapIcons.Fog
+    MapMode.People -> EventMapIcons.People
+    MapMode.None -> EventMapIcons.Map
+}
+
+@Composable
+private fun ModeBanner(
+    mode: MapMode,
+    anomalies: List<com.eventmap.map.data.AnomalyNet>,
+    fogVisited: Int?,
+    friendsCount: Int,
+    heatPeakLabel: String,
+    flowTopLabel: String,
+    onAnomalyClick: (com.eventmap.map.data.AnomalyNet) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (mode) {
+        MapMode.Fog -> Column(
+            modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(NightSurface.copy(alpha = 0.95f))
+                .border(1.dp, Violet400.copy(alpha = 0.30f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Text(
+                if (fogVisited != null) "🌫️ Туман войны · открыто районов: $fogVisited"
+                else "🌫️ Туман войны · считаем открытые районы…",
+                color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Открой новый район — получи XP и значок",
+                color = NightTextSecondary, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        MapMode.Flow -> Column(
+            modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(NightSurface.copy(alpha = 0.95f))
+                .border(1.dp, Color(0xFF4FC3F7).copy(alpha = 0.40f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Text("🌊 Поток людей — стягиваются к событиям", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (flowTopLabel.isNotEmpty()) flowTopLabel else "Пока тихо — приток появится по мере пингов",
+                color = NightTextSecondary, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        MapMode.Heat -> Column(
+            modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(NightSurface.copy(alpha = 0.95f))
+                .border(1.dp, Color(0xFFFF8A50).copy(alpha = 0.40f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Text("🔥 Тепловая карта · активность прямо сейчас", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("тихо", color = NightTextSecondary, fontSize = 10.sp)
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Violet600.copy(alpha = 0.5f), Color(0xFFFF8A50), Color(0xFFFF4757)),
+                            ),
+                        ),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("оживлённо", color = NightTextSecondary, fontSize = 10.sp)
+            }
+            if (heatPeakLabel.isNotEmpty()) {
+                Text("🔥 пик · $heatPeakLabel", color = Color(0xFFFF8A50), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+
+        MapMode.People -> Column(
+            modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(NightSurface.copy(alpha = 0.95f))
+                .border(1.dp, Violet400.copy(alpha = 0.30f), RoundedCornerShape(14.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+        ) {
+            Text(
+                if (friendsCount > 0) "🫂 Друзей делятся геолокацией: $friendsCount"
+                else "🫂 Пока никто из друзей не делится гео",
+                color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+            )
+            Text(
+                if (friendsCount > 0) "Тапни аватар — «Позвать с собой»"
+                else "Включи Sharing в настройках — и тебя увидят друзья",
+                color = NightTextSecondary, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+
+        MapMode.Pulse -> {
+            // G9: «⚡ Здесь что-то происходит» — сгусток людей без события
+            val a = anomalies.firstOrNull() ?: return
+            Column(
+                modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(NightSurface.copy(alpha = 0.95f))
+                    .border(1.dp, Color(0xFFFFB84D).copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                    .clickableNoRipple { onAnomalyClick(a) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text("⚡ Здесь что-то происходит", color = Color(0xFFFFB84D), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "${a.userCount} человек собрались рядом · без события. Тапни — посмотрим",
+                    color = NightTextSecondary, fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+
+        MapMode.None -> Unit
     }
 }
 
@@ -523,7 +1007,7 @@ private fun MetaChip(emoji: String, label: String) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LiveSheet(ev: MapEvent, onOpenReel: () -> Unit) {
+private fun LiveSheet(ev: MapEvent, participants: List<String>, onOpenReel: () -> Unit, onRecordMoment: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -562,8 +1046,8 @@ private fun LiveSheet(ev: MapEvent, onOpenReel: () -> Unit) {
 
         Spacer(Modifier.height(14.dp))
 
-        // Лента live-кружков участников (C6)
-        LiveCirclesRow()
+        // Лента live-кружков участников (C6) — реальные имена с бэка
+        LiveCirclesRow(participants)
 
         Spacer(Modifier.height(20.dp))
 
@@ -582,26 +1066,37 @@ private fun LiveSheet(ev: MapEvent, onOpenReel: () -> Unit) {
 
         Spacer(Modifier.height(8.dp))
 
-        // 📍 Я тоже здесь
+        // 📍 Я тоже здесь · снять момент (C5) — рилс уйдёт с привязкой к этому событию
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(46.dp)
                 .clip(RoundedCornerShape(13.dp))
                 .background(Color.White.copy(alpha = 0.07f))
-                .clickableNoRipple { /* check-in */ },
+                .clickableNoRipple(onRecordMoment),
             contentAlignment = Alignment.Center,
         ) {
-            Text("📍  Я тоже здесь", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text("📍  Я тоже здесь · снять момент", color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
+// Кружки участников: реальные имена (инициал в рамке LIVE-градиента), «+N» при переполнении.
+// Пусто — честная подпись вместо фейковых эмодзи.
 @Composable
-private fun LiveCirclesRow() {
-    val stubEmojis = listOf("🧑‍🎤", "💃", "🕺", "👩‍🎨", "🎸", "🎵")
+private fun LiveCirclesRow(participants: List<String>) {
+    if (participants.isEmpty()) {
+        Text(
+            "Пока никто не отметился — будь первым 📸",
+            color = NightTextSecondary,
+            fontSize = 12.sp,
+        )
+        return
+    }
+    val shown = participants.take(6)
+    val overflow = participants.size - shown.size
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(stubEmojis) { emoji ->
+        items(shown) { name ->
             Box(
                 modifier = Modifier
                     .size(52.dp)
@@ -610,18 +1105,25 @@ private fun LiveCirclesRow() {
                     .background(Color.White.copy(alpha = 0.07f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(emoji, fontSize = 22.sp)
+                Text(
+                    name.trim().take(1).uppercase().ifBlank { "•" },
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                )
             }
         }
-        item {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.White.copy(alpha = 0.07f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("+12", color = NightTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        if (overflow > 0) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.07f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("+$overflow", color = NightTextSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

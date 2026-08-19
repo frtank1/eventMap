@@ -6,4 +6,8 @@ kotlin { sourceSets { commonMain.dependencies {
     implementation(projects.common.core.network)
     implementation(libs.koin.core)
 } } }
-android { namespace = "com.eventmap.feature.profile.domain" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.profile.domain"
+    }
+}

@@ -1,7 +1,11 @@
 package com.eventmap.server.presentation.routes
 
 import com.eventmap.server.domain.usecase.CreateInvitationUseCase
+import com.eventmap.server.domain.usecase.GetFriendLocationsUseCase
 import com.eventmap.server.domain.usecase.GetFriendsUseCase
+import com.eventmap.server.domain.usecase.ShareMyLocationUseCase
+import com.eventmap.server.domain.usecase.StopSharingLocationUseCase
+import com.eventmap.server.domain.usecase.WaveToFriendUseCase
 import com.eventmap.server.domain.usecase.GetInvitationByTokenUseCase
 import com.eventmap.server.domain.usecase.GetInvitationForGuestUseCase
 import com.eventmap.server.domain.usecase.GetRsvpDashboardUseCase
@@ -13,6 +17,7 @@ import com.eventmap.server.presentation.dto.ErrorResponse
 import com.eventmap.server.presentation.dto.FriendRequestBody
 import com.eventmap.server.presentation.dto.FriendRespondBody
 import com.eventmap.server.presentation.dto.RsvpRequest
+import com.eventmap.server.presentation.dto.ShareLocationRequest
 import com.eventmap.server.presentation.dto.toDto
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -23,6 +28,7 @@ import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 
@@ -39,11 +45,44 @@ fun Route.friendRoutes(
     invitationByToken: GetInvitationByTokenUseCase,
     rsvp: RsvpUseCase,
     dashboard: GetRsvpDashboardUseCase,
+    shareLocation: ShareMyLocationUseCase,
+    stopSharing: StopSharingLocationUseCase,
+    friendLocations: GetFriendLocationsUseCase,
+    wave: WaveToFriendUseCase,
 ) {
     authenticate("auth-jwt") {
         get("/friends") {
             val uid = call.uid() ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
             call.respond(getFriends(uid).map { it.toDto() })
+        }
+
+        // ── Гео-шеринг C10/L5 (V12): именная позиция, только для друзей ──
+        post("/friends/location") {
+            val uid = call.uid() ?: return@post call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            val b = call.receive<ShareLocationRequest>()
+            shareLocation(uid, b.lat, b.lng)
+            call.respond(HttpStatusCode.Accepted)
+        }
+
+        delete("/friends/location") {
+            val uid = call.uid() ?: return@delete call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            stopSharing(uid)
+            call.respond(HttpStatusCode.OK)
+        }
+
+        get("/friends/locations") {
+            val uid = call.uid() ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            call.respond(friendLocations(uid).map { it.toDto() })
+        }
+
+        // «Позвать с собой» (C10): пуш + in-app уведомление другу
+        post("/friends/{id}/wave") {
+            val uid = call.uid() ?: return@post call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
+            when (wave(uid, call.parameters["id"].orEmpty())) {
+                is WaveToFriendUseCase.Result.Ok -> call.respond(HttpStatusCode.OK)
+                is WaveToFriendUseCase.Result.NotFriends ->
+                    call.respond(HttpStatusCode.Forbidden, ErrorResponse(ErrorResponse.Body("NOT_FRIENDS", "Звать с собой можно только друзей")))
+            }
         }
 
         post("/friends/request") {

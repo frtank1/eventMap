@@ -41,6 +41,7 @@ import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightTextSecondary
 import com.eventmap.theme.Violet600
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.mp.KoinPlatform.getKoin
 
 // =====================================================================
@@ -63,8 +64,16 @@ class SplashScreen : Screen {
         LaunchedEffect(Unit) {
             progress = 1f
             delay(900)
-            if (repo.isLoggedIn()) nav.replaceAll(homeProvider.home())
-            else nav.replaceAll(WelcomeScreen())
+            if (repo.isLoggedIn()) {
+                // Сервер решает, жива ли пара токенов (протухший access тихо обновится).
+                // false → токены мертвы, хранилище очищено → на вход.
+                // true/null (оффлайн, >4 сек) → пускаем, оффлайн не наказываем.
+                val alive = withTimeoutOrNull(4_000) { repo.validateSession() }
+                if (alive == false) nav.replaceAll(WelcomeScreen())
+                else nav.replaceAll(homeProvider.home())
+            } else {
+                nav.replaceAll(WelcomeScreen())
+            }
         }
 
         Box(

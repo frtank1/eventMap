@@ -1,10 +1,12 @@
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // То же, что core.kmp, но с Compose Multiplatform для UI-модулей.
+// Миграция на AGP 9: новый KMP-плагин com.android.kotlin.multiplatform.library.
 plugins {
     kotlin("multiplatform")
-    id("com.android.library")
+    id("com.android.kotlin.multiplatform.library")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
 }
@@ -12,7 +14,16 @@ plugins {
 val libs = extensions.getByType<VersionCatalogsExtension>().named("libs")
 
 kotlin {
-    androidTarget()
+    android {
+        compileSdk = libs.findVersion("android-compileSdk").get().requiredVersion.toInt()
+        minSdk = libs.findVersion("android-minSdk").get().requiredVersion.toInt()
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_11)
+        }
+        androidResources {
+            enable = true
+        }
+    }
 
     iosX64()
     iosArm64()
@@ -22,11 +33,4 @@ kotlin {
 
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs { browser() }
-}
-
-android {
-    compileSdk = libs.findVersion("android-compileSdk").get().requiredVersion.toInt()
-    defaultConfig {
-        minSdk = libs.findVersion("android-minSdk").get().requiredVersion.toInt()
-    }
 }

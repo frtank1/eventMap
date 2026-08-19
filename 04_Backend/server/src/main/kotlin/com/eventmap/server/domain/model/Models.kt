@@ -53,6 +53,7 @@ data class Event(
     val liveViewers: Int = 0,
     val ratingAvg: Double = 0.0,
     val ratingCount: Int = 0,
+    val commentsCount: Int = 0, // честный счётчик из event_comments (считается на чтении)
     val cover: String? = null,
     val organizerId: String? = null,
     val organizerName: String = "",
@@ -61,6 +62,16 @@ data class Event(
     val isAdult: Boolean = false,
     val visibility: String = "public", // public | private (раздел N)
     val geoRadiusM: Int = 300,         // радиус «Я тоже здесь» / гео-чекинов
+    // Event V2 (V13)
+    val kind: String = "planned",              // planned|gathering|live_signal|private
+    val sourceType: String = "initiator",      // organizer|business|government|initiator|witness
+    val joinPolicy: String = "open",           // open|approval|invite
+    val audience: String = "everyone",         // everyone|family|adults
+    val minAge: Int? = null,
+    val expiresAtMs: Long? = null,
+    val proofMediaId: String? = null,
+    val confirmationCount: Int = 0,
+    val interestCount: Int = 0,
 )
 
 data class Organizer(
@@ -78,6 +89,50 @@ data class User(
     val email: String,
     val name: String,
     val passwordHash: String,
+    // профиль H1 (V9)
+    val username: String = "",
+    val bio: String = "",
+    val avatarUrl: String? = null,
+    val city: String = "",
+    val interests: List<String> = emptyList(),
+)
+
+// ===== Профиль/лента/уведомления/поиск (H, F, G · V9) =====
+
+data class UserProfile(
+    val user: User,
+    val subscriptionsCount: Int = 0,
+    val subscribersCount: Int = 0,
+    val eventsCount: Int = 0,
+    val isOrganizer: Boolean = false,
+    val isVerified: Boolean = false,
+)
+
+data class Notification(
+    val id: String,
+    val userId: String,
+    val type: String = "info", // info|event|subscribe|live
+    val text: String,
+    val createdAtMs: Long = 0,
+    val read: Boolean = false,
+)
+
+data class SubscriptionRequest(
+    val id: String,
+    val fromUserId: String,
+    val fromName: String = "",
+    val createdAtMs: Long = 0,
+)
+
+data class EventRating(
+    val id: String,
+    val eventId: String,
+    val userId: String,
+    val authorName: String = "",
+    val value: Int,
+    val review: String = "",
+    val tags: List<String> = emptyList(), // тег-чипсы P4
+    val createdAtMs: Long = 0,
 )
 
 data class AuthTokens(val accessToken: String, val refreshToken: String, val expiresIn: Long, val user: User)
@@ -165,6 +220,15 @@ data class Friend(
     val userId: String,
     val name: String,
     val status: String,          // accepted | pending_in (ждёт моего ответа) | pending_out (я отправил)
+)
+
+// Позиция друга на карте (C10/L5, V12) — только для подтверждённых друзей, только свежая
+data class FriendLocation(
+    val userId: String,
+    val name: String = "",
+    val lat: Double,
+    val lng: Double,
+    val updatedAtMs: Long = 0,
 )
 
 data class InvitationGuest(

@@ -42,6 +42,16 @@ object DeviceTokensTable : Table("device_tokens") {
     override val primaryKey = PrimaryKey(token)
 }
 
+// Фолбэк-хранилище медиа в Postgres (S3 не настроен) · миграция V10
+object MediaBlobsTable : Table("media_blobs") {
+    val key = varchar("key", 255)
+    val contentType = varchar("content_type", 128)
+    val bytes = binary("bytes")
+    val size = integer("size").default(0)
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(key)
+}
+
 // ===== Медиа (R2/S3) · миграция V6 =====
 object MediaTable : Table("media") {
     val id = varchar("id", 64)
@@ -80,7 +90,34 @@ object EventsTable : Table("events") {
     val isAdult = bool("is_adult").default(false)
     val visibility = varchar("visibility", 16).default("public") // public | private (раздел N)
     val geoRadiusM = integer("geo_radius_m").default(300)        // радиус «Я тоже здесь»
+    // Event V2 · V13: один Event для афиши, сбора людей, приватных встреч и live-сигналов.
+    val kind = varchar("kind", 20).default("planned")
+    val sourceType = varchar("source_type", 20).default("initiator")
+    val joinPolicy = varchar("join_policy", 20).default("open")
+    val audience = varchar("audience", 20).default("everyone")
+    val minAge = integer("min_age").nullable()
+    val expiresAtMs = long("expires_at_ms").nullable()
+    val proofMediaId = varchar("proof_media_id", 64).nullable()
+    val confirmationCount = integer("confirmation_count").default(0)
+    val interestCount = integer("interest_count").default(0)
     override val primaryKey = PrimaryKey(id)
+}
+
+object EventSignalsTable : Table("event_signals") {
+    val eventId = varchar("event_id", 64).index()
+    val userId = varchar("user_id", 64)
+    val signalType = varchar("signal_type", 16) // confirm | interest
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(eventId, userId, signalType)
+}
+
+object EventJoinRequestsTable : Table("event_join_requests") {
+    val eventId = varchar("event_id", 64).index()
+    val userId = varchar("user_id", 64)
+    val status = varchar("status", 16).default("pending") // pending|approved|rejected
+    val message = varchar("message", 500).default("")
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(eventId, userId)
 }
 
 object UsersTable : Table("users") {
@@ -88,7 +125,54 @@ object UsersTable : Table("users") {
     val email = varchar("email", 255).uniqueIndex()
     val name = varchar("name", 255).default("")
     val passwordHash = varchar("password_hash", 255)
+
+    // профиль H1 · миграция V9
+    val username = varchar("username", 64).default("")
+    val bio = text("bio").default("")
+    val avatarUrl = varchar("avatar_url", 512).nullable()
+    val city = varchar("city", 64).default("")
+    val interests = text("interests").default("") // csv категорий (A8)
     override val primaryKey = PrimaryKey(id)
+}
+
+// ===== Профиль/подписки/уведомления/оценки · миграция V9 =====
+
+object OrganizerSubscriptionsTable : Table("organizer_subscriptions") {
+    val userId = varchar("user_id", 64)
+    val organizerId = varchar("organizer_id", 64).index()
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(userId, organizerId)
+}
+
+object SubscriptionRequestsTable : Table("subscription_requests") {
+    val id = varchar("id", 64)
+    val targetUserId = varchar("target_user_id", 64).index()
+    val fromUserId = varchar("from_user_id", 64)
+    val status = varchar("status", 16).default("pending") // pending|approved|rejected
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object NotificationsTable : Table("notifications") {
+    val id = varchar("id", 64)
+    val userId = varchar("user_id", 64).index()
+    val type = varchar("type", 16).default("info") // info|event|subscribe|live
+    val text = text("text")
+    val createdAtMs = long("created_at_ms").default(0)
+    val read = bool("read").default(false)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object EventRatingsTable : Table("event_ratings") {
+    val id = varchar("id", 64)
+    val eventId = varchar("event_id", 64).index()
+    val userId = varchar("user_id", 64)
+    val value = integer("value")
+    val review = text("review").default("")
+    val tags = text("tags").default("") // csv тегов P4 · V11
+    val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(id)
+    init { uniqueIndex(eventId, userId) }
 }
 
 // ===== Промо-квесты (Q, API §8.3) · миграция V3 =====
@@ -307,6 +391,15 @@ object TicketsTable : Table("tickets") {
 }
 
 // ===== Друзья и приглашения (N, API §8.7) · миграция V4 =====
+
+// Гео-шеринг друзей (C10/L5) · миграция V12. Именная позиция, только для друзей, TTL 15 мин.
+object FriendLocationsTable : Table("friend_locations") {
+    val userId = varchar("user_id", 64)
+    val lat = double("lat")
+    val lng = double("lng")
+    val updatedAtMs = long("updated_at_ms").default(0)
+    override val primaryKey = PrimaryKey(userId)
+}
 
 // Каноничный порядок: userA < userB (лексикографически)
 object FriendshipsTable : Table("friendships") {

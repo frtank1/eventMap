@@ -1,8 +1,10 @@
 package com.eventmap.server.domain.usecase
 
 import com.eventmap.server.domain.model.Friend
+import com.eventmap.server.domain.model.FriendLocation
 import com.eventmap.server.domain.model.Invitation
 import com.eventmap.server.domain.repository.EventRepository
+import com.eventmap.server.domain.repository.FriendLocationRepository
 import com.eventmap.server.domain.repository.FriendRepository
 import com.eventmap.server.domain.repository.InvitationRepository
 import com.eventmap.server.domain.repository.NotificationPort
@@ -20,6 +22,7 @@ import java.util.UUID
 class SendFriendRequestUseCase(
     private val friends: FriendRepository,
     private val notifications: NotificationPort,
+    private val inbox: com.eventmap.server.domain.repository.NotificationRepository,
 ) {
     sealed interface Result { data object Ok : Result; data class Rejected(val code: String, val message: String) : Result }
 
@@ -29,6 +32,8 @@ class SendFriendRequestUseCase(
         if (!friends.request(fromId, toId)) return Result.Rejected("ALREADY", "Заявка уже есть или вы уже друзья")
         // Пуш адресату (fire-and-forget: no-op если FCM выключен, ошибка не валит запрос)
         runCatching { notifications.sendToUser(toId, "Новая заявка в друзья", "Вас добавили в друзья в EventMap") }
+        // in-app уведомление F4
+        runCatching { inbox.add(toId, "subscribe", "🙂 Новая заявка в друзья") }
         return Result.Ok
     }
 }
@@ -125,5 +130,43 @@ class GetRsvpDashboardUseCase(
         if (event.organizerId != userId) return Result.Forbidden
         val inv = invitations.byEvent(eventId) ?: return Result.NotFound
         return Result.Ok(inv)
+    }
+}
+
+// ===== Гео-шеринг друзей (C10/L5, V12) =====
+
+private const val LOCATION_FRESH_MS = 15 * 60 * 1000L // как TTL пингов пульса
+
+class ShareMyLocationUseCase(private val locations: FriendLocationRepository) {
+    /** Клиент вызывает ТОЛЬКО при включённом тумблере Sharing (I2) */
+    suspend operator fun invoke(userId: String, lat: Double, lng: Double) =
+        locations.share(userId, lat, lng)
+}
+
+class StopSharingLocationUseCase(private val locations: FriendLocationRepository) {
+    suspend operator fun invoke(userId: String) = locations.stop(userId)
+}
+
+class GetFriendLocationsUseCase(private val locations: FriendLocationRepository) {
+    /** Только подтверждённые друзья, только свежие фиксы (приватность C10) */
+    suspend operator fun invoke(userId: String): List<FriendLocation> =
+        locations.friendsOf(userId, LOCATION_FRESH_MS)
+}
+
+class WaveToFriendUseCase(
+    private val friends: FriendRepository,
+    private val notifications: NotificationPort,
+    private val inbox: com.eventmap.server.domain.repository.NotificationRepository,
+    private val users: com.eventmap.server.domain.repository.UserRepository,
+) {
+    sealed interface Result { data object Ok : Result; data object NotFriends : Result }
+
+    /** «Позвать с собой» (C10): пуш + in-app уведомление другу */
+    suspend operator fun invoke(fromId: String, toId: String): Result {
+        if (!friends.areFriends(fromId, toId)) return Result.NotFriends
+        val fromName = users.byId(fromId)?.name?.ifEmpty { null } ?: "Друг"
+        runCatching { notifications.sendToUser(toId, "🫂 $fromName зовёт с собой", "Открой карту — движ рядом") }
+        runCatching { inbox.add(toId, "subscribe", "🫂 $fromName зовёт с собой — открой карту") }
+        return Result.Ok
     }
 }

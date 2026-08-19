@@ -26,4 +26,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.chat.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.chat.ui"
+    }
+}

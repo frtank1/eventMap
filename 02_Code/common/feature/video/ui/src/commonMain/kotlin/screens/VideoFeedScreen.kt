@@ -50,6 +50,7 @@ import com.eventmap.theme.NightTextSecondary
 import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
 import com.eventmap.video.models.VideoItem
+import com.eventmap.views.video.VideoPlayer
 import com.eventmap.video.ui.viewmodel.VideoViewModel
 
 // =====================================================================
@@ -84,7 +85,12 @@ class VideoFeedScreen : Screen {
                 else -> {
                     val pager = rememberPagerState(pageCount = { items.size })
                     VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-                        VideoPage(item = items[page], onLike = { vm.toggleLike(items[page].id) }, onMap = { nav.pop() })
+                        VideoPage(
+                            item = items[page],
+                            playing = pager.currentPage == page, // играет только видимая страница
+                            onLike = { vm.toggleLike(items[page].id) },
+                            onMap = { nav.pop() },
+                        )
                     }
                 }
             }
@@ -128,17 +134,25 @@ class VideoFeedScreen : Screen {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun VideoPage(item: VideoItem, onLike: () -> Unit, onMap: () -> Unit) {
+private fun VideoPage(item: VideoItem, playing: Boolean, onLike: () -> Unit, onMap: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
 
-        // Видео-плейсхолдер
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color(0xFF0D0818), Color(0xFF1A0D2E), Color(0xFF0A0D1A))),
-            ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.10f), modifier = Modifier.size(80.dp))
+        // Видео: реальный плеер (ExoPlayer/AVPlayer); нет mediaUrl — плейсхолдер
+        if (item.mediaUrl.isNotBlank()) {
+            VideoPlayer(
+                url = item.mediaUrl,
+                playing = playing,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(listOf(Color(0xFF0D0818), Color(0xFF1A0D2E), Color(0xFF0A0D1A))),
+                ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.10f), modifier = Modifier.size(80.dp))
+            }
         }
 
         // Нижний скрим

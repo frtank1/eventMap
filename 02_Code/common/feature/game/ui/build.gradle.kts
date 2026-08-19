@@ -1,7 +1,7 @@
-// ДРАФТ (аудит 13.06.2026). Активировать: include(":common:feature:game:ui") в
-// settings.gradle.kts + зависимость в composeApp. До этого Gradle файл не читает.
+// Активен (include в settings.gradle.kts). Подключён к бэку /game/* (01.07.2026).
 plugins {
     id("core.kmp.compose")
+    alias(libs.plugins.serialization) // DTO game hub (data/GameData.kt)
 }
 kotlin {
     sourceSets {
@@ -19,6 +19,8 @@ kotlin {
 
             implementation(libs.koin.core)
             implementation(projects.common.core.ui)
+            implementation(projects.common.core.network)
+            implementation(projects.common.core.platform) // GeoProvider: капсулы «здесь и сейчас»
         }
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -26,4 +28,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.game.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.game.ui"
+    }
+}

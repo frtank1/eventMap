@@ -6,6 +6,12 @@
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Используется для входа по биометрии</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Геолокация нужна для чек-инов на точках квестов и отметки «я тоже здесь» на событиях рядом</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Камера нужна для съёмки видео-моментов на событиях</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен для записи звука в видео-моментах</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Подключение к локальному серверу разработки</string>
 	<!-- DEV ONLY: разрешает HTTP к локальному бэкенду. Убрать перед релизом. -->

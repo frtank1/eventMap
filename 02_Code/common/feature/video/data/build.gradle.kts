@@ -7,4 +7,8 @@ kotlin { sourceSets { commonMain.dependencies {
     implementation(projects.common.core.network)
     implementation(projects.common.feature.video.domain)
 } } }
-android { namespace = "com.eventmap.feature.video.data" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.video.data"
+    }
+}

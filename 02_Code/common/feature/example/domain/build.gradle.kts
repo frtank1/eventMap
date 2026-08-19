@@ -12,6 +12,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.feature.example.domain"
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.example.domain"
+    }
 }

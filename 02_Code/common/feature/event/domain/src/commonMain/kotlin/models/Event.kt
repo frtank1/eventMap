@@ -21,6 +21,13 @@ data class EventPrice(
     fun label(): String = if (isFree) "Бесплатно" else "$amount $currency"
 }
 
+/** «N друзей уже там» (GET /events/{id}/friends-going) */
+@Serializable
+data class FriendsGoing(
+    val count: Int = 0,
+    val names: List<String> = emptyList(),
+)
+
 @Serializable
 data class EventDetail(
     val id: String,
@@ -36,9 +43,20 @@ data class EventDetail(
     val liveViewers: Int = 0,
     val ratingAvg: Double = 0.0,
     val ratingCount: Int = 0,
+    val commentsCount: Int = 0, // честный счётчик с бэка (event_comments)
     val cover: String? = null,
     val organizerId: String = "",
     val organizerName: String = "",
+    val kind: String = "planned",
+    val sourceType: String = "initiator",
+    val visibility: String = "public",
+    val joinPolicy: String = "open",
+    val audience: String = "everyone",
+    val minAge: Int? = null,
+    val capacity: Int? = null,
+    val expiresAtMs: Long? = null,
+    val confirmationCount: Int = 0,
+    val interestCount: Int = 0,
 ) {
     fun statusEnum(): EventStatus = when (status) {
         "live" -> EventStatus.Live
@@ -74,6 +92,14 @@ data class CreateEventDraft(
     val category: String = "",
     val price: EventPrice = EventPrice(),
     val limit: Int? = null,
+    val kind: String = "planned",
+    val sourceType: String = "initiator",
+    val visibility: String = "public",
+    val joinPolicy: String = "open",
+    val audience: String = "everyone",
+    val minAge: Int? = null,
+    val expiresAtMs: Long? = null,
+    val proofMediaId: String? = null,
 )
 
 @Serializable
@@ -88,6 +114,21 @@ data class Rating(
     val review: String = "",
     val authorName: String = "",
     val dateLabel: String = "",
+    val tags: List<String> = emptyList(), // тег-чипсы P4 («🔥 Атмосфера»…)
+)
+
+// Комментарий события (D9) — зеркало CommentDto бэка (§8.6)
+@Serializable
+data class EventComment(
+    val id: String,
+    val eventId: String = "",
+    val authorId: String = "",
+    val authorName: String = "",
+    val parentId: String? = null,
+    val body: String,
+    val likeCount: Int = 0,
+    val likedByMe: Boolean = false,
+    val createdAtMs: Long = 0,
 )
 
 // Организатор событий (площадка/промоутер/пользователь-организатор).

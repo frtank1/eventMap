@@ -13,9 +13,16 @@ data class ErrorModel(
 
     val customMessage: String? = null,
 
+    // Сервер шлёт ошибку объектом: {"error": {"code": "...", "message": "..."}}
     @SerialName("error")
-    val error: String? = null,
+    val error: ErrorBody? = null,
 
     @SerialName("error_description")
     val errorDescription: String? = null
-)
+) {
+    @Serializable
+    data class ErrorBody(
+        val code: String? = null,
+        val message: String? = null,
+    )
+}

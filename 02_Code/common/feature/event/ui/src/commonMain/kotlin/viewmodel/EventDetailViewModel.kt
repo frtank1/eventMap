@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 
 class EventDetailViewModel(
     private val repository: EventRepository,
+    // null — в тестах/на платформах без нотификаций
+    private val reminders: com.eventmap.core.platform.reminders.LocalReminders? = null,
 ) : BaseScreenModel() {
 
     private val _event = MutableStateFlow<EventDetail?>(null)
@@ -24,6 +26,10 @@ class EventDetailViewModel(
 
     private val _participants = MutableStateFlow<List<Participant>>(emptyList())
     val participants: StateFlow<List<Participant>> = _participants.asStateFlow()
+
+    // «N друзей уже там» — null при офлайне/госте (чип просто не показываем)
+    private val _friendsGoing = MutableStateFlow<com.eventmap.event.models.FriendsGoing?>(null)
+    val friendsGoing: StateFlow<com.eventmap.event.models.FriendsGoing?> = _friendsGoing.asStateFlow()
 
     private val _media = MutableStateFlow<List<MediaItem>>(emptyList())
     val media: StateFlow<List<MediaItem>> = _media.asStateFlow()
@@ -33,6 +39,15 @@ class EventDetailViewModel(
 
     private val _attended = MutableStateFlow(false)
     val attended: StateFlow<Boolean> = _attended.asStateFlow()
+
+    private val _interested = MutableStateFlow(false)
+    val interested: StateFlow<Boolean> = _interested.asStateFlow()
+
+    private val _confirmed = MutableStateFlow(false)
+    val confirmed: StateFlow<Boolean> = _confirmed.asStateFlow()
+
+    private val _joinStatus = MutableStateFlow("")
+    val joinStatus: StateFlow<String> = _joinStatus.asStateFlow()
 
     private val _ticketStatus = MutableStateFlow("none")   // none | pending | paid
     val ticketStatus: StateFlow<String> = _ticketStatus.asStateFlow()
@@ -56,6 +71,7 @@ class EventDetailViewModel(
             // Бэкенд может быть недоступен — показываем демо-данные (fallback).
             _event.value = (repository.getEvent(id) as? KtorResponse.Success)?.data ?: sampleEvent(id)
             _participants.value = (repository.getParticipants(id, "going") as? KtorResponse.Success)?.data ?: sampleParticipants()
+            _friendsGoing.value = (repository.friendsGoing(id) as? KtorResponse.Success)?.data
             _media.value = (repository.getMedia(id) as? KtorResponse.Success)?.data ?: sampleMedia()
             _ratings.value = (repository.getRatings(id) as? KtorResponse.Success)?.data ?: sampleRatings()
             _loading.value = false
@@ -70,6 +86,7 @@ class EventDetailViewModel(
                 is KtorResponse.Success -> {
                     _purchasing.value = false
                     _ticketStatus.value = r.data.status.ifBlank { "paid" }
+                    scheduleReminder() // билет = идёшь → напомним за час
                 }
                 is KtorResponse.Failure -> {
                     _purchasing.value = false
@@ -104,7 +121,10 @@ class EventDetailViewModel(
         val id = loadedId ?: return
         screenModelScope.launch {
             when (val r = repository.attend(id)) {
-                is KtorResponse.Success -> _attended.value = true
+                is KtorResponse.Success -> {
+                    _attended.value = true
+                    scheduleReminder() // «иду» → напомним за час до старта
+                }
                 is KtorResponse.Failure -> {
                     // офлайн/без бэка — всё равно отметим локально
                     _attended.value = true
@@ -112,6 +132,51 @@ class EventDetailViewModel(
                 }
             }
         }
+    }
+
+    fun toggleInterest() = toggleSignal("interest")
+
+    fun confirmHere() = toggleSignal("confirm")
+
+    private fun toggleSignal(type: String) {
+        val id = loadedId ?: return
+        screenModelScope.launch {
+            when (val r = repository.toggleSignal(id, type)) {
+                is KtorResponse.Success -> {
+                    if (type == "interest") _interested.value = r.data.enabled else _confirmed.value = r.data.enabled
+                    _event.value = _event.value?.let {
+                        if (type == "interest") it.copy(interestCount = r.data.count)
+                        else it.copy(confirmationCount = r.data.count)
+                    }
+                }
+                is KtorResponse.Failure -> emitError(r.error)
+            }
+        }
+    }
+
+    fun join(message: String = "") {
+        val id = loadedId ?: return
+        screenModelScope.launch {
+            when (val r = repository.joinEvent(id, message)) {
+                is KtorResponse.Success -> _joinStatus.value = r.data
+                is KtorResponse.Failure -> emitError(r.error)
+            }
+        }
+    }
+
+    // Локальное напоминание за час до старта; прошедшее/непарсибельное время — игнор
+    private fun scheduleReminder() {
+        val e = _event.value ?: return
+        val startMs = runCatching { kotlin.time.Instant.parse(e.startAt).toEpochMilliseconds() }.getOrNull() ?: return
+        reminders?.schedule(
+            id = "event-${e.id}",
+            title = "Через час: ${e.title}",
+            body = listOfNotNull(
+                e.location.name.takeIf { it.isNotBlank() },
+                e.price.label(),
+            ).joinToString(" · "),
+            atEpochMs = startMs - 60 * 60 * 1000,
+        )
     }
 
     private fun sampleEvent(id: String) = EventDetail(

@@ -14,6 +14,7 @@ import com.mapbox.maps.ScreenCoordinate
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import com.mapbox.maps.plugin.animation.flyTo
+import com.mapbox.maps.plugin.scalebar.scalebar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +81,7 @@ actual fun EventMap(
     AndroidView(
         factory = {
             mapView.apply {
+                scalebar.enabled = false // линейка-шкала сверху — визуальный мусор
                 mapboxMap.apply {
                     setCamera(
                         cameraOptions {

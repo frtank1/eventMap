@@ -5,6 +5,7 @@ import com.eventmap.server.domain.model.TicketGuest
 import com.eventmap.server.domain.model.TicketOrder
 import com.eventmap.server.domain.repository.AttendanceRepository
 import com.eventmap.server.domain.repository.EventRepository
+import com.eventmap.server.domain.repository.NotificationRepository
 import com.eventmap.server.domain.repository.ReminderRepository
 import com.eventmap.server.domain.repository.TicketRepository
 
@@ -21,6 +22,7 @@ class PurchaseTicketsUseCase(
     private val tickets: TicketRepository,
     private val attendance: AttendanceRepository,
     private val reminders: ReminderRepository,
+    private val inbox: NotificationRepository,
 ) {
     sealed interface Result {
         data class Ok(val order: TicketOrder, val goingCount: Long) : Result
@@ -57,6 +59,13 @@ class PurchaseTicketsUseCase(
         for (uid in (listOf(buyerId) + guests.mapNotNull { it.userId }).distinct()) {
             attendance.set(uid, eventId, "going")
             if (!reminders.isSet(uid, eventId)) reminders.toggle(uid, eventId, source = "ticket")
+        }
+        // уведомления F4 (in-app): покупателю и гостям с аккаунтом
+        runCatching {
+            inbox.add(buyerId, "event", "Билеты на «${event.title}» у тебя 🎟 Напоминание включено")
+            guests.mapNotNull { it.userId }.distinct().filter { it != buyerId }.forEach {
+                inbox.add(it, "event", "Тебе купили билет на «${event.title}» 🎟")
+            }
         }
         return Result.Ok(order, attendance.countGoing(eventId))
     }

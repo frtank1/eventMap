@@ -15,6 +15,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.connectivity"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.connectivity"
+    }
 }

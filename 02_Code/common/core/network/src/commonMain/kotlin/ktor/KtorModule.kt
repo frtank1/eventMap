@@ -19,14 +19,28 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import com.eventmap.core.datastore.TokenStorage
 import com.eventmap.core.network.CoreConfig
+import com.eventmap.core.network.auth.Jwt
 import com.eventmap.core.network.error.GlobalError
 import com.eventmap.core.network.error.GlobalErrorBus
 import com.eventmap.core.network.ktor.HttpEngineFactory
 import com.eventmap.core.network.models.TokenRefreshRequest
 import com.eventmap.core.network.models.TokenRefreshResponse
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 val ktorModule = module {
+
+    // «Голый» клиент для прямого PUT файла в object storage (R2/S3).
+    // Без Auth-плагина: bearer на presigned-URL не входит в подпись SigV4 и ломает запрос.
+    single(named("upload")) {
+        HttpClient(HttpEngineFactory().createEngine()) {
+            install(HttpTimeout) {
+                connectTimeoutMillis = 15_000
+                requestTimeoutMillis = 120_000  // запас под видео ~30 МБ
+                socketTimeoutMillis = 120_000
+            }
+        }
+    }
 
     single {
         val errorBus = get<GlobalErrorBus>()
@@ -35,10 +49,11 @@ val ktorModule = module {
 
         HttpClient(HttpEngineFactory().createEngine()) {
 
-            // ALL пишет в лог тела запросов и токены — только при config.debug
+            // HEADERS — метод/URL/статус/заголовки, но БЕЗ тел запросов (без паролей/токенов в логе).
+            // Достаточно, чтобы видеть, ушёл ли запрос и что вернул, не светя секреты.
             install(Logging) {
                 logger = Logger.SIMPLE
-                level = if (config.debug) LogLevel.ALL else LogLevel.NONE
+                level = if (config.debug) LogLevel.HEADERS else LogLevel.NONE
             }
 
             install(DefaultRequest) {
@@ -51,15 +66,21 @@ val ktorModule = module {
                         isLenient = true
                         ignoreUnknownKeys = true
                         prettyPrint = true
+                        // ВАЖНО: отправлять и поля со значениями по умолчанию.
+                        // Иначе price=EventPrice("free") сериализуется как {} (всё дефолтное),
+                        // а серверный PriceDto.type обязателен → 500 при создании события.
+                        encodeDefaults = true
                     }
                 )
             }
 
             install(HttpTimeout) {
-                // быстрый фолбэк на демо-данные, когда бэка нет (офлайн-режим)
-                connectTimeoutMillis = 4_000
-                requestTimeoutMillis = 30_000
-                socketTimeoutMillis = 15_000
+                // Render free-план засыпает после 15 мин простоя и просыпается ~30 сек
+                // (холодный старт). Прежние 4 сек на connect убивали первый «будящий»
+                // запрос → создание/логин висли и падали. Даём серверу проснуться.
+                connectTimeoutMillis = 20_000
+                requestTimeoutMillis = 60_000
+                socketTimeoutMillis = 30_000
             }
 
             install(Auth) {
@@ -73,16 +94,28 @@ val ktorModule = module {
                     // На 401 Ktor сам зовёт refreshTokens, обновляет токен и повторяет запрос.
                     refreshTokens {
                         val session = tokenStorage.getActiveSession()
-                        if (session == null || session.refreshToken.isBlank()) {
+
+                        // Сессии нет или refresh-токен сам просрочен → он мёртв, сервер не спасёт.
+                        // Сбрасываем на авторизацию (App слушает Unauthorized → SplashScreen).
+                        if (session == null || session.refreshToken.isBlank() ||
+                            Jwt.isExpired(session.refreshToken)
+                        ) {
                             tokenStorage.logout()
                             errorBus.events.emit(GlobalError.Unauthorized)
                             return@refreshTokens null
                         }
 
-                        val response = client.post(config.authTokenPath) {
-                            contentType(ContentType.Application.Json)
-                            setBody(TokenRefreshRequest(refreshToken = session.refreshToken))
-                            markAsRefreshTokenRequest()
+                        // refresh-токен ещё жив → пробуем обновиться. Сервер может спать
+                        // (Render cold start) или лежать — тогда это временный сбой,
+                        // сессию НЕ убиваем, просто даём запросу упасть.
+                        val response = try {
+                            client.post(config.authTokenPath) {
+                                contentType(ContentType.Application.Json)
+                                setBody(TokenRefreshRequest(refreshToken = session.refreshToken))
+                                markAsRefreshTokenRequest()
+                            }
+                        } catch (e: Exception) {
+                            return@refreshTokens null // сеть/таймаут: не разлогиниваем живую сессию
                         }
 
                         if (response.status.isSuccess()) {
@@ -95,6 +128,7 @@ val ktorModule = module {
                             )
                             BearerTokens(new.accessToken, refresh)
                         } else {
+                            // Сервер явно отверг refresh (401/403 и т.п.) → токен недействителен.
                             tokenStorage.logout()
                             errorBus.events.emit(GlobalError.Unauthorized)
                             null

@@ -16,4 +16,12 @@ data class CreateEventRequest(
     val category: String,
     val price: EventPrice,
     val limit: Int? = null,
+    val kind: String = "planned",
+    val sourceType: String = "initiator",
+    val visibility: String = "public",
+    val joinPolicy: String = "open",
+    val audience: String = "everyone",
+    val minAge: Int? = null,
+    val expiresAtMs: Long? = null,
+    val proofMediaId: String? = null,
 )

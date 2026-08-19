@@ -30,9 +30,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
 import cafe.adriel.voyager.core.screen.Screen
+import cafe.adriel.voyager.koin.koinScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import com.eventmap.quest.ui.viewmodel.QuestDetailViewModel
 import com.eventmap.quest.ui.models.PointStatus
 import com.eventmap.quest.ui.models.QuestItem
 import com.eventmap.quest.ui.models.QuestPoint
@@ -54,7 +57,10 @@ data class QuestDetailScreen(val quest: QuestItem) : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
-        val q = quest
+        // мгновенный рендер переданного квеста + фоновое обновление с бэка (GET /quests/{id})
+        val vm = koinScreenModel<QuestDetailViewModel>()
+        androidx.compose.runtime.LaunchedEffect(quest.id) { vm.load(quest) }
+        val q = vm.quest.collectAsState().value ?: quest
         val progress = q.pointsDone.toFloat() / q.pointsTotal.coerceAtLeast(1)
 
         Column(

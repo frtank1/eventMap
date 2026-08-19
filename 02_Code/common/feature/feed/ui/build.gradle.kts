@@ -19,4 +19,8 @@ kotlin { sourceSets {
         implementation(libs.androidx.activity.compose)
     }
 } }
-android { namespace = "com.eventmap.feature.feed.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.feed.ui"
+    }
+}

@@ -8,4 +8,8 @@ kotlin { sourceSets { commonMain.dependencies {
     implementation(projects.common.core.datastore)
     implementation(projects.common.feature.profile.domain)
 } } }
-android { namespace = "com.eventmap.feature.profile.data" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.profile.data"
+    }
+}

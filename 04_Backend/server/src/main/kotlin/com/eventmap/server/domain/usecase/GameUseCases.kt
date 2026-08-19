@@ -58,6 +58,33 @@ class GetDistrictLeaderboardUseCase(private val game: GameRepository) {
     suspend operator fun invoke(): List<Triple<String, String, Long>> = game.leaderboard()
 }
 
+class GetUserLeaderboardUseCase(
+    private val xp: XpRepository,
+    private val friends: FriendRepository,
+    private val users: com.eventmap.server.domain.repository.UserRepository,
+) {
+    data class Row(val userId: String, val name: String, val xp: Long, val level: Int, val isMe: Boolean)
+
+    /** Лидерборд игроков R2: scope=global — топ-50 по XP; scope=friends — принятые друзья + я */
+    suspend operator fun invoke(userId: String, scope: String): List<Row> {
+        val raw: List<Triple<String, String, Long>> = if (scope == "friends") {
+            val friendPairs = friends.listFor(userId)
+                .filter { it.status == "accepted" }
+                .map { it.userId to it.name }
+            val myName = users.byId(userId)?.name ?: "Я"
+            val all = friendPairs + (userId to myName)
+            val totals = xp.totalsFor(all.map { it.first })
+            all.map { (id, name) -> Triple(id, name, totals[id] ?: 0L) }
+                .sortedByDescending { it.third }
+        } else {
+            xp.topUsers(50)
+        }
+        return raw.map { (id, name, total) ->
+            Row(userId = id, name = name, xp = total, level = levelFor(total).first, isMe = id == userId)
+        }
+    }
+}
+
 // ===== Капсулы времени (R3/G15) =====
 
 class CreateCapsuleUseCase(

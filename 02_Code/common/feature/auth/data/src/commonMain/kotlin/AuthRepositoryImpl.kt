@@ -8,6 +8,7 @@ import com.eventmap.auth.data.ktor.LoginRequest
 import com.eventmap.auth.data.ktor.RegisterRequest
 import com.eventmap.auth.data.ktor.ResetRequest
 import com.eventmap.auth.models.AuthResult
+import com.eventmap.core.datastore.AppLockStorage
 import com.eventmap.core.datastore.TokenStorage
 import com.eventmap.core.datastore.UserType
 import com.eventmap.core.network.ktor.KtorResponse
@@ -18,6 +19,7 @@ import io.ktor.http.isSuccess
 class AuthRepositoryImpl(
     private val remote: AuthRemoteDataSource,
     private val tokenStorage: TokenStorage,
+    private val appLockStorage: AppLockStorage,
 ) : AuthRepository {
 
     override suspend fun register(
@@ -28,6 +30,7 @@ class AuthRepositoryImpl(
         safeRequest<AuthResult> {
             remote.register(RegisterRequest(email, password, name))
         }.also { it.persistTokens() }
+            .also { it.persistCredentials(email, password) }
 
     override suspend fun login(
         email: String,
@@ -36,6 +39,7 @@ class AuthRepositoryImpl(
         safeRequest<AuthResult> {
             remote.login(LoginRequest(email, password))
         }.also { it.persistTokens() }
+            .also { it.persistCredentials(email, password) }
 
     override suspend fun forgotPassword(email: String): KtorResponse<Unit> =
         unitRequest { remote.forgotPassword(ForgotRequest(email)) }
@@ -52,6 +56,23 @@ class AuthRepositoryImpl(
 
     override fun isLoggedIn(): Boolean = tokenStorage.isAuthorized()
 
+    override suspend fun validateSession(): Boolean? {
+        val r = try {
+            remote.me() // 401 → Ktor Auth сам попробует refresh и повторит запрос
+        } catch (_: Throwable) {
+            return null // оффлайн/таймаут — не наказываем, решение примут экраны
+        }
+        return when {
+            r.status.isSuccess() -> true
+            r.status.value == 401 -> {
+                // refresh тоже мёртв (KtorModule уже почистил vault и кинул Unauthorized в шину)
+                tokenStorage.logout()
+                false
+            }
+            else -> null
+        }
+    }
+
     // --- helpers ---
 
     private fun KtorResponse<AuthResult>.persistTokens() {
@@ -61,6 +82,14 @@ class AuthRepositoryImpl(
                 access = data.accessToken,
                 refresh = data.refreshToken,
             )
+        }
+    }
+
+    // Учётка нужна для тихого ре-логина App Lock, когда refresh-токен умер на сервере.
+    // Лежит в зашифрованном vault; стирается при реальном логауте (AppLockController.onLogout).
+    private fun KtorResponse<AuthResult>.persistCredentials(email: String, password: String) {
+        if (this is KtorResponse.Success) {
+            appLockStorage.saveCredentials(email.trim(), password)
         }
     }
 

@@ -36,6 +36,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.feature.example.ui"
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.example.ui"
+    }
 }

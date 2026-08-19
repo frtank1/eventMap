@@ -51,6 +51,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.network"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.network"
+    }
 }

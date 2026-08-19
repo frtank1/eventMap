@@ -8,5 +8,5 @@ import org.koin.dsl.module
 val profileModule = module {
     factory { ProfileViewModel(repository = get()) }
     factory { EditProfileViewModel(repository = get()) }
-    factory { SettingsViewModel() }
+    factory { SettingsViewModel(pulseSettings = get(), httpClient = get()) } // тумблер I2 + мгновенный stop шеринга
 }

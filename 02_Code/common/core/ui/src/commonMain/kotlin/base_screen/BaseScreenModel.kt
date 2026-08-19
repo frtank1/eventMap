@@ -10,7 +10,8 @@ abstract class BaseScreenModel : ScreenModel {
     val errorMessage: SharedFlow<String> = _errorMessage
 
     protected fun emitError(error: ErrorModel) {
-        val msg = error.customMessage ?: error.message ?: "Неизвестная ошибка"
+        // customMessage (валидация клиента) → message → вложенный серверный error.message
+        val msg = error.customMessage ?: error.message ?: error.error?.message ?: "Неизвестная ошибка"
         _errorMessage.tryEmit(msg)
     }
 }

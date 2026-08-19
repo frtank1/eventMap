@@ -11,6 +11,7 @@ kotlin { sourceSets {
         implementation(libs.voyager.koin)
         implementation(libs.koin.core)
         implementation(projects.common.core.ui)
+            implementation(projects.common.core.datastore) // PulseSettings (тумблер I2)
         implementation(projects.common.core.network)
         implementation(projects.common.feature.profile.domain)
     }
@@ -19,4 +20,8 @@ kotlin { sourceSets {
         implementation(libs.androidx.activity.compose)
     }
 } }
-android { namespace = "com.eventmap.feature.profile.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.profile.ui"
+    }
+}

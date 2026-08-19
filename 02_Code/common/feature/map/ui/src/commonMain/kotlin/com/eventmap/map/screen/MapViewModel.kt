@@ -8,6 +8,12 @@ import com.eventmap.map.EventCategory
 import com.eventmap.map.EventState
 import com.eventmap.map.LatLng
 import com.eventmap.map.MapEvent
+import com.eventmap.core.datastore.PulseSettings
+import com.eventmap.core.platform.geo.GeoProvider
+import com.eventmap.map.data.AnomalyNet
+import com.eventmap.map.data.FriendLocationNet
+import com.eventmap.map.data.MapPulseRepository
+import com.eventmap.map.data.PulseEventNet
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +32,9 @@ import kotlinx.coroutines.launch
  */
 class MapViewModel(
     private val eventRepository: EventRepository,
+    private val pulseRepository: MapPulseRepository? = null, // null в старых тестах
+    private val geo: GeoProvider? = null,                    // null в старых тестах
+    private val pulseSettings: PulseSettings? = null,        // opt-in на пинг (I2)
     private val demoMode: Boolean = false,
     dispatcher: CoroutineDispatcher = Dispatchers.Default, // в тестах — TestDispatcher
 ) : BaseScreenModel() {
@@ -42,7 +51,126 @@ class MapViewModel(
     private val _selected = MutableStateFlow<MapEvent?>(null)
     val selected: StateFlow<MapEvent?> = _selected.asStateFlow()
 
-    init { reload() }
+    // Участники выбранного LIVE-события (кружки C6); пусто = ещё грузится/никого
+    private val _liveParticipants = MutableStateFlow<List<String>>(emptyList())
+    val liveParticipants: StateFlow<List<String>> = _liveParticipants.asStateFlow()
+
+    // ── Режимы C1 (G1–G3): пульс/туман/люди ──────────────────────────
+    private val _mode = MutableStateFlow(MapMode.None)
+    val mode: StateFlow<MapMode> = _mode.asStateFlow()
+
+    /** glow по eventId (G1) — GET /map/pulse */
+    private val _pulse = MutableStateFlow<Map<String, PulseEventNet>>(emptyMap())
+    val pulse: StateFlow<Map<String, PulseEventNet>> = _pulse.asStateFlow()
+
+    /** спонтанные сгустки людей «⚡ здесь что-то происходит» (G9) */
+    private val _anomalies = MutableStateFlow<List<AnomalyNet>>(emptyList())
+    val anomalies: StateFlow<List<AnomalyNet>> = _anomalies.asStateFlow()
+
+    /** туман войны (G3): открытые районы; null — ещё не загружено */
+    private val _fogVisited = MutableStateFlow<Int?>(null)
+    val fogVisited: StateFlow<Int?> = _fogVisited.asStateFlow()
+
+    /** друзья, делящиеся геолокацией (C10/L5) — пины режима «Люди» */
+    private val _friends = MutableStateFlow<List<FriendLocationNet>>(emptyList())
+    val friends: StateFlow<List<FriendLocationNet>> = _friends.asStateFlow()
+
+    /** квест-компас G6: ближайшее событие «по вкусу» (учитывает выбранные категории) */
+    data class CompassHint(val event: MapEvent, val distanceM: Int?)
+    private val _compass = MutableStateFlow<CompassHint?>(null)
+    val compass: StateFlow<CompassHint?> = _compass.asStateFlow()
+
+    init {
+        reload()
+        startPingLoop()
+    }
+
+    // Гео-пинг «Пульса города» (I2, §8.5): ТОЛЬКО при включённом тумблере Sharing.
+    // Живёт, пока жива карта (scope отменяется в onDispose). Тумблер перечитывается
+    // каждый цикл — выключение в настройках останавливает пинги без рестарта.
+    private fun startPingLoop() {
+        val repo = pulseRepository ?: return
+        val geoProvider = geo ?: return
+        scope.launch {
+            var wasSharing = false
+            while (true) {
+                val sharing = pulseSettings?.isSharingEnabled() == true
+                if (sharing) {
+                    geoProvider.current()?.let { fix ->
+                        repo.ping(fix.lat, fix.lng)          // аноним: пульс города (G1/G9)
+                        repo.shareLocation(fix.lat, fix.lng) // именной: друзьям (C10/L5)
+                    }
+                    wasSharing = true
+                } else if (wasSharing) {
+                    // тумблер выключили — убираем позицию; при сетевой ошибке ретраим следующим тиком
+                    if (repo.stopSharing() is KtorResponse.Success) wasSharing = false
+                }
+                // режим «Люди» открыт — освежаем позиции друзей (двигаются/перестают делиться)
+                if (_mode.value == MapMode.People) loadFriends()
+                kotlinx.coroutines.delay(PING_INTERVAL_MS)
+            }
+        }
+    }
+
+    fun setMode(mode: MapMode) {
+        _mode.value = if (_mode.value == mode) MapMode.None else mode
+        when (_mode.value) {
+            MapMode.Pulse, MapMode.Heat, MapMode.Flow -> loadPulse() // тепло/поток — из glow, crowd10m и аномалий
+            MapMode.People -> { loadPulse(); loadFriends() }
+            MapMode.Fog -> loadFog()
+            MapMode.None -> Unit
+        }
+    }
+
+    private fun loadPulse() {
+        val repo = pulseRepository ?: return
+        scope.launch {
+            when (val r = repo.pulse()) {
+                is KtorResponse.Success -> {
+                    _pulse.value = r.data.events.associateBy { it.eventId }
+                    _anomalies.value = r.data.anomalies
+                }
+                is KtorResponse.Failure -> if (demoMode) {
+                    // оффлайн-демо G9: одна аномалия у Байтерека
+                    _anomalies.value = listOf(AnomalyNet(id = "demo", lat = 51.1283, lng = 71.4306, userCount = 34))
+                }
+            }
+        }
+    }
+
+    // C10: позиции друзей (бэк отдаёт только подтверждённых друзей и свежие фиксы)
+    private fun loadFriends() {
+        val repo = pulseRepository ?: return
+        scope.launch {
+            when (val r = repo.friendLocations()) {
+                is KtorResponse.Success -> _friends.value = r.data
+                is KtorResponse.Failure -> if (demoMode) {
+                    _friends.value = listOf(
+                        FriendLocationNet("demo-1", "Аян", 51.1300, 71.4280, "2 мин назад"),
+                        FriendLocationNet("demo-2", "Дана", 51.1240, 71.4380, "5 мин назад"),
+                    )
+                }
+            }
+        }
+    }
+
+    /** «Позвать с собой» (C10): пуш другу; onDone(true) — успех */
+    fun waveToFriend(userId: String, onDone: (Boolean) -> Unit = {}) {
+        val repo = pulseRepository ?: return onDone(false)
+        scope.launch {
+            onDone(repo.wave(userId) is KtorResponse.Success)
+        }
+    }
+
+    private fun loadFog() {
+        val repo = pulseRepository ?: return
+        scope.launch {
+            when (val r = repo.fog()) {
+                is KtorResponse.Success -> _fogVisited.value = r.data.visitedDistrictIds.size
+                is KtorResponse.Failure -> if (demoMode) _fogVisited.value = 3
+            }
+        }
+    }
 
     fun reload() {
         scope.launch {
@@ -57,6 +185,22 @@ class MapViewModel(
                 is KtorResponse.Failure ->
                     if (!demoMode) emitError(r.error) // в demoMode остаёмся на sampleEvents
             }
+            refreshCompass()
+        }
+    }
+
+    // G6 «движ по вкусу»: ближайшее событие выбранных категорий (или любое LIVE/скоро).
+    // Гео берём одноразово; нет разрешения — компас без расстояния (первое LIVE).
+    private suspend fun refreshCompass() {
+        val candidates = applyFilter(_filter.value).filter { it.state != EventState.Ending }
+        if (candidates.isEmpty()) { _compass.value = null; return }
+        val fix = geo?.current()
+        _compass.value = if (fix == null) {
+            val target = candidates.firstOrNull { it.state == EventState.Live } ?: candidates.first()
+            CompassHint(target, distanceM = null)
+        } else {
+            val target = candidates.minByOrNull { haversineM(fix.lat, fix.lng, it.location.lat, it.location.lon) }!!
+            CompassHint(target, haversineM(fix.lat, fix.lng, target.location.lat, target.location.lon).toInt())
         }
     }
 
@@ -64,7 +208,18 @@ class MapViewModel(
         scope.cancel()
     }
 
-    fun select(event: MapEvent) { _selected.value = event }
+    fun select(event: MapEvent) {
+        _selected.value = event
+        // C6: живые кружки участников LIVE-шторки — реальные имена с бэка
+        _liveParticipants.value = emptyList()
+        if (event.state == EventState.Live || event.state == EventState.Ending) {
+            scope.launch {
+                _liveParticipants.value =
+                    (eventRepository.getParticipants(event.id, "going") as? KtorResponse.Success)
+                        ?.data?.map { it.name }.orEmpty()
+            }
+        }
+    }
     fun clearSelection() { _selected.value = null }
 
     fun setWhen(w: WhenFilter) = update(_filter.value.copy(whenFilter = w))
@@ -113,6 +268,9 @@ private fun EventDetail.toMapEvent(): MapEvent = MapEvent(
     distanceKm = 0.0,
     isFree = price.isFree,
     watching = liveViewers,
+    kind = kind,
+    confirmationCount = confirmationCount,
+    interestCount = interestCount,
 )
 
 private fun categoryToEnum(c: String): EventCategory = when (c) {
@@ -126,6 +284,20 @@ private fun categoryToEnum(c: String): EventCategory = when (c) {
     "Квиз" -> EventCategory.Quiz
     "Книжклуб" -> EventCategory.BookClub
     else -> EventCategory.Concert
+}
+
+// пинг раз в минуту — сервер агрегирует каждые 30 с, чаще не нужно (TTL 15 мин)
+private const val PING_INTERVAL_MS = 60_000L
+
+// расстояние между точками в метрах (для компаса G6)
+private fun haversineM(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+    val r = 6_371_000.0
+    val dLat = kotlin.math.PI / 180 * (lat2 - lat1)
+    val dLng = kotlin.math.PI / 180 * (lng2 - lng1)
+    val a = kotlin.math.sin(dLat / 2) * kotlin.math.sin(dLat / 2) +
+        kotlin.math.cos(kotlin.math.PI / 180 * lat1) * kotlin.math.cos(kotlin.math.PI / 180 * lat2) *
+        kotlin.math.sin(dLng / 2) * kotlin.math.sin(dLng / 2)
+    return 2 * r * kotlin.math.asin(kotlin.math.sqrt(a))
 }
 
 private fun statusToState(s: String): EventState = when (s) {

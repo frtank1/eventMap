@@ -21,4 +21,8 @@ kotlin { sourceSets {
         implementation(libs.androidx.activity.compose)
     }
 } }
-android { namespace = "com.eventmap.feature.search.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.search.ui"
+    }
+}

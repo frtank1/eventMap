@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -22,16 +23,36 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.ChildCare
+import androidx.compose.material.icons.rounded.LocalMall
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Quiz
+import androidx.compose.material.icons.rounded.Restaurant
+import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.SelfImprovement
+import androidx.compose.material.icons.rounded.SportsSoccer
+import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.eventmap.theme.ui_kit.clickableNoRipple
 import kotlin.math.roundToInt
+
+// Ниже этого зума пины группируются в кластеры (30+ событий на зуме города — каша)
+private const val CLUSTER_MAX_ZOOM = 12.8
 
 /**
  * Compose-overlay поверх карты: для каждого события рисует маркер на спроецированной
  * позиции (controller.project). У LIVE-событий — пульсирующее кольцо.
+ * На малом зуме соседние пины схлопываются в кластер с числом; тап — подлёт камеры.
  */
 @Composable
 fun EventOverlay(
@@ -40,13 +61,80 @@ fun EventOverlay(
     modifier: Modifier = Modifier,
     onPinClick: (MapEvent) -> Unit = {},
 ) {
-    // подписка на viewport заставляет overlay перерисовываться при панораме/зуме
+    // ВАЖНО: viewport надо реально ПРОЧИТАТЬ, иначе Compose не подпишется на его изменения
+    // и overlay не перерисуется при панораме/зуме — пины «поедут» вместе с картой.
     val viewport by controller.viewport.collectAsState()
+    val cellPx = with(LocalDensity.current) { 76.dp.toPx() }
 
     Box(modifier.fillMaxSize()) {
-        events.forEach { event ->
-            val screen = controller.project(event.location) ?: return@forEach
-            EventMarker(event = event, position = screen, onClick = { onPinClick(event) })
+        if (viewport.zoom >= CLUSTER_MAX_ZOOM) {
+            events.forEach { event ->
+                // viewport в ключе remember → проекция пересчитывается на каждое движение камеры,
+                // поэтому маркер остаётся привязанным к своим гео-координатам.
+                val screen = remember(event.location, viewport) { controller.project(event.location) }
+                    ?: return@forEach
+                EventMarker(event = event, position = screen, onClick = { onPinClick(event) })
+            }
+        } else {
+            // Кластеризация по экранной сетке: соседние по пикселям пины → одна группа
+            val groups = remember(events, viewport) {
+                events.mapNotNull { e -> controller.project(e.location)?.let { p -> e to p } }
+                    .groupBy { (_, p) -> (p.x / cellPx).toInt() to (p.y / cellPx).toInt() }
+                    .values.toList()
+            }
+            groups.forEach { group ->
+                if (group.size == 1) {
+                    val (event, screen) = group.first()
+                    EventMarker(event = event, position = screen, onClick = { onPinClick(event) })
+                } else {
+                    val cx = group.map { it.second.x }.average().toFloat()
+                    val cy = group.map { it.second.y }.average().toFloat()
+                    val hasLive = group.any { it.first.state == EventState.Live }
+                    val targetLat = group.map { it.first.location.lat }.average()
+                    val targetLon = group.map { it.first.location.lon }.average()
+                    val targetZoom = viewport.zoom + 2.2
+                    ClusterMarker(
+                        count = group.size,
+                        position = Offset(cx, cy),
+                        hasLive = hasLive,
+                        onClick = {
+                            controller.animateCamera(LatLng(targetLat, targetLon), zoom = targetZoom)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Кластер: фиолетовый круг с числом; красная точка — внутри есть LIVE
+@Composable
+private fun ClusterMarker(count: Int, position: Offset, hasLive: Boolean, onClick: () -> Unit) {
+    val sizeDp = 46
+    Box(
+        modifier = Modifier.offset {
+            IntOffset(
+                (position.x - (sizeDp / 2).dp.toPx()).roundToInt(),
+                (position.y - (sizeDp / 2).dp.toPx()).roundToInt(),
+            )
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(sizeDp.dp).clip(CircleShape)
+                .background(Color(0xFF7C5CFF))
+                .border(2.dp, Color.White, CircleShape)
+                .clickableNoRipple(onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$count", fontSize = 15.sp, color = Color.White)
+        }
+        if (hasLive) {
+            Box(
+                Modifier.offset { IntOffset((sizeDp / 2 - 5).dp.toPx().roundToInt(), (-(sizeDp / 2) + 5).dp.toPx().roundToInt()) }
+                    .size(12.dp).clip(CircleShape)
+                    .background(Color(0xFFFF4757)).border(1.dp, Color.White, CircleShape),
+            )
         }
     }
 }
@@ -101,7 +189,12 @@ private fun EventMarker(event: MapEvent, position: Offset, onClick: () -> Unit) 
                 .clickableNoRipple(onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Text(emojiFor(event.category), fontSize = 18.sp)
+            Icon(
+                imageVector = iconFor(event),
+                contentDescription = event.category.name,
+                tint = Color(0xFF17141E),
+                modifier = Modifier.size(21.dp),
+            )
         }
     }
 }
@@ -130,18 +223,21 @@ private fun statusColor(state: EventState): Color = when (state) {
     EventState.Ending -> Color(0xFFFF4757)
 }
 
-private fun emojiFor(category: EventCategory): String = when (category) {
-    EventCategory.Stadium -> "⚽"
-    EventCategory.Concert -> "🎵"
-    EventCategory.Yoga -> "🧘"
-    EventCategory.FoodDiscount -> "🍔"
-    EventCategory.ShopDiscount -> "🛍️"
-    EventCategory.KidsEvent -> "🧸"
-    EventCategory.OpenLesson -> "📚"
-    EventCategory.Quiz -> "🧩"
-    EventCategory.BookClub -> "📖"
-    EventCategory.Person -> "🧑"
-    EventCategory.LiveVideo -> "🎬"
+private fun iconFor(event: MapEvent): ImageVector {
+    if (event.kind == "live_signal") return Icons.Rounded.Bolt
+    return when (event.category) {
+        EventCategory.Stadium -> Icons.Rounded.SportsSoccer
+        EventCategory.Concert -> Icons.Rounded.MusicNote
+        EventCategory.Yoga -> Icons.Rounded.SelfImprovement
+        EventCategory.FoodDiscount -> Icons.Rounded.Restaurant
+        EventCategory.ShopDiscount -> Icons.Rounded.LocalMall
+        EventCategory.KidsEvent -> Icons.Rounded.ChildCare
+        EventCategory.OpenLesson -> Icons.Rounded.School
+        EventCategory.Quiz -> Icons.Rounded.Quiz
+        EventCategory.BookClub -> Icons.Rounded.MenuBook
+        EventCategory.Person -> Icons.Rounded.Person
+        EventCategory.LiveVideo -> Icons.Rounded.Videocam
+    }
 }
 
 /**
@@ -161,6 +257,9 @@ data class MapEvent(
     val isFree: Boolean = true,
     val watching: Int = 0,
     val animation: PinAnimation = PinAnimation.Pulse,
+    val kind: String = "planned",
+    val confirmationCount: Int = 0,
+    val interestCount: Int = 0,
 )
 
 enum class EventCategory {

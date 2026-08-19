@@ -29,4 +29,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.payment.ui" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.payment.ui"
+    }
+}

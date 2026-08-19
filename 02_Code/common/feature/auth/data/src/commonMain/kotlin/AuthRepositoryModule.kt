@@ -6,5 +6,7 @@ import org.koin.dsl.module
 
 val authRepositoryModule = module {
     single { AuthRemoteDataSource(httpClient = get()) }
-    single<AuthRepository> { AuthRepositoryImpl(remote = get(), tokenStorage = get()) }
+    single<AuthRepository> {
+        AuthRepositoryImpl(remote = get(), tokenStorage = get(), appLockStorage = get())
+    }
 }

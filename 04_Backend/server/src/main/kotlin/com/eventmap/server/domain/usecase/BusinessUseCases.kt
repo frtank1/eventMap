@@ -38,8 +38,10 @@ class ApplyBusinessUseCase(private val business: BusinessRepository) {
         if (category.isBlank()) {
             return Result.Rejected("BAD_REQUEST", "Категория обязательна — от неё зависит набор анимаций пина")
         }
-        if (business.byUser(userId) != null) {
-            return Result.Rejected("ALREADY_EXISTS", "У тебя уже есть бизнес-аккаунт/заявка")
+        when (business.byUser(userId)?.status) {
+            "approved" -> return Result.Rejected("ALREADY_APPROVED", "Бизнес уже подтверждён")
+            "pending" -> return Result.Rejected("ALREADY_EXISTS", "Заявка уже на модерации")
+            // rejected / нет заявки → apply перезапишет данные, статус снова pending
         }
         // TODO: автопроверка БИН в реестре (egov API) — Спринт интеграций
         return Result.Ok(business.apply(userId, bin, legalName.trim(), brandName.trim(), category, phone, social, documents))

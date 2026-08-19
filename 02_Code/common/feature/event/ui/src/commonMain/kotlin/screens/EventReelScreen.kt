@@ -41,6 +41,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.eventmap.theme.*
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import cafe.adriel.voyager.koin.koinScreenModel
+import com.eventmap.event.models.EventComment
+import com.eventmap.event.ui.viewmodel.CommentsViewModel
+import com.eventmap.event.ui.viewmodel.EventDetailViewModel
+import com.eventmap.views.video.VideoPlayer
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import kotlinx.coroutines.delay
 
 // =====================================================================
@@ -70,12 +77,48 @@ data class EventReelScreen(
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
         val pager = rememberPagerState(initialPage = startIndex) { events.size }
+        // D9: комментарии с бэка (/events/{id}/comments); при офлайне — демо в шторке
+        val commentsVm = koinScreenModel<CommentsViewModel>()
+        // Медиа события (GET /events/{id}/media) — ролик текущей страницы для плеера
+        val detailVm = koinScreenModel<EventDetailViewModel>()
+        LaunchedEffect(pager.currentPage) { detailVm.load(events[pager.currentPage].id) }
+        val media by detailVm.media.collectAsState()
+        val detail by detailVm.event.collectAsState()
+        val friendsGoing by detailVm.friendsGoing.collectAsState()
+        val interested by detailVm.interested.collectAsState()
+        val confirmed by detailVm.confirmed.collectAsState()
+        // ролик берём только когда медиа уже про текущую страницу (иначе при свайпе мигал бы чужой)
+        val currentVideoUrl = media
+            .takeIf { detail?.id == events[pager.currentPage].id }
+            ?.firstOrNull { it.type == "video" && it.url.isNotBlank() }?.url
 
         Box(Modifier.fillMaxSize().background(NightBackground)) {
             VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
                 ReelPage(
-                    event = events[page],
+                    // свежая карточка с бэка (живые счётчики) — как только загрузилась
+                    event = detail?.takeIf { it.id == events[page].id } ?: events[page],
+                    friendsGoing = friendsGoing.takeIf { detail?.id == events[page].id },
                     distanceM = null,
+                    // играет только видимая страница — у остальных градиент
+                    videoUrl = if (pager.currentPage == page) currentVideoUrl else null,
+                    commentsVm = commentsVm,
+                    // P4: оценка события (звёзды + теги + отзыв)
+                    onRate = {
+                        nav.push(
+                            RateEventScreen(
+                                eventId = events[page].id,
+                                eventTitle = events[page].title,
+                                placeLabel = events[page].location.name,
+                            ),
+                        )
+                    },
+                    interested = interested,
+                    confirmed = confirmed,
+                    onInterest = detailVm::toggleInterest,
+                    onConfirm = detailVm::confirmHere,
+                    onJoin = { detailVm.join() },
+                    onAttend = detailVm::attend,
+                    onPurchase = detailVm::purchase,
                     onBack = { nav.pop() },
                     onOpenGallery = { nav.push(EventGalleryScreen(events[page].id)) },
                     onOpenParticipants = { nav.push(EventParticipantsScreen(events[page].id)) },
@@ -92,7 +135,18 @@ data class EventReelScreen(
 @Composable
 private fun ReelPage(
     event: EventDetail,
+    friendsGoing: com.eventmap.event.models.FriendsGoing?,
     distanceM: Int?,
+    videoUrl: String?,
+    commentsVm: CommentsViewModel,
+    onRate: () -> Unit,
+    interested: Boolean,
+    confirmed: Boolean,
+    onInterest: () -> Unit,
+    onConfirm: () -> Unit,
+    onJoin: () -> Unit,
+    onAttend: () -> Unit,
+    onPurchase: () -> Unit,
     onBack: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenParticipants: () -> Unit,
@@ -102,6 +156,10 @@ private fun ReelPage(
     var bellEnabled by remember { mutableStateOf(false) }
     var showBellToast by remember { mutableStateOf(false) }
     val cta = ctaFor(event, distanceM)
+    // Системный шаринг (Android chooser / iOS activity sheet)
+    val share = remember { org.koin.mp.KoinPlatform.getKoin().get<com.eventmap.core.platform.share.ShareService>() }
+    // Локальные напоминания: колокольчик D11 = «напомнить за час»
+    val reminders = remember { org.koin.mp.KoinPlatform.getKoin().get<com.eventmap.core.platform.reminders.LocalReminders>() }
 
     // D11 — Bell toast auto-dismiss
     LaunchedEffect(showBellToast) {
@@ -112,16 +170,20 @@ private fun ReelPage(
     }
 
     Box(Modifier.fillMaxSize()) {
-        // ── Video gradient placeholder ────────────────────────────────────
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF3A1F4D), Color(0xFF10131F)),
-                    start = Offset(0f, 0f),
-                    end = Offset(300f, 800f),
+        // ── Видео события: реальный плеер; нет ролика — градиент, как в макете ──
+        if (videoUrl != null) {
+            VideoPlayer(url = videoUrl, playing = true, modifier = Modifier.fillMaxSize())
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF3A1F4D), Color(0xFF10131F)),
+                        start = Offset(0f, 0f),
+                        end = Offset(300f, 800f),
+                    ),
                 ),
-            ),
-        )
+            )
+        }
 
         // Top gradient shade
         Box(
@@ -168,16 +230,54 @@ private fun ReelPage(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ActionBtn(EventMapIcons.Heart, formatCount(event.ratingCount)) { }
-            ActionBtn(EventMapIcons.Comment, "340") { overlaySheet = OverlaySheet.Comments }
-            ActionBtn(EventMapIcons.Share, null) { overlaySheet = OverlaySheet.Share }
+            ActionBtn(
+                EventMapIcons.Heart,
+                formatCount(event.interestCount),
+                tint = if (interested) Color(0xFFFF6B8A) else Color.White,
+                onClick = onInterest,
+            )
+            if (event.kind == "live_signal") {
+                ActionBtn(
+                    EventMapIcons.Pulse,
+                    formatCount(event.confirmationCount),
+                    tint = if (confirmed) Soft else Color.White,
+                    onClick = onConfirm,
+                )
+            }
+            ActionBtn(EventMapIcons.Star, formatCount(event.ratingCount)) { onRate() }
+            ActionBtn(EventMapIcons.Comment, formatCount(event.commentsCount)) {
+                commentsVm.load(event.id) // D9: тянем комментарии события
+                overlaySheet = OverlaySheet.Comments
+            }
+            ActionBtn(EventMapIcons.Share, null) {
+                // реальный системный share вместо мок-шторки
+                val date = event.startAt.take(10).takeIf { it.isNotBlank() }
+                share.shareText(
+                    listOfNotNull("«${event.title}»", date, event.location.name.takeIf { it.isNotBlank() })
+                        .joinToString(" · ") + " — нашёл в EventMap 📍",
+                )
+            }
             ActionBtn(
                 icon = EventMapIcons.Bell,
                 label = null,
                 tint = if (bellEnabled) Soft else Color.White,
                 onClick = {
                     bellEnabled = !bellEnabled
-                    if (bellEnabled) showBellToast = true
+                    // реальное локальное уведомление за час до старта (D11)
+                    val startMs = runCatching { kotlin.time.Instant.parse(event.startAt).toEpochMilliseconds() }.getOrNull()
+                    if (bellEnabled) {
+                        showBellToast = true
+                        if (startMs != null) {
+                            reminders.schedule(
+                                id = "event-${event.id}",
+                                title = "Через час: ${event.title}",
+                                body = event.location.name,
+                                atEpochMs = startMs - 60 * 60 * 1000,
+                            )
+                        }
+                    } else {
+                        reminders.cancel("event-${event.id}")
+                    }
                 },
             )
         }
@@ -218,9 +318,21 @@ private fun ReelPage(
                 )
                 Spacer(Modifier.height(4.dp))
                 val infoLine = if (event.statusEnum() == EventStatus.Live)
-                    "18 мин в эфире · ${event.liveViewers} человек сейчас"
+                    "LIVE · ${event.liveViewers} человек сейчас"
                 else "${event.goingCount} человек идут · ${event.location.name}"
                 Text(infoLine, color = Color(0xFFDFE3F0), fontSize = 12.5.sp)
+
+                // «N друзей уже там» — реальные друзья × отметки (бэк friends-going)
+                if (friendsGoing != null && friendsGoing.count > 0) {
+                    Spacer(Modifier.height(7.dp))
+                    val first = friendsGoing.names.firstOrNull()
+                    val label = when {
+                        first == null -> "${friendsGoing.count} друзей уже там"
+                        friendsGoing.count == 1 -> "$first уже там"
+                        else -> "$first и ещё ${friendsGoing.count - 1} — уже там"
+                    }
+                    ReelPill("👥 $label", Color(0xB37C5CFF))
+                }
             }
         }
 
@@ -231,7 +343,13 @@ private fun ReelPage(
             onExpandChange = { sheetExpanded = it },
             cta = cta,
             distanceM = distanceM,
-            onCta = { /* TODO */ },
+            onCta = {
+                when {
+                    event.joinPolicy == "approval" -> onJoin()
+                    it == ReelCta.Buy -> onPurchase()
+                    else -> onAttend()
+                }
+            },
             onOpenGallery = onOpenGallery,
             onOpenParticipants = onOpenParticipants,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -247,6 +365,7 @@ private fun ReelPage(
         }
         if (overlaySheet == OverlaySheet.Comments) {
             CommentsSheet(
+                vm = commentsVm,
                 onDismiss = { overlaySheet = OverlaySheet.None },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
@@ -476,7 +595,16 @@ private val stubComments = listOf(
 )
 
 @Composable
-private fun CommentsSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+private fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+    // Реальные комментарии (D9); при офлайне остаёмся на демо-ленте
+    val liveComments by vm.comments.collectAsState()
+    val live by vm.live.collectAsState()
+    val shown: List<EventComment> =
+        if (live) liveComments
+        else stubComments.map { c ->
+            EventComment(id = c.user, authorName = c.user, body = c.text, likeCount = c.likes, parentId = if (c.isReply) "x" else null)
+        }
+    var draft by remember { mutableStateOf("") }
     Column(
         modifier
             .fillMaxWidth()
@@ -491,7 +619,7 @@ private fun CommentsSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) 
                 .background(Color.White.copy(alpha = 0.28f)),
         )
         Text(
-            "Комментарии · 340",
+            "Комментарии · ${shown.size}",
             color = Color.White,
             fontSize = 14.sp,
             fontWeight = FontWeight.ExtraBold,
@@ -503,30 +631,32 @@ private fun CommentsSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) 
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(stubComments) { c ->
+            items(shown, key = { it.id }) { c ->
+                val isReply = c.parentId != null
                 Row(
-                    Modifier.padding(start = if (c.isReply) 40.dp else 0.dp),
+                    Modifier.padding(start = if (isReply) 40.dp else 0.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    val sz = if (c.isReply) 26.dp else 32.dp
+                    val sz = if (isReply) 26.dp else 32.dp
                     Box(
                         Modifier.size(sz).clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.08f)),
                         contentAlignment = Alignment.Center,
-                    ) { Text(c.emoji, fontSize = if (c.isReply) 12.sp else 14.sp) }
+                    ) { Text("🙂", fontSize = if (isReply) 12.sp else 14.sp) }
                     Column(Modifier.weight(1f)) {
                         Row {
-                            Text(c.user, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(6.dp))
-                            Text(c.time, color = NightTextSecondary, fontSize = 11.sp)
+                            Text(c.authorName.ifEmpty { "гость" }, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        Text(c.text, color = Color(0xFFCDD3E6), fontSize = 13.sp, lineHeight = 18.sp)
+                        Text(c.body, color = Color(0xFFCDD3E6), fontSize = 13.sp, lineHeight = 18.sp)
                         Text("Ответить", color = NightTextSecondary, fontSize = 11.sp,
                             modifier = Modifier.padding(top = 3.dp))
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("♡", color = Color.White, fontSize = 13.sp)
-                        Text("${c.likes}", color = NightTextSecondary, fontSize = 10.sp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickableNoRipple { if (live) vm.toggleLike(c.id) },
+                    ) {
+                        Text(if (c.likedByMe) "♥" else "♡", color = if (c.likedByMe) Color(0xFFFF6B81) else Color.White, fontSize = 13.sp)
+                        Text("${c.likeCount}", color = NightTextSecondary, fontSize = 10.sp)
                     }
                 }
             }
@@ -542,15 +672,30 @@ private fun CommentsSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier) 
                 contentAlignment = Alignment.Center,
             ) { Text("🙂", fontSize = 18.sp) }
             Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier.weight(1f).height(42.dp).clip(RoundedCornerShape(21.dp))
-                    .background(Color.White.copy(alpha = 0.08f)).padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) { Text("Добавь комментарий…", color = NightTextSecondary, fontSize = 13.sp) }
+            TextField(
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = { Text("Добавь комментарий…", color = NightTextSecondary, fontSize = 13.sp) },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.White.copy(alpha = 0.08f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.08f),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Violet400,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                shape = RoundedCornerShape(21.dp),
+                modifier = Modifier.weight(1f).height(50.dp),
+            )
             Spacer(Modifier.width(8.dp))
             Box(
                 Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient))
-                    .clickableNoRipple { },
+                    .clickableNoRipple {
+                        vm.send(draft) // POST /events/{id}/comments
+                        draft = ""
+                    },
                 contentAlignment = Alignment.Center,
             ) { Text("➤", color = Color.White, fontSize = 15.sp) }
         }

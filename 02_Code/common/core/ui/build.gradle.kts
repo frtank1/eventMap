@@ -21,12 +21,26 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
+            // VideoPlayer (views/video): ExoPlayer + PlayerView
+            implementation(libs.androidx.media3.exoplayer)
+            implementation(libs.androidx.media3.ui)
+            // CameraRecorder (views/camera): CameraX превью + запись
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.video)
+            implementation(libs.androidx.camera.view)
+            implementation(libs.androidx.lifecycle.runtimeCompose) // LocalLifecycleOwner
+            // QrScanner (views/qr): распознавание QR через ImageAnalysis
+            implementation(libs.zxing.core)
         }
     }
 }
 
-android {
-    namespace = "com.eventmap.core.ui"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.ui"
+    }
 }
 
 // Фиксируем пакет генерируемого Res-класса, чтобы он не зависел от rootProject.name.

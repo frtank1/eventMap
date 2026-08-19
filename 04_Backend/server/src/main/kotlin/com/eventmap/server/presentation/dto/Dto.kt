@@ -39,12 +39,26 @@ import kotlinx.serialization.Serializable
     val category: String = "",
     val price: PriceDto = PriceDto("free"),
     val limit: Int? = null,
+    val kind: String = "planned",
+    val sourceType: String = "initiator",
+    val visibility: String = "public",
+    val joinPolicy: String = "open",
+    val audience: String = "everyone",
+    val minAge: Int? = null,
+    val expiresAtMs: Long? = null,
+    val proofMediaId: String? = null,
 )
 @Serializable data class EventDto(
     val id: String, val title: String, val description: String, val category: String, val status: String,
     val startAt: String, val endAt: String, val location: LocationDto, val price: PriceDto,
     val goingCount: Int, val liveViewers: Int, val ratingAvg: Double, val ratingCount: Int,
     val cover: String? = null, val organizerId: String = "", val organizerName: String = "",
+    val commentsCount: Int = 0,
+    val kind: String = "planned", val sourceType: String = "initiator",
+    val visibility: String = "public", val joinPolicy: String = "open",
+    val audience: String = "everyone", val minAge: Int? = null,
+    val capacity: Int? = null, val expiresAtMs: Long? = null,
+    val confirmationCount: Int = 0, val interestCount: Int = 0,
 )
 @Serializable data class OrganizerDto(
     val id: String, val name: String, val bio: String, val avatarUrl: String? = null,
@@ -176,6 +190,8 @@ fun Event.toDto() = EventDto(
     LocationDto(location.lat, location.lng, location.name),
     PriceDto(price.type, price.amount, price.currency),
     goingCount, liveViewers, ratingAvg, ratingCount, cover, organizerId ?: "", organizerName,
+    commentsCount, kind, sourceType, visibility, joinPolicy, audience, minAge,
+    capacity, expiresAtMs, confirmationCount, interestCount,
 )
 
 fun Organizer.toDto() = OrganizerDto(id, name, bio, avatarUrl, isVerified, eventsCount, subscribers)
@@ -229,13 +245,14 @@ fun Media.toDto() = MediaDto(id, url, contentType, kind, eventId, createdAt)
     val eventTitle: String = "",
     val authorName: String = "",
     val caption: String = "",
+    val mediaUrl: String = "", // URL ролика — для плеера в ленте (VideoPlayer)
     val thumb: String? = null,
     val viewers: Int = 0,
     val likes: Int = 0,
     val liked: Boolean = false,
     val category: String = "",
 )
-fun Video.toDto() = VideoDto(id, eventId, eventTitle, authorName, caption, thumb, viewers, likes, liked, category)
+fun Video.toDto() = VideoDto(id, eventId, eventTitle, authorName, caption, mediaUrl, thumb, viewers, likes, liked, category)
 
 @Serializable data class CreateVideoRequest(
     val mediaUrl: String,

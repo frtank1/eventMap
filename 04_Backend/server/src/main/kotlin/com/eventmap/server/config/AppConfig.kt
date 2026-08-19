@@ -18,8 +18,13 @@ data class AppConfig(
     val corsHosts: List<String> = env("CORS_HOSTS", "")
         .split(",").map { it.trim() }.filter { it.isNotEmpty() },
 
-    // Object storage (Cloudflare R2 / MinIO) для фото и видео. Пусто = хранилище выключено
-    // (эндпоинты /media/* вернут 503). См. data/storage/StorageService.kt.
+    // Публичный базовый URL сервиса — для ссылок фолбэк-хранилища медиа (V10).
+    // Render подставляет RENDER_EXTERNAL_URL автоматически; локально — localhost.
+    val publicBaseUrl: String = env("PUBLIC_BASE_URL", env("RENDER_EXTERNAL_URL", "http://localhost:8080")),
+
+    // Object storage (Cloudflare R2 / MinIO) для фото и видео. Пусто = включается
+    // фолбэк-хранилище в Postgres (data/storage/DbStorageService.kt) — ок для теста/демо;
+    // прод — R2. См. 05_Docs/STORAGE_SETUP.md и data/storage/StorageService.kt.
     val s3Endpoint: String = env("S3_ENDPOINT", ""),    // https://<account>.r2.cloudflarestorage.com
     val s3Region: String = env("S3_REGION", "auto"),    // R2: "auto"
     val s3Bucket: String = env("S3_BUCKET", ""),
@@ -42,6 +47,10 @@ data class AppConfig(
         }
         require(!(appEnv == "prod" && adminKey == DEV_ADMIN_KEY)) {
             "ADMIN_KEY обязателен в prod — dev-дефолт запрещён"
+        }
+        // Фолбэк-хранилище медиа строит абсолютные ссылки: localhost в prod = битые URL
+        require(!(appEnv == "prod" && s3Endpoint.isBlank() && publicBaseUrl.startsWith("http://localhost"))) {
+            "PUBLIC_BASE_URL (или S3_*) обязателен в prod — иначе ссылки на медиа будут битыми"
         }
     }
 

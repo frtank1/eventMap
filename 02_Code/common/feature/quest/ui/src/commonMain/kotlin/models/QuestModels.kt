@@ -19,6 +19,10 @@ data class QuestPoint(
     val checkInType: CheckInType,
     val status: PointStatus,
     val distanceM: Int? = null,
+    // для чек-ина на бэке (POST /quests/{id}/points/{pid}/checkin)
+    val questId: String = "",
+    val lat: Double = 0.0,
+    val lng: Double = 0.0,
 )
 
 data class QuestItem(

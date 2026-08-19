@@ -21,10 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import cafe.adriel.voyager.koin.koinScreenModel
+import com.eventmap.quest.ui.viewmodel.QuestCatalogViewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,8 +61,9 @@ class QuestCatalogScreen : Screen {
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
 
-        // Демо-данные
-        val quests = remember { sampleQuests() }
+        // Данные с бэка (/quests/nearby); при недоступном бэке — демо (паттерн MapViewModel)
+        val vm = koinScreenModel<QuestCatalogViewModel>()
+        val quests by vm.items.collectAsState()
 
         Column(
             Modifier
@@ -213,10 +214,10 @@ private fun MetaPill(text: String) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Демо-данные
+//  Демо-данные (fallback при недоступном бэке; используются из questModule)
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun sampleQuests() = listOf(
+internal fun sampleQuests() = listOf(
     QuestItem(
         id = "q1", emoji = "☕", title = "Кофейный тур по Байтереку",
         authorName = "Coffeemania", isVerifiedBusiness = true,

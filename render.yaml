@@ -1,11 +1,10 @@
 # EventMap backend — Render Blueprint (БЕСПЛАТНЫЙ деплой).
 #
-# Один free web-сервис + одна free-база Postgres, деплой автоматический по push в main.
-# Карта/оплата не нужны — все ресурсы на free-плане.
+# Free web-сервис + платная база Postgres (Basic-256mb), деплой автоматически по push в main.
 # Прежняя двух-окруженческая версия (staging free + prod paid) сохранена в истории git.
 #
-# Ограничения free-тарифа: сервис засыпает после 15 мин простоя (~30 сек холодный старт),
-# free-Postgres живёт 30 дней. Для теста/демо — ок; для прода позже вернуть платные планы.
+# Web на free-плане засыпает после 15 мин простоя (~30 сек холодный старт) — таймауты клиента
+# подняты под это. База — платная Basic-256mb (~$6/мес), 30-дневного лимита free больше нет.
 #
 # Подключить: Render → New → Blueprint → выбрать этот репозиторий → Apply.
 
@@ -13,7 +12,8 @@ databases:
   - name: eventmap-db
     databaseName: eventmap
     user: eventmap
-    plan: free
+    # Basic-256mb (~$6/мес) — постоянная база без 30-дневной смерти free-плана.
+    plan: basic-256mb
     region: frankfurt
 
 services:
@@ -38,6 +38,11 @@ services:
         fromDatabase:
           name: eventmap-db
           property: connectionString
+      # Медиа-хостинг: без S3_* работает фолбэк в Postgres (V10) — фото/видео
+      # хранятся в БД, ссылки строятся от RENDER_EXTERNAL_URL (Render задаёт сам).
+      # Для прод-хостинга в Cloudflare R2 добавить в Dashboard → Environment:
+      #   S3_ENDPOINT, S3_REGION=auto, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY, S3_PUBLIC_BASE
+      # Инструкция: 05_Docs/STORAGE_SETUP.md
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_KEY

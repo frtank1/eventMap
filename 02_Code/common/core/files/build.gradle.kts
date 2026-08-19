@@ -18,6 +18,8 @@ kotlin {
     }
 }
 
-android {
-    namespace = "com.eventmap.core.files"
+kotlin {
+    android {
+        namespace = "com.eventmap.core.files"
+    }
 }

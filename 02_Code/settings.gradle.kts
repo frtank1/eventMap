@@ -44,6 +44,7 @@ plugins {
 }
 
 include(":composeApp")
+include(":androidApp")
 include(":common:core:platform")
 include(":common:core:datastore")
 include(":common:core:network")

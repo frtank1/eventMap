@@ -12,6 +12,7 @@ import com.eventmap.core.connectivity.connectivityModule
 import com.eventmap.core.logger.loggerModule
 import com.eventmap.example.data.exampleRepositoryModule
 import com.eventmap.example.ui.exampleModule
+import com.eventmap.applock.appLockModule
 import com.eventmap.auth.data.authRepositoryModule
 import com.eventmap.auth.ui.HomeScreenProvider
 import com.eventmap.auth.ui.authModule
@@ -26,6 +27,12 @@ import com.eventmap.search.data.searchRepositoryModule
 import com.eventmap.search.ui.searchModule
 import com.eventmap.video.data.videoRepositoryModule
 import com.eventmap.video.ui.videoModule
+import com.eventmap.quest.ui.questModule
+import com.eventmap.game.ui.gameModule
+import com.eventmap.business.ui.businessModule
+import com.eventmap.core.platform.geo.geoModule
+import com.eventmap.core.platform.reminders.remindersModule
+import com.eventmap.core.platform.share.shareModule
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
@@ -33,10 +40,9 @@ import org.koin.dsl.module
 // Бэкенд EventMap: Ktor + JWT, эндпоинты /auth/* (см. 05_Docs/API_CONTRACT.md).
 private val defaultCoreConfig = CoreConfig(
     // ВАЖНО: без /v1 — сервер отдаёт роуты с корня (/auth, /events). Слэш в конце обязателен.
-    // TODO: вставить публичный URL после деплоя на Render (см. DEPLOY.md).
-    // Формат: "https://eventmap-staging.onrender.com/" — со слэшем в конце, без /v1.
+    // Боевой бэкенд на Render (задеплоен 20.06.2026). Слэш в конце обязателен, без /v1.
     // Для локального бэка: Android-эмулятор → "http://10.0.2.2:8080/", реальный телефон → "http://<IP-Mac>:8080/".
-    baseUrl = "https://REPLACE-ME.onrender.com/",
+    baseUrl = "https://eventmap-guo1.onrender.com/",
     // на эти пути bearer-токен не вешаем
     authExcludedPaths = listOf(
         "/auth/login",
@@ -49,6 +55,8 @@ private val defaultCoreConfig = CoreConfig(
     // Пока боевой бэкенд не задеплоен — демо-данные и сетевые логи включены.
     // Перед релизом: demoMode = false, debug = false.
     demoMode = false,
+    // debug=true теперь логирует только заголовки/URL/статус (LogLevel.HEADERS), БЕЗ тел и паролей.
+    // Включено для отладки регистрации; перед релизом — false.
     debug = true,
 )
 
@@ -72,12 +80,16 @@ object PlatformSDK {
                 filesModule,
                 platformFilesModule,
                 biometryModule,
+                geoModule, // геолокация (гео-чекины Q3, «я тоже здесь», пинг карты)
+                shareModule, // системный шаринг текста (рилс D8)
+                remindersModule, // локальные напоминания «за час до события»
                 loggerModule,
                 connectivityModule,
                 exampleRepositoryModule,
                 exampleModule,
                 authRepositoryModule,
                 authModule,
+                appLockModule,
                 mapModule,
                 eventRepositoryModule,
                 eventModule,
@@ -89,6 +101,9 @@ object PlatformSDK {
                 searchModule,
                 videoRepositoryModule,
                 videoModule,
+                questModule, // квесты Q1–Q4 → /quests/* (01.07.2026)
+                gameModule,  // игровой хаб R1 → /game/* (01.07.2026)
+                businessModule, // бизнес M: заявка/статус + конструктор квестов (07.07.2026)
                 // Главный экран после авторизации — app shell с картой (раздел C).
                 module { single<HomeScreenProvider> { HomeScreenProvider { MainScreen() } } },
             )

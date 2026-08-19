@@ -1,6 +1,7 @@
 package com.eventmap.auth.data.ktor
 
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -25,6 +26,9 @@ class AuthRemoteDataSource(
 
     suspend fun saveInterests(body: InterestsRequest): HttpResponse =
         httpClient.post("auth/interests") { json(body) }
+
+    /** Дешёвый авторизованный запрос — проверка живости токенов на сплэше */
+    suspend fun me(): HttpResponse = httpClient.get("users/me")
 }
 
 private inline fun <reified T> io.ktor.client.request.HttpRequestBuilder.json(body: T) {

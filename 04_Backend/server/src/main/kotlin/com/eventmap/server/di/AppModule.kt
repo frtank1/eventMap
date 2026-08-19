@@ -85,7 +85,12 @@ import org.koin.dsl.module
 val appModule = module {
     single { AppConfig() }
     single { JwtService(get()) }
-    single<com.eventmap.server.domain.repository.StoragePort> { com.eventmap.server.data.storage.StorageService(get()) }
+    // Хостинг медиа: R2/S3 при заданных S3_* env, иначе фолбэк в Postgres (V10).
+    single<com.eventmap.server.domain.repository.StoragePort> {
+        val s3 = com.eventmap.server.data.storage.StorageService(get())
+        if (s3.configured) s3 else com.eventmap.server.data.storage.DbStorageService(get())
+    }
+    single<com.eventmap.server.domain.repository.MediaBlobRepository> { com.eventmap.server.data.storage.MediaBlobRepositoryImpl() }
     single<com.eventmap.server.domain.repository.MediaRepository> { com.eventmap.server.data.repository.MediaRepositoryImpl() }
     single<com.eventmap.server.domain.repository.VideoRepository> { com.eventmap.server.data.repository.VideoRepositoryImpl() }
     single<com.eventmap.server.domain.repository.DeviceTokenRepository> { com.eventmap.server.data.repository.DeviceTokenRepositoryImpl() }
@@ -104,14 +109,22 @@ val appModule = module {
     single<QuestRepository> { QuestRepositoryImpl() }
     single<XpRepository> { XpRepositoryImpl() }
     single<FriendRepository> { FriendRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.FriendLocationRepository> { com.eventmap.server.data.repository.FriendLocationRepositoryImpl() } // V12
     single<InvitationRepository> { InvitationRepositoryImpl() }
     single<GameRepository> { GameRepositoryImpl() }
     single<CapsuleRepository> { CapsuleRepositoryImpl() }
     single { com.eventmap.server.data.pulse.PulseService(get<AppConfig>().adminKey) }
 
+    // V9: подписки/уведомления/оценки
+    single<com.eventmap.server.domain.repository.SubscriptionRepository> { com.eventmap.server.data.repository.SubscriptionRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.NotificationRepository> { com.eventmap.server.data.repository.NotificationRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.RatingRepository> { com.eventmap.server.data.repository.RatingRepositoryImpl() }
+
     factory { GetEventsUseCase(get()) }
     factory { GetEventUseCase(get()) }
     factory { CreateEventUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.UpdateEventUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.DeleteEventUseCase(get()) }
     factory { GetOrganizerUseCase(get()) }
     factory { GetOrganizerEventsUseCase(get()) }
     factory { RegisterUseCase(get()) }
@@ -142,7 +155,7 @@ val appModule = module {
     factory { com.eventmap.server.domain.usecase.SendPushUseCase(get()) }
 
     // билеты с гостями (P, §8.2)
-    factory { PurchaseTicketsUseCase(get(), get(), get(), get()) }
+    factory { PurchaseTicketsUseCase(get(), get(), get(), get(), get()) }
     factory { GetMyTicketsUseCase(get()) }
     factory { GetTicketQrUseCase(get()) }
     factory { CheckinTicketUseCase(get(), get()) }
@@ -159,14 +172,18 @@ val appModule = module {
     factory { CreateQuestUseCase(get(), get()) }
     factory { GetQuestsNearbyUseCase(get()) }
     factory { GetQuestUseCase(get()) }
-    factory { CheckinQuestPointUseCase(get(), get(), get<AppConfig>().adminKey) }
+    factory { CheckinQuestPointUseCase(get(), get(), get<AppConfig>().adminKey, get()) }
     factory { GetReceiptCodeUseCase(get(), get(), get<AppConfig>().adminKey) }
     factory { ReviewQuestUseCase(get()) }
 
     // друзья и приглашения (N, §8.7)
-    factory { SendFriendRequestUseCase(get(), get()) }
+    factory { SendFriendRequestUseCase(get(), get(), get()) }
     factory { RespondFriendRequestUseCase(get()) }
     factory { GetFriendsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.ShareMyLocationUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.StopSharingLocationUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetFriendLocationsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.WaveToFriendUseCase(get(), get(), get(), get()) }
     factory { CreateInvitationUseCase(get(), get(), get()) }
     factory { GetInvitationForGuestUseCase(get()) }
     factory { GetInvitationByTokenUseCase(get()) }
@@ -178,7 +195,26 @@ val appModule = module {
     factory { GetMissionsUseCase(get()) }
     factory { GetFogUseCase(get()) }
     factory { GetDistrictLeaderboardUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetUserLeaderboardUseCase(get(), get(), get()) }
     factory { CreateCapsuleUseCase(get(), get()) }
     factory { GetCapsulesNearbyUseCase(get()) }
     factory { OpenCapsuleUseCase(get()) }
+
+    // V9: профиль H1, лента/уведомления F4, подписки F1, поиск G2, оценки P4
+    factory { com.eventmap.server.domain.usecase.GetMyProfileUseCase(get(), get(), get(), get()) }
+    factory { com.eventmap.server.domain.usecase.UpdateMyProfileUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.SaveInterestsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetUserHistoryUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.GetEventParticipantsUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.GetFeedUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.GetNotificationsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.MarkNotificationsReadUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetSubscriptionsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.SubscribeOrganizerUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.GetSubscriptionRequestsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.RespondSubscriptionRequestUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.SearchUseCase(get(), get(), get()) }
+    factory { com.eventmap.server.domain.usecase.RateEventUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.GetEventRatingsUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.GetEventTicketStatusUseCase(get()) }
 }

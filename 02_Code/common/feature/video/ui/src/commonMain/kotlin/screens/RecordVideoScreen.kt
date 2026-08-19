@@ -31,9 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,37 +53,85 @@ import com.eventmap.theme.NightTextSecondary
 import com.eventmap.theme.Violet400
 import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.rememberCoroutineScope
 import com.eventmap.video.ui.viewmodel.RecordPhase
 import com.eventmap.video.ui.viewmodel.RecordVideoViewModel
+import com.eventmap.views.camera.CameraPreview
+import com.eventmap.views.camera.CameraRecorder
+import com.eventmap.views.camera.rememberCameraRecorder
+import com.eventmap.views.video.VideoPlayer
+import kotlinx.coroutines.launch
 
 // =====================================================================
 //  E3 — Запись рилса
 //  E4 — Превью + публикация
 // =====================================================================
 
-class RecordVideoScreen : Screen {
+/**
+ * @param eventId привязка ролика к событию («Я тоже здесь · снять момент» из LIVE-шторки);
+ *        null — общий момент города (кнопка 🎬 в ленте «Сейчас»).
+ */
+data class RecordVideoScreen(
+    val eventId: String? = null,
+    val eventTitle: String = "",
+) : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
         val vm = koinScreenModel<RecordVideoViewModel>()
         val state by vm.state.collectAsState()
+        val recorder = rememberCameraRecorder()
+        val scope = rememberCoroutineScope()
+
+        fun stopAndPreview() {
+            if (state.stopping) return
+            vm.markStopping()
+            scope.launch { vm.onRecorded(recorder.stopRecording()) } // null на desktop → демо
+        }
+
+        // Запись стартует сразу при входе (как в макете: REC уже идёт)
+        LaunchedEffect(recorder) {
+            if (state.phase == RecordPhase.Recording) recorder.startRecording()
+        }
+        // Автостоп на лимите 60 с
+        LaunchedEffect(state.elapsedSec) {
+            if (state.phase == RecordPhase.Recording && vm.reachedLimit()) stopAndPreview()
+        }
 
         when (state.phase) {
             RecordPhase.Recording -> RecordingView(
+                recorder = recorder,
                 progress = state.progress,
                 elapsed = state.elapsedSec,
-                onStop = { vm.stopRecording() },
-                onFlip = { vm.flipCamera() },
-                onFlash = { vm.toggleFlash() },
-                onCancel = { nav.pop() },
+                stopping = state.stopping,
+                onStop = { stopAndPreview() },
+                onFlip = {
+                    vm.flipCamera()
+                    recorder.setFrontCamera(!state.frontCamera)
+                },
+                onFlash = {
+                    vm.toggleFlash()
+                    recorder.setTorch(!state.flashOn)
+                },
+                onCancel = {
+                    recorder.release()
+                    nav.pop()
+                },
             )
             RecordPhase.Preview -> PreviewView(
+                previewUrl = vm.previewUrl(),
                 caption = state.caption,
-                eventTitle = state.linkedEventTitle,
+                eventTitle = eventTitle, // контекст-пилюля «Из события · …»
                 loading = state.publishing,
+                errorText = state.errorText,
                 onCaptionChange = { vm.setCaption(it) },
-                onPublish = { vm.publish { nav.pop() } },
-                onDiscard = { vm.discard(); nav.pop() },
+                onPublish = { vm.publish(eventId) { nav.pop() } },
+                onDiscard = {
+                    vm.discard()
+                    nav.pop()
+                },
             )
         }
     }
@@ -98,8 +143,10 @@ class RecordVideoScreen : Screen {
 
 @Composable
 private fun RecordingView(
+    recorder: CameraRecorder,
     progress: Float,
     elapsed: Int,
+    stopping: Boolean,
     onStop: () -> Unit,
     onFlip: () -> Unit,
     onFlash: () -> Unit,
@@ -107,12 +154,8 @@ private fun RecordingView(
 ) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
 
-        // Камера-плейсхолдер
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(listOf(Color(0xFF050510), Color(0xFF0A0818))),
-            ),
-        )
+        // Вьюфайндер камеры (desktop/wasm — заглушка внутри CameraPreview)
+        CameraPreview(recorder = recorder, modifier = Modifier.fillMaxSize())
 
         // Верхняя панель
         Row(
@@ -199,10 +242,14 @@ private fun RecordingView(
                     .size(76.dp)
                     .clip(CircleShape)
                     .background(Brush.linearGradient(LiveGradient))
-                    .clickableNoRipple(onStop),
+                    .clickableNoRipple { if (!stopping) onStop() },
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color.White))
+                if (stopping) {
+                    Text("…", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                } else {
+                    Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color.White))
+                }
             }
 
             // Плейсхолдер для симметрии
@@ -217,9 +264,11 @@ private fun RecordingView(
 
 @Composable
 private fun PreviewView(
+    previewUrl: String?,
     caption: String,
     eventTitle: String,
     loading: Boolean,
+    errorText: String?,
     onCaptionChange: (String) -> Unit,
     onPublish: () -> Unit,
     onDiscard: () -> Unit,
@@ -229,7 +278,7 @@ private fun PreviewView(
             .fillMaxSize()
             .background(NightBackground),
     ) {
-        // Превью-плейсхолдер (3/4 высоты)
+        // Превью снятого ролика (file://); нет файла (демо) — плейсхолдер
         Box(
             Modifier
                 .fillMaxWidth()
@@ -239,7 +288,11 @@ private fun PreviewView(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text("▶", fontSize = 64.sp, color = Color.White.copy(alpha = 0.15f))
+            if (previewUrl != null) {
+                VideoPlayer(url = previewUrl, playing = true, modifier = Modifier.fillMaxSize())
+            } else {
+                Text("▶", fontSize = 64.sp, color = Color.White.copy(alpha = 0.15f))
+            }
 
             // Контекст-пилюля события
             if (eventTitle.isNotBlank()) {
@@ -270,19 +323,27 @@ private fun PreviewView(
             Text("ПОДПИСЬ", color = NightTextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
 
             // Поле подписи
-            Box(
-                Modifier
+            TextField(
+                value = caption,
+                onValueChange = onCaptionChange,
+                placeholder = { Text("Расскажи что происходит…", color = NightTextSecondary, fontSize = 14.sp) },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.White.copy(alpha = 0.06f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.06f),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Violet400,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(12.dp))
-                    .padding(12.dp),
-            ) {
-                if (caption.isEmpty()) {
-                    Text("Расскажи что происходит…", color = NightTextSecondary, fontSize = 14.sp)
-                } else {
-                    Text(caption, color = Color.White, fontSize = 14.sp)
-                }
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(12.dp)),
+            )
+
+            if (errorText != null) {
+                Text(errorText, color = Color(0xFFFF6B81), fontSize = 12.sp)
             }
 
             Row(

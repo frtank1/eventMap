@@ -602,3 +602,31 @@ CREATE TABLE invitation_guests (
 ---
 
 *PM-док. Версионируется. Связан с `ARCHITECTURE.md`, `ROADMAP.md`, `03_UI_UX/DEV_SPEC.md`, `MAP_CONCEPT.md` §10–11. Обновлено 11.06.2026 (v0.2: §8 — бизнес, билеты+друзья, квесты, геймификация, пульс карты, рилс-соцслой).*
+# Event V2 (V13)
+
+`POST /events` остаётся обратно совместимым и дополнительно принимает:
+
+```json
+{
+  "kind": "planned|gathering|live_signal|private",
+  "sourceType": "initiator|witness",
+  "visibility": "public|unlisted|invite",
+  "joinPolicy": "open|approval|invite",
+  "audience": "everyone|family|adults",
+  "minAge": 18,
+  "expiresAtMs": 1780000000000,
+  "proofMediaId": "media-id"
+}
+```
+
+Ответ Event дополнительно содержит `capacity`, `confirmationCount` и
+`interestCount`. Повышенные источники `business`, `organizer`, `government`
+нельзя присвоить обычным JWT-запросом.
+
+- `POST /events/{id}/signals/interest` — переключить «Мне интересно».
+- `POST /events/{id}/signals/confirm` — переключить «Я тоже это вижу».
+- `POST /events/{id}/join` — вступить или отправить заявку.
+- `POST /events/{id}/join/review` — автор принимает/отклоняет заявку.
+
+Живые сигналы очевидцев одинаковой категории, близкого заголовка, в радиусе
+примерно 150–200 м объединяются в один Event и увеличивают подтверждения.

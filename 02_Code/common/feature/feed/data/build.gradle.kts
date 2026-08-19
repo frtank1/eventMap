@@ -7,4 +7,8 @@ kotlin { sourceSets { commonMain.dependencies {
     implementation(projects.common.core.network)
     implementation(projects.common.feature.feed.domain)
 } } }
-android { namespace = "com.eventmap.feature.feed.data" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.feed.data"
+    }
+}

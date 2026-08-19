@@ -53,6 +53,9 @@ import com.eventmap.theme.Soft
 import com.eventmap.theme.Violet400
 import com.eventmap.theme.Violet600
 import com.eventmap.theme.ui_kit.clickableNoRipple
+import androidx.compose.runtime.collectAsState
+import cafe.adriel.voyager.koin.koinScreenModel
+import com.eventmap.game.ui.viewmodel.GameHubViewModel
 
 // =====================================================================
 //  R1 · Игровой хаб (уровень, значки, сезонный пасс, миссии, лидерборд)
@@ -62,7 +65,9 @@ class GameHubScreen : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
-        val state = remember { sampleGameState() }
+        // Данные с бэка (/game/*); при недоступном бэке — демо (паттерн MapViewModel)
+        val vm = koinScreenModel<GameHubViewModel>()
+        val state = vm.state.collectAsState().value ?: return
 
         LazyColumn(
             Modifier.fillMaxSize().background(NightBackground),
@@ -112,7 +117,51 @@ class GameHubScreen : Screen {
                 SectionHeader("ЛИДЕРБОРД РАЙОНОВ · неделя")
                 state.leaderboard.forEach { e -> LeaderboardRow(e) }
             }
+
+            // ── Топ игроков + капсулы времени (R2/R3) ─────────────────
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    HubActionCard(
+                        modifier = Modifier.weight(1f),
+                        emoji = "👑",
+                        title = "Топ игроков",
+                        subtitle = "Рейтинг по XP",
+                    ) { nav.push(LeaderboardScreen()) }
+                    HubActionCard(
+                        modifier = Modifier.weight(1f),
+                        emoji = "💊",
+                        title = "Капсула времени",
+                        subtitle = "Послание месту",
+                    ) { nav.push(TimeCapsuleScreen()) }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun HubActionCard(
+    modifier: Modifier,
+    emoji: String,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(NightSurface)
+            .border(1.dp, Violet600.copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+            .clickableNoRipple(onClick)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(emoji, fontSize = 22.sp)
+        Text(title, fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(subtitle, fontSize = 11.sp, color = NightTextSecondary)
     }
 }
 
@@ -348,13 +397,12 @@ private fun SectionHeader(text: String) {
     )
 }
 
-private val NightTextTertiary = Color(0xFF56657A)
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Демо-данные
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun sampleGameState() = GameState(
+internal fun sampleGameState() = GameState(
     level = 7, title = "Городской исследователь", xp = 2340, xpNextLevel = 3000,
     badges = listOf(
         BadgeItem("b1", "🌆", "Первопроходец", "Открыл 5 районов", true),

@@ -87,27 +87,22 @@ expect class EventMapController {
 expect fun EventMap(
     initialCenter: LatLng,
     initialZoom: Double = 13.0,
-    style: MapStyle = MapStyle.DayLight,
+    style: MapStyle = MapStyle.NightDark, // дефолт — тёмная под тему приложения
     modifier: Modifier = Modifier,
     onMapReady: (EventMapController) -> Unit = {},
 )
 
 /**
- * Стили карты. Пока используем стандартные стили Mapbox (работают из коробки
- * с любым публичным токеном). Позже заменить на свои из Mapbox Studio под
- * палитру Aurora Violet (см. MAPBOX_SETUP.md, шаг 6).
+ * Стили карты. dark-v11/light-v11 — проверенные классические стили Mapbox
+ * (Standard с lightPreset на части устройств не грузился — чёрный экран, 09.07).
+ * Дефолт приложения — ТЁМНАЯ карта под палитру Aurora Violet; ☀️ — ручной день.
  */
 object MapStyles {
     const val DAY_LIGHT = "mapbox://styles/mapbox/light-v11"
     const val NIGHT_DARK = "mapbox://styles/mapbox/dark-v11"
-    const val NAURYZ = "mapbox://styles/mapbox/dark-v11"
-    const val NEW_YEAR = "mapbox://styles/mapbox/dark-v11"
 
     fun urlFor(style: MapStyle): String = when (style) {
         MapStyle.DayLight -> DAY_LIGHT
-        MapStyle.NightDark -> NIGHT_DARK
-        MapStyle.Nauryz -> NAURYZ
-        MapStyle.NewYear -> NEW_YEAR
-        MapStyle.Custom -> DAY_LIGHT // fallback
+        MapStyle.NightDark, MapStyle.Nauryz, MapStyle.NewYear, MapStyle.Custom -> NIGHT_DARK
     }
 }

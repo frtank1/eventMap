@@ -11,4 +11,8 @@ kotlin {
         }
     }
 }
-android { namespace = "com.eventmap.feature.event.data" }
+kotlin {
+    android {
+        namespace = "com.eventmap.feature.event.data"
+    }
+}
