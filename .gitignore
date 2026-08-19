@@ -31,3 +31,6 @@ node_modules/
 *.keystore
 *.jks
 .env
+
+_to_delete/
+._write_test_em
