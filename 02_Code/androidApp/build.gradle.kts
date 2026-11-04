@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 // Android-приложение, вынесенное из composeApp при миграции на AGP 9
 // (com.android.application + KMP больше не поддерживается — приложение в отдельном модуле).
@@ -10,6 +11,15 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// Keep the map token outside tracked sources; CI can provide the same property/env.
+val localMapProperties = Properties().apply {
+    val configFile = rootProject.file("local.properties")
+    if (configFile.exists()) configFile.inputStream().use { load(it) }
+}
+val mapboxPublicToken = providers.gradleProperty("MAPBOX_PUBLIC_TOKEN")
+    .orElse(providers.environmentVariable("MAPBOX_PUBLIC_TOKEN"))
+    .getOrElse(localMapProperties.getProperty("MAPBOX_PUBLIC_TOKEN", ""))
+
 android {
     namespace = "com.eventmap"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -20,6 +30,7 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        resValue("string", "mapbox_access_token", mapboxPublicToken)
     }
     packaging {
         resources {

@@ -62,15 +62,20 @@ androidMain.dependencies {
 
 ## Шаг 4. Public-токен в приложение
 
-Файл: **`02_Code/composeApp/src/androidMain/res/values/strings.xml`** (создать, если нет):
+Добавить в **`02_Code/local.properties`** (файл исключён из Git):
 
-```xml
-<resources>
-    <string name="mapbox_access_token" translatable="false">pk.твой_public_token</string>
-</resources>
+```properties
+MAPBOX_PUBLIC_TOKEN=pk.твой_public_token
 ```
 
-Файл: **`02_Code/composeApp/src/androidMain/AndroidManifest.xml`** → внутрь `<application>`:
+Для CI можно передать Gradle property или переменную окружения `MAPBOX_PUBLIC_TOKEN`.
+Приоритет: Gradle property → переменная окружения → `local.properties`.
+`02_Code/androidApp/build.gradle.kts` генерирует ресурс `mapbox_access_token` при сборке;
+не добавляйте токен в отслеживаемые XML-файлы. Без настройки ресурс будет пустым,
+и карта Mapbox не сможет загрузиться. Это public-токен приложения, а не отдельный
+секретный `MAPBOX_DOWNLOADS_TOKEN` для скачивания SDK.
+
+В **`02_Code/androidApp/src/main/AndroidManifest.xml`** уже есть ссылка на ресурс:
 
 ```xml
 <meta-data
