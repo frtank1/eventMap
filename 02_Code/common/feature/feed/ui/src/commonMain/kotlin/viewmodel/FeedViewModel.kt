@@ -25,14 +25,13 @@ class FeedViewModel(
     fun load() {
         screenModelScope.launch {
             _loading.value = true
-            _items.value = (repository.getFeed() as? KtorResponse.Success)?.data ?: sample()
+            clearError()
+            when (val result = repository.getFeed()) {
+                is KtorResponse.Success -> _items.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
             _loading.value = false
         }
     }
 
-    private fun sample() = listOf(
-        FeedItem("f1", "1", "Концерт у Байтерека", "Astana Live", "сегодня · 18:00", "Концерт"),
-        FeedItem("f2", "3", "Йога в парке", "City Yoga", "завтра · 08:00", "Йога"),
-        FeedItem("f3", "5", "Квиз «Мозгобойня»", "QuizClub", "сегодня · 19:30", "Квиз"),
-    )
 }

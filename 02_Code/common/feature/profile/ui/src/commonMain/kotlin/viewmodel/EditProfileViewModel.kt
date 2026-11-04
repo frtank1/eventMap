@@ -20,15 +20,17 @@ class EditProfileViewModel(
     val saved: StateFlow<Boolean> = _saved.asStateFlow()
 
     fun save(name: String, bio: String) {
+        if (_loading.value) return
         if (name.isBlank()) {
             emitError(com.eventmap.core.network.models.ErrorModel(customMessage = "Имя не может быть пустым"))
             return
         }
+        _loading.value = true
+        _saved.value = false
         screenModelScope.launch {
-            _loading.value = true
-            when (repository.updateMe(name.trim(), bio.trim())) {
+            when (val r = repository.updateMe(name.trim(), bio.trim())) {
                 is KtorResponse.Success -> { _loading.value = false; _saved.value = true }
-                is KtorResponse.Failure -> { _loading.value = false; _saved.value = true } // без бэка — считаем сохранённым
+                is KtorResponse.Failure -> { _loading.value = false; emitError(r.error) }
             }
         }
     }

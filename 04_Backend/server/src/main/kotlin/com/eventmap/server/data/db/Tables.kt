@@ -18,6 +18,7 @@ object VideosTable : Table("videos") {
     val authorUserId = varchar("author_user_id", 64).index()
     val eventId = varchar("event_id", 64).nullable().index()
     val mediaUrl = varchar("media_url", 1024)
+    val mediaId = varchar("media_id", 64).nullable()
     val thumbUrl = varchar("thumb_url", 1024).nullable()
     val caption = varchar("caption", 500).default("")
     val category = varchar("category", 64).default("")
@@ -59,8 +60,27 @@ object MediaTable : Table("media") {
     val url = varchar("url", 1024)
     val contentType = varchar("content_type", 128).default("")
     val kind = varchar("kind", 16).default("image")
+    val provider = varchar("provider", 16).default("storage")
+    val status = varchar("status", 16).default("ready")
+    val playbackId = varchar("playback_id", 255).nullable()
     val eventId = varchar("event_id", 64).nullable().index()
     val createdAtMs = long("created_at_ms").default(0)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object MuxUploadsTable : Table("mux_uploads") {
+    val mediaId = varchar("media_id", 64)
+    val uploadId = varchar("upload_id", 255).nullable()
+    val assetId = varchar("asset_id", 255).nullable()
+    val confirmed = bool("confirmed").default(false)
+    val errorCode = varchar("error_code", 64).nullable()
+    val createdAtMs = long("created_at_ms")
+    override val primaryKey = PrimaryKey(mediaId)
+}
+
+object MuxWebhookEventsTable : Table("mux_webhook_events") {
+    val id = varchar("id", 255)
+    val receivedAtMs = long("received_at_ms")
     override val primaryKey = PrimaryKey(id)
 }
 

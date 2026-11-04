@@ -15,11 +15,18 @@ import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.CancellationException
 
 @Serializable
 private data class Dummy(val id: Int)
 
 class SafeRequestTest {
+    @Test fun cancellationIsNotConvertedToAnApiFailure() = runTest {
+        assertFailsWith<CancellationException> {
+            safeRequest<Dummy> { throw CancellationException("screen left") }
+        }
+    }
 
     private fun client(status: HttpStatusCode, body: String): HttpClient =
         HttpClient(

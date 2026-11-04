@@ -79,6 +79,8 @@ data class MediaItem(
     val url: String,
     val type: String = "photo",         // photo | video
     val authorName: String = "",
+    val status: String = "ready",
+    val thumbnailUrl: String? = null,
 )
 
 // Черновик создания события (3 шага макета).

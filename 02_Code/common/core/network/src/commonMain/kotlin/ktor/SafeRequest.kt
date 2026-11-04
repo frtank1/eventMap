@@ -2,6 +2,7 @@ package com.eventmap.core.network.ktor
 
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 
 suspend inline fun <reified T> safeRequest(
     crossinline call: suspend () -> HttpResponse
@@ -13,6 +14,8 @@ suspend inline fun <reified T> safeRequest(
         } else {
             KtorResponse.failure(response)
         }
+    } catch (t: CancellationException) {
+        throw t
     } catch (t: Throwable) {
         KtorResponse.failure(t)
     }

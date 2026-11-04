@@ -25,14 +25,13 @@ class NotificationsViewModel(
     fun load() {
         screenModelScope.launch {
             _loading.value = true
-            _items.value = (repository.getNotifications() as? KtorResponse.Success)?.data ?: sample()
+            clearError()
+            when (val result = repository.getNotifications()) {
+                is KtorResponse.Success -> _items.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
             _loading.value = false
         }
     }
 
-    private fun sample() = listOf(
-        NotificationItem("n1", "live", "🔴 Концерт у Байтерека уже идёт — загляни!", "5 мин назад", false),
-        NotificationItem("n2", "subscribe", "Astana Live опубликовал новое событие", "1 ч назад", false),
-        NotificationItem("n3", "event", "Напоминание: Квиз «Мозгобойня» сегодня в 19:30", "3 ч назад", true),
-    )
 }

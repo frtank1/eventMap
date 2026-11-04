@@ -1,6 +1,6 @@
 package com.eventmap.event.ui.viewmodel
 
-import cafe.adriel.voyager.core.model.ScreenModel
+import com.eventmap.base_screen.BaseScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import com.eventmap.core.network.ktor.KtorResponse
 import com.eventmap.event.EventRepository
@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 // D9 · Комментарии события: GET/POST /events/{id}/comments, POST /comments/{id}/like.
-// При недоступном бэке экран остаётся на демо-комментариях (live=false).
+// Ошибки видны в UI; неотправленный текст остаётся в поле ввода.
 class CommentsViewModel(
     private val repository: EventRepository,
-) : ScreenModel {
+) : BaseScreenModel() {
 
     private val _comments = MutableStateFlow<List<EventComment>>(emptyList())
     val comments: StateFlow<List<EventComment>> = _comments.asStateFlow()
@@ -29,25 +29,35 @@ class CommentsViewModel(
 
     fun load(eventId: String) {
         this.eventId = eventId
+        _comments.value = emptyList()
+        _live.value = false
+        clearError()
         screenModelScope.launch {
-            when (val r = repository.getComments(eventId)) {
+            val r = repository.getComments(eventId)
+            if (this@CommentsViewModel.eventId != eventId) return@launch
+            when (r) {
                 is KtorResponse.Success -> {
                     _live.value = true
                     _comments.value = r.data
                 }
-                is KtorResponse.Failure -> _live.value = false
+                is KtorResponse.Failure -> { _live.value = false; emitError(r.error) }
             }
         }
     }
 
-    fun send(text: String) {
+    fun send(text: String, onSent: () -> Unit = {}) {
         val body = text.trim()
         if (body.isEmpty() || eventId.isEmpty() || _sending.value) return
+        val targetEventId = eventId
+        _sending.value = true
         screenModelScope.launch {
-            _sending.value = true
-            when (val r = repository.addComment(eventId, body)) {
-                is KtorResponse.Success -> _comments.value = listOf(r.data) + _comments.value
-                is KtorResponse.Failure -> Unit // тихо: сеть могла отвалиться, комментарий не теряем из поля
+            when (val r = repository.addComment(targetEventId, body)) {
+                is KtorResponse.Success -> if (eventId == targetEventId) {
+                    _comments.value = listOf(r.data) + _comments.value
+                    clearError()
+                    onSent()
+                }
+                is KtorResponse.Failure -> emitError(r.error)
             }
             _sending.value = false
         }
@@ -59,7 +69,7 @@ class CommentsViewModel(
                 is KtorResponse.Success -> _comments.value = _comments.value.map {
                     if (it.id == commentId) it.copy(likeCount = r.data, likedByMe = !it.likedByMe) else it
                 }
-                is KtorResponse.Failure -> Unit
+                is KtorResponse.Failure -> emitError(r.error)
             }
         }
     }

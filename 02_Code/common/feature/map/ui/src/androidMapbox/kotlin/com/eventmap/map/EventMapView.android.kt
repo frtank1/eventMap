@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Android-реализация карты на mapbox-maps-android 11.x.
+ * Legacy Android provider, selected with eventmap.mapProvider=mapbox.
  * Токен скачивания SDK — в ~/.gradle/gradle.properties (MAPBOX_DOWNLOADS_TOKEN),
  * публичный токen — в strings.xml (mapbox_access_token) + meta-data манифеста.
  */

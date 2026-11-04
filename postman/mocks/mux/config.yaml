@@ -1,0 +1,8 @@
+version: 1
+name: mux
+description: Contract-derived local Mux direct-upload simulator. Never uploads a real file.
+origin: api.mux.com
+interceptRequests: true
+scenarios:
+  - name: default
+    path: default.js

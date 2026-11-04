@@ -54,6 +54,7 @@ class FakeEventRepository(
         thumb: String?,
         caption: String,
         category: String,
+        mediaId: String?,
     ): KtorResponse<Unit> = stub()
     override suspend fun purchase(id: String): KtorResponse<Ticket> = stub()
     override suspend fun getRatings(id: String): KtorResponse<List<Rating>> = stub()

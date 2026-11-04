@@ -7,10 +7,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.window.Dialog
+import com.eventmap.views.media.RemoteMediaImage
+import com.eventmap.views.video.VideoPlayer
+import com.eventmap.base_screen.RequestErrorBanner
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,8 +42,26 @@ data class EventGalleryScreen(val eventId: String) : Screen {
         val nav = LocalNavigator.currentOrThrow
         val vm = koinScreenModel<EventDetailViewModel>()
         val media by vm.media.collectAsState()
+        val event by vm.event.collectAsState()
+        var selected by remember { mutableStateOf<MediaItem?>(null) }
 
-        LaunchedEffect(eventId) { vm.load(eventId) }
+        LaunchedEffect(eventId) {
+            vm.load(eventId, force = true)
+            while (true) {
+                delay(10_000)
+                if (vm.media.value.any { it.status in setOf("uploading", "processing") }) vm.refreshMedia()
+            }
+        }
+        selected?.let { item ->
+            Dialog(onDismissRequest = { selected = null }) {
+                Box(Modifier.fillMaxWidth().aspectRatio(0.6f).background(Color.Black)) {
+                    if (item.type == "video") VideoPlayer(item.url, Modifier.fillMaxSize())
+                    else RemoteMediaImage(item.url, Modifier.fillMaxSize())
+                    Text("Закрыть", color = Color.White, modifier = Modifier.align(Alignment.TopEnd)
+                        .background(Color.Black.copy(alpha = 0.6f)).clickableNoRipple { selected = null }.padding(16.dp))
+                }
+            }
+        }
 
         Column(
             Modifier.fillMaxSize().background(NightBackground),
@@ -60,18 +80,20 @@ data class EventGalleryScreen(val eventId: String) : Screen {
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
-                        "Стендап-вечер · галерея",
+                        "${event?.title ?: "Событие"} · галерея",
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.ExtraBold,
                     )
                     Text(
-                        "${media.size} медиа · 12 live прямо сейчас",
+                        "${media.size} медиа",
                         color = NightTextSecondary,
                         fontSize = 11.sp,
                     )
                 }
             }
+            RequestErrorBanner(vm, onRetry = vm::reload)
+            if (media.isEmpty()) Text("Пока нет фото и видео", color = NightTextSecondary, modifier = Modifier.padding(16.dp))
 
             // Grid
             LazyVerticalGrid(
@@ -81,15 +103,8 @@ data class EventGalleryScreen(val eventId: String) : Screen {
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
-                if (media.isEmpty()) {
-                    // Stub items to match Figma
-                    items(9) { i ->
-                        GalleryCell(isLive = i < 3, isVideo = true)
-                    }
-                } else {
-                    items(media) { item ->
-                        GalleryCell(isLive = false, isVideo = item.type == "video")
-                    }
+                items(media, key = { it.id }) { item ->
+                    GalleryCell(item) { if (item.status == "ready" && item.url.isNotBlank()) selected = item }
                 }
             }
 
@@ -118,29 +133,28 @@ data class EventGalleryScreen(val eventId: String) : Screen {
 }
 
 @Composable
-private fun GalleryCell(isLive: Boolean, isVideo: Boolean) {
+private fun GalleryCell(item: MediaItem, onClick: () -> Unit) {
     Box(
         Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(6.dp))
-            .background(Color.White.copy(alpha = 0.07f)),
+            .background(Color.White.copy(alpha = 0.07f)).clickableNoRipple(onClick),
         contentAlignment = Alignment.Center,
     ) {
-        // Video play icon
-        if (isVideo) {
+        RemoteMediaImage(if (item.type == "video") item.thumbnailUrl else item.url, Modifier.fillMaxSize())
+        if (item.type == "video" && item.status == "ready") {
             Text("▶", color = Color.White.copy(alpha = 0.7f), fontSize = 15.sp)
         }
-        // LIVE badge
-        if (isLive) {
+        if (item.status != "ready") {
             Box(
                 Modifier
                     .align(Alignment.TopStart)
                     .padding(6.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(Live)
+                    .background(Color.Black.copy(alpha = 0.65f))
                     .padding(horizontal = 5.dp, vertical = 2.dp),
             ) {
-                Text("LIVE", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                Text(if (item.status in setOf("uploading", "processing")) "Обработка…" else "Недоступно", color = Color.White, fontSize = 10.sp)
             }
         }
     }

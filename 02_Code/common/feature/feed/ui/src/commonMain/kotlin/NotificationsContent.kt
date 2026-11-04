@@ -62,7 +62,10 @@ fun NotificationsContent(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 56.dp, start = 20.dp, bottom = 16.dp),
         )
 
+        com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::load)
+        val error by vm.errorText.collectAsState()
         when {
+            error != null && items.isEmpty() -> Unit
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Violet400, strokeWidth = 2.dp)
             }

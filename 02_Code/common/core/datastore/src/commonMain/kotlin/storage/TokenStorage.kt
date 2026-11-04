@@ -3,6 +3,9 @@ package com.eventmap.core.datastore
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlin.io.encoding.Base64
 
 enum class UserType {
     INTERNAL,
@@ -62,6 +65,15 @@ class TokenStorage(
     }
 
     fun isAuthorized(): Boolean = getActiveAccessToken().isNotBlank()
+
+    /** Only a local storage namespace, never a substitute for server authorization. */
+    fun activeAccountId(): String? = runCatching {
+        val payload = getActiveAccessToken().split('.').getOrNull(1) ?: return null
+        val claims = json.parseToJsonElement(
+            Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(payload).decodeToString(),
+        ).jsonObject
+        (claims["userId"] ?: claims["sub"])?.jsonPrimitive?.content?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     fun logout() {
         when (readActive()) {

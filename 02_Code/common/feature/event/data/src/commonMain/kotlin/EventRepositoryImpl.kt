@@ -51,6 +51,8 @@ class EventRepositoryImpl(
                         id = it.id,
                         url = it.url,
                         type = if (it.kind == "video") "video" else "photo",
+                        status = it.status,
+                        thumbnailUrl = it.thumbnailUrl,
                     )
                 },
             )
@@ -141,7 +143,7 @@ class EventRepositoryImpl(
     ): KtorResponse<UploadedMedia> {
         // 1) presign
         val presigned = when (val r = safeRequest<PresignResponse> {
-            media.presign(PresignRequest(kind = kind, contentType = contentType))
+            media.presign(PresignRequest(kind = kind, contentType = contentType, eventId = eventId, sizeBytes = bytes.size.toLong()))
         }) {
             is KtorResponse.Success -> r.data
             is KtorResponse.Failure -> return KtorResponse.Failure(r.error)  // в т.ч. 503 STORAGE_OFF
@@ -168,7 +170,7 @@ class EventRepositoryImpl(
             )
         }) {
             is KtorResponse.Success -> KtorResponse.Success(
-                UploadedMedia(mediaId = presigned.mediaId, url = presigned.publicUrl)
+                UploadedMedia(mediaId = presigned.mediaId, url = if (presigned.provider == "mux") "" else r.data.url, status = r.data.status)
             )
             is KtorResponse.Failure -> KtorResponse.Failure(r.error)
         }
@@ -180,6 +182,7 @@ class EventRepositoryImpl(
         thumb: String?,
         caption: String,
         category: String,
+        mediaId: String?,
     ): KtorResponse<Unit> =
         unitRequest {
             media.createVideo(
@@ -189,6 +192,7 @@ class EventRepositoryImpl(
                     thumb = thumb,
                     caption = caption,
                     category = category,
+                    mediaId = mediaId,
                 )
             )
         }

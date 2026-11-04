@@ -17,6 +17,7 @@ import io.ktor.http.encodedPath
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.CancellationException
 import com.eventmap.core.datastore.TokenStorage
 import com.eventmap.core.network.CoreConfig
 import com.eventmap.core.network.auth.Jwt
@@ -27,6 +28,8 @@ import com.eventmap.core.network.models.TokenRefreshRequest
 import com.eventmap.core.network.models.TokenRefreshResponse
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
+
+internal fun refreshRejectsSession(status: Int): Boolean = status == 401 || status == 403
 
 val ktorModule = module {
 
@@ -114,12 +117,21 @@ val ktorModule = module {
                                 setBody(TokenRefreshRequest(refreshToken = session.refreshToken))
                                 markAsRefreshTokenRequest()
                             }
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             return@refreshTokens null // сеть/таймаут: не разлогиниваем живую сессию
                         }
 
                         if (response.status.isSuccess()) {
-                            val new: TokenRefreshResponse = response.body()
+                            val new = try {
+                                response.body<TokenRefreshResponse>()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                return@refreshTokens null
+                            }
+                            if (new.accessToken.isBlank()) return@refreshTokens null
                             val refresh = new.refreshToken.ifBlank { session.refreshToken }
                             tokenStorage.saveTokens(
                                 userType = tokenStorage.getActiveUser(),
@@ -128,9 +140,11 @@ val ktorModule = module {
                             )
                             BearerTokens(new.accessToken, refresh)
                         } else {
-                            // Сервер явно отверг refresh (401/403 и т.п.) → токен недействителен.
-                            tokenStorage.logout()
-                            errorBus.events.emit(GlobalError.Unauthorized)
+                            // 429/5xx/неожиданный ответ — временная ошибка, а не отзыв сессии.
+                            if (refreshRejectsSession(response.status.value)) {
+                                tokenStorage.logout()
+                                errorBus.events.emit(GlobalError.Unauthorized)
+                            }
                             null
                         }
                     }

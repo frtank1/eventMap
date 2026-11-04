@@ -219,8 +219,8 @@ fun Invitation.toDto(showGuests: Boolean = true) = InvitationDto(
     silent = guests.count { it.rsvp == null },
 )
 // ===== Медиа (§8 storage) =====
-@Serializable data class PresignRequest(val kind: String, val contentType: String)
-@Serializable data class PresignResponse(val mediaId: String, val uploadUrl: String, val publicUrl: String)
+@Serializable data class PresignRequest(val kind: String, val contentType: String, val eventId: String? = null, val sizeBytes: Long? = null)
+@Serializable data class PresignResponse(val mediaId: String, val uploadUrl: String, val publicUrl: String, val provider: String = "storage")
 @Serializable data class ConfirmMediaRequest(
     val mediaId: String,
     val url: String,
@@ -235,8 +235,11 @@ fun Invitation.toDto(showGuests: Boolean = true) = InvitationDto(
     val kind: String,
     val eventId: String? = null,
     val createdAt: Long = 0,
+    val provider: String = "storage",
+    val status: String = "ready",
+    val thumbnailUrl: String? = null,
 )
-fun Media.toDto() = MediaDto(id, url, contentType, kind, eventId, createdAt)
+fun Media.toDto() = MediaDto(id, url, contentType, kind, eventId, createdAt, provider, status, thumbnailUrl)
 
 // ===== Видео-рилсы (E1/E2) — зеркало клиентского VideoItem =====
 @Serializable data class VideoDto(
@@ -251,15 +254,18 @@ fun Media.toDto() = MediaDto(id, url, contentType, kind, eventId, createdAt)
     val likes: Int = 0,
     val liked: Boolean = false,
     val category: String = "",
+    val status: String = "ready",
+    val mediaId: String? = null,
 )
-fun Video.toDto() = VideoDto(id, eventId, eventTitle, authorName, caption, mediaUrl, thumb, viewers, likes, liked, category)
+fun Video.toDto() = VideoDto(id, eventId, eventTitle, authorName, caption, mediaUrl, thumb, viewers, likes, liked, category, status, mediaId)
 
 @Serializable data class CreateVideoRequest(
-    val mediaUrl: String,
+    val mediaUrl: String = "",
     val eventId: String? = null,
     val thumb: String? = null,
     val caption: String = "",
     val category: String = "",
+    val mediaId: String? = null,
 )
 
 // ===== Push (FCM/APNS) =====

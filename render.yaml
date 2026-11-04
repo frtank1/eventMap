@@ -43,6 +43,10 @@ services:
       # Для прод-хостинга в Cloudflare R2 добавить в Dashboard → Environment:
       #   S3_ENDPOINT, S3_REGION=auto, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY, S3_PUBLIC_BASE
       # Инструкция: 05_Docs/STORAGE_SETUP.md
+      # Mux для новых роликов включается вручную после обновления мобильного клиента:
+      # VIDEO_PROVIDER=mux; MUX_TOKEN_ID, MUX_TOKEN_SECRET, MUX_WEBHOOK_SECRET,
+      # MUX_SIGNING_KEY_ID, MUX_SIGNING_PRIVATE_KEY (только Environment secrets).
+      # Webhook: https://<домен-бэка>/webhooks/mux. См. 05_Docs/MUX_VIDEO.md.
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_KEY

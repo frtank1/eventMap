@@ -20,26 +20,32 @@ class VideoViewModel(
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    init { load() }
-
     fun load() {
         screenModelScope.launch {
             _loading.value = true
-            _items.value = (repository.now() as? KtorResponse.Success)?.data ?: sample()
+            clearError()
+            when (val result = repository.now()) {
+                is KtorResponse.Success -> _items.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
             _loading.value = false
         }
     }
 
     fun toggleLike(id: String) {
-        _items.value = _items.value.map {
-            if (it.id == id) it.copy(liked = !it.liked, likes = it.likes + if (it.liked) -1 else 1) else it
+        if (!reacting.add(id)) return
+        screenModelScope.launch {
+            try {
+                when (val result = repository.react(id)) {
+                    is KtorResponse.Success -> _items.value = _items.value.map {
+                        if (it.id == id) it.copy(liked = !it.liked, likes = (it.likes + if (it.liked) -1 else 1).coerceAtLeast(0)) else it
+                    }
+                    is KtorResponse.Failure -> emitError(result.error)
+                }
+            } finally { reacting.remove(id) }
         }
-        screenModelScope.launch { repository.react(id) }
     }
 
-    private fun sample() = listOf(
-        VideoItem("v1", "1", "Концерт у Байтерека", "Айдана", "Лучший вечер 🔥", viewers = 128, likes = 342, category = "Концерт"),
-        VideoItem("v2", "2", "Кайрат — Астана", "Тимур", "ГООООЛ!! ⚽", viewers = 540, likes = 1203, category = "Спорт"),
-        VideoItem("v3", "5", "Квиз «Мозгобойня»", "Мария", "Мы выиграли 🧩", viewers = 64, likes = 88, category = "Квиз"),
-    )
+    private val reacting = mutableSetOf<String>()
+
 }

@@ -27,8 +27,12 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
-        // Mapbox SDK — токен берётся из ~/.gradle/gradle.properties (MAPBOX_DOWNLOADS_TOKEN)
         maven {
+            url = uri("https://artifactory.2gis.dev/sdk-maven-release")
+            content { includeGroup("ru.dgis.sdk") }
+        }
+        // 2GIS builds do not need Mapbox download credentials.
+        if (providers.gradleProperty("eventmap.mapProvider").orElse("mapbox").get() == "mapbox") maven {
             url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
             authentication { create<BasicAuthentication>("basic") }
             credentials {

@@ -85,6 +85,7 @@ import com.eventmap.server.presentation.routes.mapRoutes
 import com.eventmap.server.presentation.routes.mediaRoutes
 import com.eventmap.server.presentation.routes.pushRoutes
 import com.eventmap.server.presentation.routes.videoRoutes
+import com.eventmap.server.presentation.routes.muxRoutes
 import com.eventmap.server.presentation.routes.organizerRoutes
 import com.eventmap.server.presentation.routes.questRoutes
 import com.eventmap.server.presentation.routes.socialRoutes
@@ -184,6 +185,7 @@ fun Application.module() {
     val videoFeed: GetVideoFeedUseCase by inject()
     val reactVideo: ReactVideoUseCase by inject()
     val createVideo: CreateVideoUseCase by inject()
+    val muxVideo: com.eventmap.server.domain.usecase.MuxVideoService by inject()
     val registerPushToken: RegisterPushTokenUseCase by inject()
     val sendPush: SendPushUseCase by inject()
     val getComments: GetCommentsUseCase by inject()
@@ -263,8 +265,9 @@ fun Application.module() {
             getFriends, eventParticipants, eventRatings, rateEvent, eventTicketStatus, purchase,
             eventRepository,
         )
-        mediaRoutes(presignUpload, confirmMedia, eventMedia, mediaBlobs, config)
-        videoRoutes(videoFeed, reactVideo, createVideo)
+        mediaRoutes(presignUpload, confirmMedia, eventMedia, mediaBlobs, config, muxVideo)
+        videoRoutes(videoFeed, reactVideo, createVideo, muxVideo)
+        muxRoutes(muxVideo)
         pushRoutes(registerPushToken, sendPush, config.adminKey)
         organizerRoutes(getOrganizer, getOrganizerEvents, subscribeOrganizer)
         socialRoutes(getComments, addComment, toggleLike, toggleReminder, attend)

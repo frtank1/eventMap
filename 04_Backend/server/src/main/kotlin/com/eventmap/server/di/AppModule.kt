@@ -93,6 +93,10 @@ val appModule = module {
     single<com.eventmap.server.domain.repository.MediaBlobRepository> { com.eventmap.server.data.storage.MediaBlobRepositoryImpl() }
     single<com.eventmap.server.domain.repository.MediaRepository> { com.eventmap.server.data.repository.MediaRepositoryImpl() }
     single<com.eventmap.server.domain.repository.VideoRepository> { com.eventmap.server.data.repository.VideoRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.MuxGateway> { com.eventmap.server.data.video.MuxGatewayImpl(get()) }
+    single<com.eventmap.server.domain.repository.MuxUploadRepository> { com.eventmap.server.data.video.MuxUploadRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.MediaAccess> { com.eventmap.server.data.video.MediaAccessImpl() }
+    single { com.eventmap.server.domain.usecase.MuxVideoService(get(), get(), get(), get(), get()) }
     single<com.eventmap.server.domain.repository.DeviceTokenRepository> { com.eventmap.server.data.repository.DeviceTokenRepositoryImpl() }
     single<com.eventmap.server.domain.repository.NotificationPort> { com.eventmap.server.data.push.FcmPushSender(get(), get()) }
 

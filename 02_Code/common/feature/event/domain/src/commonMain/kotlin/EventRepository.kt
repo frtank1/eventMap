@@ -49,6 +49,7 @@ interface EventRepository {
         thumb: String?,
         caption: String,
         category: String,
+        mediaId: String? = null,
     ): KtorResponse<Unit>
     // P (ADR-002): билеты и рейтинги
     suspend fun purchase(id: String): KtorResponse<Ticket>

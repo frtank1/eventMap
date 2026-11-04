@@ -8,6 +8,7 @@ import com.eventmap.event.ui.viewmodel.EventDetailViewModel
 import org.koin.dsl.module
 
 val eventModule = module {
+    factory { com.eventmap.event.ui.viewmodel.AddMediaViewModel(repository = get()) }
     factory { EventDetailViewModel(repository = get(), reminders = get()) }
     factory { CreateEventViewModel(repository = get(), drafts = get()) }
     factory { MyEventsViewModel(repository = get()) } // мои события: правка/удаление

@@ -58,5 +58,8 @@ class MediaRepositoryImpl : MediaRepository {
         kind = r[MediaTable.kind],
         eventId = r[MediaTable.eventId],
         createdAt = r[MediaTable.createdAtMs],
+        provider = r[MediaTable.provider],
+        status = r[MediaTable.status],
+        playbackId = r[MediaTable.playbackId],
     )
 }

@@ -83,9 +83,15 @@ fun ProfileContent(
     LaunchedEffect(loggedOut) { if (loggedOut) onLogout() }
 
     val p = profile
-    if (loading || p == null) {
+    if (loading) {
         Box(modifier.fillMaxSize().background(NightBackground), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Violet400, strokeWidth = 2.dp)
+        }
+        return
+    }
+    if (p == null) {
+        Column(modifier.fillMaxSize().background(NightBackground).padding(top = 56.dp)) {
+            com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::load)
         }
         return
     }
@@ -96,6 +102,7 @@ fun ProfileContent(
             .background(NightBackground)
             .verticalScroll(rememberScrollState()),
     ) {
+        com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::load)
         ProfileHeader(p = p, onEdit = { onEditProfile(p.name, p.bio) }, onSettings = onOpenSettings)
         Spacer(Modifier.height(16.dp))
         StatsRow(p, Modifier.padding(horizontal = 16.dp))

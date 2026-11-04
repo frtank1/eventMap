@@ -43,47 +43,51 @@ class SubscriptionsViewModel(
         loadTab(t)
     }
 
+    fun reload() { loadTab(_tab.value); loadRequests() }
+
     private fun loadTab(t: SubTab) {
+        _items.value = emptyList()
+        clearError()
         screenModelScope.launch {
             _loading.value = true
-            _items.value = (repository.getSubscriptions(t.api) as? KtorResponse.Success)?.data ?: sample(t)
+            val result = repository.getSubscriptions(t.api)
+            if (_tab.value != t) return@launch
+            when (result) {
+                is KtorResponse.Success -> _items.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
             _loading.value = false
         }
     }
 
     private fun loadRequests() {
         screenModelScope.launch {
-            _requests.value = (repository.getRequests() as? KtorResponse.Success)?.data ?: sampleRequests()
+            when (val result = repository.getRequests()) {
+                is KtorResponse.Success -> _requests.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
         }
     }
 
     fun approve(id: String) {
-        _requests.value = _requests.value.filterNot { it.id == id }
-        screenModelScope.launch { repository.approveRequest(id) }
+        respond(id, true)
     }
 
     fun reject(id: String) {
-        _requests.value = _requests.value.filterNot { it.id == id }
-        screenModelScope.launch { repository.rejectRequest(id) }
+        respond(id, false)
     }
 
-    private fun sample(t: SubTab): List<SubscriptionItem> = when (t) {
-        SubTab.Organizers -> listOf(
-            SubscriptionItem("o1", "Astana Live", "organizers", "12 событий", "🎤"),
-            SubscriptionItem("o2", "City Yoga", "organizers", "8 событий", "🧘"),
-            SubscriptionItem("o3", "QuizClub", "organizers", "5 событий", "🧩"),
-        )
-        SubTab.Genres -> listOf(
-            SubscriptionItem("g1", "Концерты", "genres", "320 событий", "🎵"),
-            SubscriptionItem("g2", "Спорт", "genres", "210 событий", "⚽"),
-        )
-        SubTab.People -> listOf(
-            SubscriptionItem("u1", "Айдана", "people", "@aidana", "🧑"),
-            SubscriptionItem("u2", "Тимур", "people", "@timur", "🧑"),
-        )
+    private val responding = mutableSetOf<String>()
+    private fun respond(id: String, approve: Boolean) {
+        if (!responding.add(id)) return
+        screenModelScope.launch {
+            try {
+                when (val result = if (approve) repository.approveRequest(id) else repository.rejectRequest(id)) {
+                    is KtorResponse.Success -> _requests.value = _requests.value.filterNot { it.id == id }
+                    is KtorResponse.Failure -> emitError(result.error)
+                }
+            } finally { responding.remove(id) }
+        }
     }
 
-    private fun sampleRequests() = listOf(
-        SubscriptionRequest("r1", "Данияр", "хочет подписаться"),
-    )
 }

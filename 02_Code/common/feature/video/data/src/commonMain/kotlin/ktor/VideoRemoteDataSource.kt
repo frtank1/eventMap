@@ -1,6 +1,7 @@
 package com.eventmap.video.data.ktor
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.onUpload
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -14,6 +15,7 @@ import io.ktor.http.contentType
 
 class VideoRemoteDataSource(
     private val httpClient: HttpClient,
+    private val uploadClient: HttpClient,
 ) {
     suspend fun now(): HttpResponse = httpClient.get("videos/now")
     suspend fun react(videoId: String): HttpResponse = httpClient.post("videos/$videoId/react")
@@ -24,10 +26,14 @@ class VideoRemoteDataSource(
         httpClient.post("media/presign") { json(body) }
 
     /** Прямая загрузка файла в object storage по presigned-URL (абсолютный URL). */
-    suspend fun uploadBytes(uploadUrl: String, bytes: ByteArray, contentType: String): HttpResponse =
-        httpClient.put(uploadUrl) {
+    suspend fun uploadBytes(uploadUrl: String, bytes: ByteArray, contentType: String, onProgress: ((Float) -> Unit)?): HttpResponse =
+        uploadClient.put(uploadUrl) {
             header(HttpHeaders.ContentType, contentType)
             setBody(bytes)
+            onUpload { sent, total ->
+                val length = total ?: bytes.size.toLong()
+                if (length > 0) onProgress?.invoke((sent.toFloat() / length).coerceIn(0f, 1f))
+            }
         }
 
     suspend fun confirmMedia(body: ConfirmMediaRequest): HttpResponse =

@@ -12,12 +12,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
-
-// Центр Астаны — дефолт для координат, пока нет настоящего пикера точки на карте (design-first, Figma).
-private const val ASTANA_LAT = 51.1282
-private const val ASTANA_LNG = 71.4307
+import kotlin.time.Instant
 
 @kotlinx.serialization.Serializable
 data class CreateForm(
@@ -25,8 +28,9 @@ data class CreateForm(
     val description: String = "",
     val locationName: String = "",
     val landmark: String = "",      // доп. ориентир (необязательно)
-    val lat: Double = 0.0,          // координаты из пикера карты (0 = не выбрано → дефолт Астаны)
+    val lat: Double = 0.0,
     val lng: Double = 0.0,
+    val locationSelected: Boolean = false,
     val date: String = "",          // ISO yyyy-MM-dd (из DatePicker)
     val time: String = "",          // HH:mm (из TimePicker)
     val category: String = "",
@@ -40,7 +44,18 @@ data class CreateForm(
     val audience: String = "everyone",
     val minAge: String = "",
     val expiresInMinutes: String = "",
+    val timeZoneId: String = TimeZone.currentSystemDefault().id,
+    // Resume media after a confirmed create; never POST the same event again on this retry.
+    val pendingEventId: String? = null,
+    val pendingReelUrl: String? = null,
+    val pendingReelMediaId: String? = null,
 )
+
+internal fun CreateForm.startInstant(): Instant =
+    LocalDateTime.parse("${date}T${time}:00").toInstant(TimeZone.of(timeZoneId))
+
+internal fun CreateForm.hasValidLocation(): Boolean = locationSelected &&
+    lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
 
 // Выбранный из галереи файл (обложка/ролик): сырые байты + content-type + имя.
 // Не data-класс намеренно: ByteArray не должен попадать в equals/hashCode.
@@ -64,9 +79,13 @@ class CreateEventViewModel(
     private val repository: EventRepository,
     // null — в тестах; черновик формы переживает выход с экрана (D6)
     private val drafts: com.eventmap.core.datastore.EventDraftStorage? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : BaseScreenModel() {
 
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    private val draftOwner = drafts?.ownerId()
+    private var existingEndAt = ""
+    private var existingExpiresAtMs: Long? = null
 
     private val _step = MutableStateFlow(0)         // 0..2
     val step: StateFlow<Int> = _step.asStateFlow()
@@ -97,7 +116,7 @@ class CreateEventViewModel(
 
     init {
         // восстановим черновик (только режим создания; loadForEdit перезапишет форму)
-        drafts?.load()?.let { saved ->
+        drafts?.load(draftOwner)?.let { saved ->
             runCatching { json.decodeFromString(CreateForm.serializer(), saved) }
                 .getOrNull()?.let { _form.value = it }
         }
@@ -107,14 +126,26 @@ class CreateEventViewModel(
     private val _editingId = MutableStateFlow<String?>(null)
     val editingId: StateFlow<String?> = _editingId.asStateFlow()
 
-    fun setCover(media: PickedMedia?) { _cover.value = media }
-    fun setReel(media: PickedMedia?) { _reel.value = media }
+    fun setCover(media: PickedMedia?) {
+        if (!_loading.value && _form.value.pendingEventId == null) _cover.value = media
+    }
+    fun setReel(media: PickedMedia?) {
+        if (_loading.value) return
+        _reel.value = media
+        _form.value = _form.value.copy(pendingReelUrl = null, pendingReelMediaId = null)
+        saveDraft()
+    }
+
+    private fun saveDraft() {
+        if (_editingId.value == null) drafts?.save(json.encodeToString(CreateForm.serializer(), _form.value), draftOwner)
+    }
 
     fun update(transform: (CreateForm) -> CreateForm) {
+        if (_loading.value || _form.value.pendingEventId != null) return
         _form.value = transform(_form.value)
         // автосохранение черновика (правка существующего события черновик не трогает)
         if (_editingId.value == null) {
-            drafts?.save(json.encodeToString(CreateForm.serializer(), _form.value))
+            saveDraft()
         }
     }
 
@@ -122,23 +153,27 @@ class CreateEventViewModel(
     fun loadForEdit(eventId: String) {
         if (_editingId.value == eventId) return
         _editingId.value = eventId
-        screenModelScope.launch {
+        screenModelScope.launch(dispatcher) {
             _loading.value = true
             when (val r = repository.getEvent(eventId)) {
                 is KtorResponse.Success -> {
                     val e = r.data
+                    val localStart = runCatching { Instant.parse(e.startAt).toLocalDateTime(TimeZone.currentSystemDefault()) }.getOrNull()
+                    existingEndAt = e.endAt
+                    existingExpiresAtMs = e.expiresAtMs
                     _form.value = CreateForm(
                         title = e.title,
                         description = e.description,
                         locationName = e.location.name,
                         lat = e.location.lat,
                         lng = e.location.lng,
-                        date = e.startAt.take(10),
-                        time = if (e.startAt.length >= 16) e.startAt.substring(11, 16) else "",
+                        locationSelected = true,
+                        date = localStart?.date?.toString().orEmpty(),
+                        time = localStart?.let { "${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}" }.orEmpty(),
                         category = e.category,
                         isPaid = e.price.type == "paid",
                         priceAmount = if (e.price.amount > 0) e.price.amount.toString() else "",
-                        limit = "",
+                        limit = e.capacity?.toString().orEmpty(),
                         kind = e.kind,
                         sourceType = e.sourceType,
                         visibility = e.visibility,
@@ -155,106 +190,151 @@ class CreateEventViewModel(
     }
 
     fun next() {
+        if (_loading.value) return
         val f = _form.value
         when (_step.value) {
             0 -> if (f.title.isBlank()) return emitError(ErrorModel(customMessage = "Введите название"))
                  else _step.value = 1
-            1 -> if (f.locationName.isBlank()) return emitError(ErrorModel(customMessage = "Укажите локацию"))
+            1 -> if (f.locationName.isBlank() || !f.hasValidLocation()) return emitError(ErrorModel(customMessage = "Укажите адрес и выберите точку на карте"))
                  else _step.value = 2
             else -> Unit
         }
     }
 
-    fun back() { if (_step.value > 0) _step.value -= 1 }
+    fun back() { if (!_loading.value && _form.value.pendingEventId == null && _step.value > 0) _step.value -= 1 }
 
     fun publish() {
-        val f = _form.value
-        if (f.date.isBlank() || f.category.isBlank()) {
-            emitError(ErrorModel(customMessage = "Заполните дату и категорию"))
+        if (_loading.value || _created.value) return
+        clearError()
+        if (drafts != null && (draftOwner == null || drafts.ownerId() != draftOwner)) {
+            emitError(ErrorModel(customMessage = "Аккаунт изменился. Откройте создание события заново"))
             return
         }
-        screenModelScope.launch {
-            _loading.value = true
-
-            // 1) Обложка — необязательна. Если хранилище не настроено (503) или ошибка —
-            //    создаём событие без обложки, не роняя публикацию.
-            var coverMediaId: String? = null
-            _cover.value?.let { pick ->
-                _uploadStage.value = UploadStage.Cover
-                _uploadProgress.value = 0f
-                val up = repository.uploadMedia(
-                    pick.bytes, pick.contentType, kind = "image", eventId = null,
-                    onProgress = { p -> _uploadProgress.value = p },
-                )
-                if (up is KtorResponse.Success) coverMediaId = up.data.mediaId
+        val f = _form.value
+        val resume = f.pendingEventId != null
+        val start = runCatching { f.startInstant() }.getOrNull()
+        if (!resume) {
+            val validationError = when {
+                f.title.isBlank() || f.category.isBlank() -> "Заполните название и категорию"
+                !f.hasValidLocation() || f.locationName.isBlank() -> "Укажите адрес и выберите точку на карте"
+                start == null -> "Укажите корректные дату и время"
+                _editingId.value == null && f.kind != "live_signal" && start <= Clock.System.now() -> "Время начала должно быть в будущем"
+                f.priceAmount.isNotBlank() && (f.priceAmount.toIntOrNull() == null || f.priceAmount.toInt() < 0) -> "Укажите корректную цену"
+                f.limit.isNotBlank() && (f.limit.toIntOrNull() == null || f.limit.toInt() !in 2..100_000) -> "Лимит участников: от 2 до 100 000"
+                f.kind == "gathering" && f.limit.isBlank() -> "Укажите, сколько человек нужно собрать"
+                f.kind == "live_signal" && existingExpiresAtMs == null && (f.expiresInMinutes.toLongOrNull() ?: 0) !in 1..1440 -> "Срок сигнала: от 1 до 1440 минут"
+                else -> null
             }
+            if (validationError != null) return emitError(ErrorModel(customMessage = validationError))
+        }
+        if (resume && _reel.value == null && f.pendingReelUrl == null) {
+            emitError(ErrorModel(customMessage = "Событие уже создано. Выберите ролик снова, чтобы завершить загрузку"))
+            return
+        }
+        _loading.value = true // synchronous guard against double taps
+        screenModelScope.launch(dispatcher) {
+            try {
+                var coverMediaId: String? = null
+                if (!resume) _cover.value?.let { pick ->
+                    _uploadStage.value = UploadStage.Cover
+                    _uploadProgress.value = 0f
+                    val up = repository.uploadMedia(
+                        pick.bytes, pick.contentType, kind = "image", eventId = null,
+                        onProgress = { p -> _uploadProgress.value = p },
+                    )
+                    when (up) {
+                        is KtorResponse.Success -> coverMediaId = up.data.mediaId
+                        is KtorResponse.Failure -> {
+                            emitError(ErrorModel(customMessage = "Обложка не загружена. Событие не опубликовано — попробуйте ещё раз"))
+                            return@launch
+                        }
+                    }
+                }
 
-            // 2) Создаём событие (с обложкой, если загрузилась).
-            _uploadStage.value = UploadStage.Creating
-            val draft = CreateEventDraft(
-                title = f.title.trim(),
-                description = f.description.trim(),
-                coverMediaId = coverMediaId,
-                // Координаты: из пикера карты, если выбрана точка; иначе центр Астаны + разброс (±~2 км).
-                location = EventLocation(
-                    lat = if (f.lat != 0.0) f.lat else ASTANA_LAT + Random.nextDouble(-0.02, 0.02),
-                    lng = if (f.lng != 0.0) f.lng else ASTANA_LNG + Random.nextDouble(-0.02, 0.02),
-                    name = listOf(f.locationName.trim(), f.landmark.trim())
-                        .filter { it.isNotEmpty() }.joinToString(" · "),
-                ),
-                // date — ISO yyyy-MM-dd, time — HH:mm → валидный ISO-8601
-                startAt = "${f.date}T${f.time.ifBlank { "00:00" }}:00Z",
-                endAt = "",
-                category = f.category,
-                price = (f.priceAmount.toIntOrNull() ?: 0).let { amount ->
-                    if (amount > 0) EventPrice("paid", amount, "KZT") else EventPrice("free")
-                },
-                limit = f.limit.toIntOrNull(),
-                kind = f.kind,
-                sourceType = f.sourceType,
-                visibility = f.visibility,
-                joinPolicy = f.joinPolicy,
-                audience = f.audience,
-                minAge = f.minAge.toIntOrNull(),
-                expiresAtMs = f.expiresInMinutes.toLongOrNull()
-                    ?.takeIf { f.kind == "live_signal" }
-                    ?.let { Clock.System.now().toEpochMilliseconds() + it * 60_000L },
-            )
+                // 2) Создаём событие (с обложкой, если загрузилась).
+                _uploadStage.value = UploadStage.Creating
+                val draft = CreateEventDraft(
+                    title = f.title.trim(),
+                    description = f.description.trim(),
+                    coverMediaId = coverMediaId,
+                    location = EventLocation(
+                        lat = f.lat,
+                        lng = f.lng,
+                        name = listOf(f.locationName.trim(), f.landmark.trim())
+                            .filter { it.isNotEmpty() }.joinToString(" · "),
+                    ),
+                    startAt = start?.toString().orEmpty(),
+                    endAt = existingEndAt,
+                    category = f.category,
+                    price = (f.priceAmount.toIntOrNull() ?: 0).let { amount ->
+                        if (amount > 0) EventPrice("paid", amount, "KZT") else EventPrice("free")
+                    },
+                    limit = f.limit.toIntOrNull(),
+                    kind = f.kind,
+                    sourceType = f.sourceType,
+                    visibility = f.visibility,
+                    joinPolicy = f.joinPolicy,
+                    audience = f.audience,
+                    minAge = f.minAge.toIntOrNull(),
+                    expiresAtMs = f.expiresInMinutes.toLongOrNull()
+                        ?.takeIf { f.kind == "live_signal" }
+                        ?.let { Clock.System.now().toEpochMilliseconds() + it * 60_000L }
+                        ?: existingExpiresAtMs.takeIf { f.kind == "live_signal" },
+                )
 
-            val editing = _editingId.value
-            val result = if (editing != null) repository.updateEvent(editing, draft) else repository.createEvent(draft)
-            when (val r = result) {
-                is KtorResponse.Success -> {
-                    // 3) Ролик — необязателен, грузим после создания (нужен eventId).
-                    val eventId = r.data.id
-                    _reel.value?.let { pick ->
+                val editing = _editingId.value
+                val eventId = f.pendingEventId ?: run {
+                    when (val result = if (editing != null) repository.updateEvent(editing, draft) else repository.createEvent(draft)) {
+                        is KtorResponse.Success -> result.data.id
+                        is KtorResponse.Failure -> { emitError(result.error); return@launch }
+                    }
+                }
+                if (_reel.value != null || resume) {
+                    _form.value = _form.value.copy(pendingEventId = eventId)
+                    saveDraft()
+                    val videoUrl = _form.value.pendingReelUrl ?: run {
+                        val pick = _reel.value ?: return@launch
                         _uploadStage.value = UploadStage.Reel
                         _uploadProgress.value = 0f
                         val up = repository.uploadMedia(
                             pick.bytes, pick.contentType, kind = "video", eventId = eventId,
                             onProgress = { p -> _uploadProgress.value = p },
-                        )
-                        if (up is KtorResponse.Success) {
-                            repository.registerReel(
-                                eventId = eventId,
-                                mediaUrl = up.data.url,
-                                thumb = null,                 // постер-кадр — отдельным шагом (нужен платформенный API)
-                                caption = f.title.trim(),
-                                category = f.category,
                             )
+                        when (up) {
+                            is KtorResponse.Success -> up.data.url.also { url ->
+                                _form.value = _form.value.copy(pendingReelUrl = url, pendingReelMediaId = up.data.mediaId)
+                                saveDraft()
+                            }
+                            is KtorResponse.Failure -> {
+                                emitError(ErrorModel(customMessage = "Событие создано, но видео не загружено. Повторите загрузку — новое событие создано не будет"))
+                                return@launch
+                            }
                         }
                     }
-                    _uploadStage.value = UploadStage.Idle
-                    _loading.value = false
-                    _created.value = true
-                    if (editing == null) drafts?.clear() // черновик выполнил свою миссию
+                    when (repository.registerReel(
+                        eventId = eventId,
+                        mediaUrl = videoUrl,
+                        thumb = null,                 // постер-кадр — отдельным шагом (нужен платформенный API)
+                        caption = f.title.trim(),
+                        category = f.category,
+                        mediaId = _form.value.pendingReelMediaId,
+                    )) {
+                        is KtorResponse.Success -> Unit
+                        is KtorResponse.Failure -> {
+                            emitError(ErrorModel(customMessage = "Видео загружено, но публикация ролика не завершена. Повторите — файл сохранён"))
+                            return@launch
+                        }
+                    }
                 }
-                is KtorResponse.Failure -> {
-                    _uploadStage.value = UploadStage.Idle
-                    _loading.value = false
-                    // событие НЕ создано — показываем ошибку, экран остаётся открытым
-                    emitError(r.error)
-                }
+                _created.value = true
+                if (editing == null) drafts?.clear(draftOwner)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emitError(ErrorModel(customMessage = "Не удалось завершить публикацию. Проверьте соединение и попробуйте снова"))
+            } finally {
+                _uploadStage.value = UploadStage.Idle
+                _loading.value = false
             }
         }
     }

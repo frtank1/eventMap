@@ -105,7 +105,10 @@ fun FeedContent(
         FeedCategoryChips()
 
         // ── Контент ───────────────────────────────────────────────────
+        com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::load)
+        val error by vm.errorText.collectAsState()
         when {
+            error != null && items.isEmpty() -> Unit
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Violet400, strokeWidth = 2.dp)
             }

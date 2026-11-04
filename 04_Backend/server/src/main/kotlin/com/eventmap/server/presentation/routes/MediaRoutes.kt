@@ -28,6 +28,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
+import com.eventmap.server.domain.repository.MediaFailure
+import com.eventmap.server.domain.usecase.MuxVideoService
 
 private fun ApplicationCall.uid(): String? =
     principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
@@ -50,10 +52,15 @@ fun Route.mediaRoutes(
     eventMedia: GetEventMediaUseCase,
     blobs: MediaBlobRepository,
     config: AppConfig,
+    mux: MuxVideoService,
 ) {
-    // Публично: медиа события (гостям тоже)
-    get("/events/{id}/media") {
-        call.respond(eventMedia(call.parameters["id"].orEmpty()).map { it.toDto() })
+    authenticate("auth-jwt", optional = true) {
+        get("/events/{id}/media") {
+            call.mediaResult { call.respond(mux.eventMedia(call.parameters["id"].orEmpty(), call.uid()).map { it.toDto() }) }
+        }
+        get("/media/{id}") {
+            call.mediaResult { call.respond(mux.get(call.parameters["id"].orEmpty(), call.uid()).toDto()) }
+        }
     }
 
     authenticate("auth-jwt") {
@@ -62,6 +69,12 @@ fun Route.mediaRoutes(
                 HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")),
             )
             val body = call.receive<PresignRequest>()
+            if (body.kind == "video" && mux.enabled) {
+                return@post call.mediaResult {
+                    val upload = mux.begin(uid, body.eventId, body.contentType, body.sizeBytes)
+                    call.respond(PresignResponse(upload.mediaId, upload.uploadUrl, "", "mux"))
+                }
+            }
             when (val r = presign(uid, body.kind, body.contentType)) {
                 is PresignUploadUseCase.Result.Ok ->
                     call.respond(PresignResponse(r.mediaId, r.uploadUrl, r.publicUrl))
@@ -77,6 +90,15 @@ fun Route.mediaRoutes(
                 HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")),
             )
             val body = call.receive<ConfirmMediaRequest>()
+            if (body.mediaId.startsWith("mux-")) {
+                return@post call.mediaResult {
+                    if (body.kind != "video") throw MediaFailure(422, "BAD_REQUEST", "Ожидается видео")
+                    call.respond(HttpStatusCode.OK, mux.confirm(body.mediaId, uid, body.eventId, body.contentType).toDto())
+                }
+            }
+            if (body.kind == "video" && mux.enabled) return@post call.mediaResult {
+                throw MediaFailure(422, "BAD_REQUEST", "Требуется загрузка через видеосервис")
+            }
             val media = confirm(body.mediaId, uid, body.url, body.contentType, body.kind, body.eventId)
             call.respond(HttpStatusCode.Created, media.toDto())
         }
@@ -130,6 +152,13 @@ fun Route.mediaRoutes(
             call.response.header("Content-Range", "bytes $from-$to/${bytes.size}")
             call.respondBytes(bytes.copyOfRange(from, to + 1), ContentType.parse(type), HttpStatusCode.PartialContent)
         }
+    }
+}
+
+internal suspend fun ApplicationCall.mediaResult(block: suspend () -> Unit) {
+    response.header("Cache-Control", "private, no-store")
+    try { block() } catch (e: MediaFailure) {
+        respond(HttpStatusCode.fromValue(e.status), ErrorResponse(ErrorResponse.Body(e.code, e.message)))
     }
 }
 

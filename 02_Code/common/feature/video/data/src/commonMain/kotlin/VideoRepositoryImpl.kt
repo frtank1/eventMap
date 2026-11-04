@@ -11,6 +11,7 @@ import com.eventmap.video.data.ktor.VideoRemoteDataSource
 import com.eventmap.video.models.VideoItem
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 
 class VideoRepositoryImpl(
     private val remote: VideoRemoteDataSource,
@@ -24,16 +25,19 @@ class VideoRepositoryImpl(
         contentType: String,
         eventId: String?,
         caption: String,
+        onProgress: ((Float) -> Unit)?,
     ): KtorResponse<VideoItem> {
         // 1) presigned-URL
-        val presign = safeRequest<PresignResponse> { remote.presign(PresignRequest("video", contentType)) }
+        val presign = safeRequest<PresignResponse> { remote.presign(PresignRequest("video", contentType, eventId, bytes.size.toLong())) }
         val p: PresignResponse = when (presign) {
             is KtorResponse.Success -> presign.data
             is KtorResponse.Failure -> return presign
         }
         // 2) прямая загрузка файла в storage
         val put = try {
-            remote.uploadBytes(p.uploadUrl, bytes, contentType)
+            remote.uploadBytes(p.uploadUrl, bytes, contentType, onProgress)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             return KtorResponse.failure(t)
         }
@@ -41,13 +45,15 @@ class VideoRepositoryImpl(
         // 3) подтвердить запись медиа
         val confirm = try {
             remote.confirmMedia(ConfirmMediaRequest(p.mediaId, p.publicUrl, contentType, "video", eventId))
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             return KtorResponse.failure(t)
         }
         if (!confirm.status.isSuccess()) return KtorResponse.failure(confirm)
         // 4) создать рилс
         return safeRequest {
-            remote.createVideo(CreateVideoRequest(mediaUrl = p.publicUrl, eventId = eventId, thumb = p.publicUrl, caption = caption))
+            remote.createVideo(CreateVideoRequest(mediaUrl = p.publicUrl, eventId = eventId, thumb = null, caption = caption, mediaId = p.mediaId))
         }
     }
 

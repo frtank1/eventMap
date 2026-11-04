@@ -4,4 +4,5 @@ package com.eventmap.event.models
 data class UploadedMedia(
     val mediaId: String,
     val url: String,
+    val status: String = "ready",
 )

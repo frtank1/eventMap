@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 class SearchViewModel(
     private val repository: SearchRepository,
@@ -26,6 +27,7 @@ class SearchViewModel(
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
+    private var searchJob: Job? = null
 
     fun onQueryChange(q: String) {
         _query.value = q
@@ -38,42 +40,23 @@ class SearchViewModel(
     }
 
     private fun runSearch() {
+        searchJob?.cancel()
+        clearError()
         val q = _query.value.trim()
+        _results.value = emptyList()
         if (q.isBlank()) {
-            _results.value = emptyList()
+            _loading.value = false
             return
         }
-        screenModelScope.launch {
+        searchJob = screenModelScope.launch {
             _loading.value = true
             val type = _type.value
-            val data = (repository.search(q, type.api) as? KtorResponse.Success)?.data
-                ?: sample(q, type)
-            _results.value = data
+            when (val result = repository.search(q, type.api)) {
+                is KtorResponse.Success -> _results.value = result.data
+                is KtorResponse.Failure -> emitError(result.error)
+            }
             _loading.value = false
         }
     }
 
-    // Демо-результаты (без бэка): фильтруем заготовки по запросу.
-    private fun sample(q: String, type: SearchType): List<SearchHit> {
-        val all = when (type) {
-            SearchType.Events -> listOf(
-                SearchHit("1", "events", "Концерт у Байтерека", "Сегодня · Концерт", eventId = "1", emoji = "🎵"),
-                SearchHit("2", "events", "Кайрат — Астана", "Сегодня · Спорт", eventId = "2", emoji = "⚽"),
-                SearchHit("5", "events", "Квиз «Мозгобойня»", "Сегодня · Квиз", eventId = "5", emoji = "🧩"),
-            )
-            SearchType.Organizers -> listOf(
-                SearchHit("o1", "organizers", "Astana Live", "12 событий", emoji = "🎤"),
-                SearchHit("o2", "organizers", "City Yoga", "8 событий", emoji = "🧘"),
-            )
-            SearchType.People -> listOf(
-                SearchHit("u1", "people", "Айдана", "@aidana", emoji = "🧑"),
-                SearchHit("u2", "people", "Тимур", "@timur", emoji = "🧑"),
-            )
-            SearchType.Genres -> listOf(
-                SearchHit("g1", "genres", "Концерты", "320 событий", emoji = "🎵"),
-                SearchHit("g2", "genres", "Спорт", "210 событий", emoji = "⚽"),
-            )
-        }
-        return all.filter { it.title.contains(q, ignoreCase = true) || q.length <= 2 }
-    }
 }

@@ -32,15 +32,23 @@ class ProfileViewModel(
     fun load() {
         screenModelScope.launch {
             _loading.value = true
+            clearError()
             try {
-                val me = (repository.getMe() as? KtorResponse.Success)?.data ?: sampleProfile()
-                _profile.value = me
-                _history.value = (repository.getHistory(me.id) as? KtorResponse.Success)?.data ?: sampleHistory()
-            } catch (e: Throwable) {
-                // нет сети/бэка — показываем демо-данные, чтобы экран не висел на загрузке
-                val me = sampleProfile()
-                _profile.value = me
-                _history.value = sampleHistory()
+                when (val result = repository.getMe()) {
+                    is KtorResponse.Success -> {
+                        if (_profile.value?.id != result.data.id) _history.value = emptyList()
+                        _profile.value = result.data
+                        when (val history = repository.getHistory(result.data.id)) {
+                            is KtorResponse.Success -> _history.value = history.data
+                            is KtorResponse.Failure -> emitError(history.error)
+                        }
+                    }
+                    is KtorResponse.Failure -> {
+                        _profile.value = null
+                        _history.value = emptyList()
+                        emitError(result.error)
+                    }
+                }
             } finally {
                 _loading.value = false
             }
@@ -52,14 +60,4 @@ class ProfileViewModel(
         _loggedOut.value = true
     }
 
-    private fun sampleProfile() = UserProfile(
-        id = "me", name = "Азамат", username = "@azamat", bio = "Люблю концерты и спорт в Астане",
-        subscriptions = 34, subscribers = 12, eventsCount = 3, isOrganizer = false,
-    )
-
-    private fun sampleHistory() = listOf(
-        HistoryItem("1", "Концерт у Байтерека", "8 июня", "Концерт"),
-        HistoryItem("2", "Кайрат — Астана", "1 июня", "Спорт"),
-        HistoryItem("3", "Квиз «Мозгобойня»", "25 мая", "Квиз"),
-    )
 }

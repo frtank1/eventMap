@@ -9,6 +9,10 @@ data class Media(
     val kind: String = "image",   // image | video
     val eventId: String? = null,
     val createdAt: Long = 0,
+    val provider: String = "storage",
+    val status: String = "ready",
+    val playbackId: String? = null, // internal; signed URLs are generated only after access checks
+    val thumbnailUrl: String? = null,
 )
 
 // ===== Видео-рилсы («Сейчас») =====
@@ -24,6 +28,8 @@ data class Video(
     val likes: Int = 0,
     val liked: Boolean = false,
     val category: String = "",
+    val status: String = "ready",
+    val mediaId: String? = null,
 )
 
 data class GeoPoint(val lat: Double, val lng: Double, val name: String = "")

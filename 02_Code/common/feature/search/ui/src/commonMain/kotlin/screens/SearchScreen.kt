@@ -80,12 +80,14 @@ class SearchScreen : Screen {
         val type by vm.type.collectAsState()
         val results by vm.results.collectAsState()
         val loading by vm.loading.collectAsState()
+        val error by vm.errorText.collectAsState()
 
         Column(
             Modifier
                 .fillMaxSize()
                 .background(NightBackground),
         ) {
+            com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = { vm.onQueryChange(query) })
             // ── Поисковая строка ──────────────────────────────────────
             Row(
                 Modifier
@@ -157,6 +159,7 @@ class SearchScreen : Screen {
 
             // ── Результаты / Пустое / Категории ──────────────────────
             when {
+                error != null -> Unit
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Violet400, strokeWidth = 2.dp)
                 }

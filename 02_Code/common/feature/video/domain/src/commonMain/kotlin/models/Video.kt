@@ -15,4 +15,6 @@ data class VideoItem(
     val likes: Int = 0,
     val liked: Boolean = false,
     val category: String = "",
+    val status: String = "ready",
+    val mediaId: String? = null,
 )

@@ -18,5 +18,6 @@ interface VideoRepository {
         contentType: String,
         eventId: String?,
         caption: String,
+        onProgress: ((Float) -> Unit)? = null,
     ): KtorResponse<VideoItem>
 }

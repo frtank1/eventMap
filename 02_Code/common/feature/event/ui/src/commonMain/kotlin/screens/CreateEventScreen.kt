@@ -171,7 +171,21 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             ) {
-                when (step) {
+                if (form.pendingEventId != null) {
+                    Text("Событие уже создано. Осталось завершить публикацию видео; повторная попытка не создаёт новое событие.", color = Color.White)
+                    Spacer(Modifier.height(16.dp))
+                    if (form.pendingReelUrl == null) {
+                        MediaPickCard(
+                            idleIcon = EventMapIcons.Video,
+                            idleText = "Выбрать ролик для повторной загрузки",
+                            height = 160.dp,
+                            onClear = null,
+                            pickedLabel = reel?.name,
+                            onClick = { if (!loading) pickReel() },
+                            videoPreviewUrl = reel?.localUrl,
+                        )
+                    }
+                } else when (step) {
                     0 -> StepBasics(
                         kind = form.kind,
                         title = form.title,
@@ -195,8 +209,8 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
                         onPickReel = { pickReel() },
                         onClearReel = { vm.setReel(null) },
                     )
-                    1 -> StepLocation(form.locationName, form.landmark, form.lat != 0.0,
-                        onAddress = { v -> vm.update { it.copy(locationName = v) } },
+                    1 -> StepLocation(form.locationName, form.landmark, form.locationSelected,
+                        onAddress = { v -> vm.update { it.copy(locationName = v, locationSelected = false) } },
                         onLandmark = { v -> vm.update { it.copy(landmark = v) } },
                         onOpenPicker = { showPicker = true },
                     )
@@ -232,7 +246,7 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (step > 0) {
+                if (step > 0 && form.pendingEventId == null) {
                     Box(
                         Modifier.width(96.dp).height(50.dp)
                             .clip(RoundedCornerShape(14.dp))
@@ -245,11 +259,18 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
                     Modifier.weight(1f).height(50.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(Brush.linearGradient(BrandGradient))
-                        .clickableNoRipple { errorText = null; if (step < 2) vm.next() else vm.publish() },
+                        .clickableNoRipple {
+                            if (!loading) {
+                                errorText = null
+                                if (step < 2 && form.pendingEventId == null) vm.next() else vm.publish()
+                            }
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = when (step) {
+                        text = if (form.pendingEventId != null) {
+                            if (loading) uploadLabel(uploadStage, uploadProgress) else "Завершить публикацию видео"
+                        } else when (step) {
                             0 -> "Далее → локация"
                             1 -> "Далее → детали"
                             else -> when {
@@ -272,7 +293,7 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
                 initialLat = if (form.lat != 0.0) form.lat else 51.1282,
                 initialLng = if (form.lng != 0.0) form.lng else 71.4307,
                 onPicked = { lat, lng ->
-                    vm.update { it.copy(lat = lat, lng = lng) }
+                    vm.update { it.copy(lat = lat, lng = lng, locationSelected = true) }
                     showPicker = false
                 },
                 onDismiss = { showPicker = false },
@@ -504,6 +525,7 @@ private fun StepDetails(
     Spacer(Modifier.height(16.dp))
     FormLabel("ВРЕМЯ")
     TimeField(form.time, onTime)
+    Text("Часовой пояс: ${form.timeZoneId}", color = NightTextSecondary, fontSize = 12.sp)
     Spacer(Modifier.height(16.dp))
     FormLabel("КАТЕГОРИЯ")
     Spacer(Modifier.height(8.dp))
@@ -743,9 +765,14 @@ private fun LocationPickerOverlay(
 ) {
     var controller by remember { mutableStateOf<EventMapController?>(null) }
     var center by remember { mutableStateOf(initialLat to initialLng) }
+    var canPick by remember { mutableStateOf(false) }
     // следим за центром карты (это и есть выбираемая точка)
     LaunchedEffect(controller) {
-        controller?.viewport?.collect { center = it.center.lat to it.center.lon }
+        val map = controller ?: return@LaunchedEffect
+        map.viewport.collect {
+            center = it.center.lat to it.center.lon
+            canPick = map.project(it.center) != null
+        }
     }
 
     Box(Modifier.fillMaxSize().background(NightBackground)) {
@@ -791,18 +818,23 @@ private fun LocationPickerOverlay(
                 .background(NightSurface)
                 .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 20.dp),
         ) {
-            FormLabel("ВЫБРАННАЯ ТОЧКА")
+            FormLabel(if (canPick) "ВЫБРАННАЯ ТОЧКА" else "ОЖИДАНИЕ КАРТЫ")
             Text(
-                "📍 ${formatCoord(center.first)}, ${formatCoord(center.second)}",
+                if (canPick) "${formatCoord(center.first)}, ${formatCoord(center.second)}" else "Дождитесь загрузки карты или вернитесь назад",
                 color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(16.dp))
             Box(
                 Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
                     .background(Brush.linearGradient(BrandGradient))
-                    .clickableNoRipple { onPicked(center.first, center.second) },
+                    .clickableNoRipple {
+                        // Placeholder/unavailable map must not silently select Astana.
+                        if (canPick && controller?.project(LatLng(center.first, center.second)) != null) {
+                            onPicked(center.first, center.second)
+                        }
+                    },
                 contentAlignment = Alignment.Center,
-            ) { Text("✓  Готово", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold) }
+            ) { Text(if (canPick) "Выбрать эту точку" else "Карта ещё не готова", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold) }
         }
     }
 }

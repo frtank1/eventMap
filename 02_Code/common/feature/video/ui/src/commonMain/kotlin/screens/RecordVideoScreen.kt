@@ -88,7 +88,7 @@ data class RecordVideoScreen(
         fun stopAndPreview() {
             if (state.stopping) return
             vm.markStopping()
-            scope.launch { vm.onRecorded(recorder.stopRecording()) } // null на desktop → демо
+            scope.launch { vm.onRecorded(recorder.stopRecording()) } // null → ошибка записи
         }
 
         // Запись стартует сразу при входе (как в макете: REC уже идёт)
@@ -126,6 +126,8 @@ data class RecordVideoScreen(
                 eventTitle = eventTitle, // контекст-пилюля «Из события · …»
                 loading = state.publishing,
                 errorText = state.errorText,
+                uploadProgress = state.uploadProgress,
+                publishedMessage = state.publishedMessage,
                 onCaptionChange = { vm.setCaption(it) },
                 onPublish = { vm.publish(eventId) { nav.pop() } },
                 onDiscard = {
@@ -269,6 +271,8 @@ private fun PreviewView(
     eventTitle: String,
     loading: Boolean,
     errorText: String?,
+    uploadProgress: Float,
+    publishedMessage: String?,
     onCaptionChange: (String) -> Unit,
     onPublish: () -> Unit,
     onDiscard: () -> Unit,
@@ -345,6 +349,7 @@ private fun PreviewView(
             if (errorText != null) {
                 Text(errorText, color = Color(0xFFFF6B81), fontSize = 12.sp)
             }
+            if (publishedMessage != null) Text(publishedMessage, color = Color.White, fontSize = 13.sp)
 
             Row(
                 Modifier.fillMaxWidth(),
@@ -357,10 +362,10 @@ private fun PreviewView(
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.White.copy(alpha = 0.07f))
-                        .clickableNoRipple(onDiscard),
+                        .clickableNoRipple { if (!loading) onDiscard() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Удалить", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (publishedMessage == null) "Удалить" else "Закрыть", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
 
                 // Опубликовать
@@ -377,7 +382,12 @@ private fun PreviewView(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        if (loading) "Публикуем…" else "Опубликовать",
+                        when {
+                            publishedMessage != null -> "Готово"
+                            loading && uploadProgress < 1f -> "Загрузка ${(uploadProgress * 100).toInt()}%"
+                            loading -> "Сохраняем…"
+                            else -> "Опубликовать"
+                        },
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold,

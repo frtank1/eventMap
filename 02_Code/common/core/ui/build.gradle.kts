@@ -23,6 +23,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             // VideoPlayer (views/video): ExoPlayer + PlayerView
             implementation(libs.androidx.media3.exoplayer)
+            implementation(libs.androidx.media3.exoplayer.hls)
             implementation(libs.androidx.media3.ui)
             // CameraRecorder (views/camera): CameraX превью + запись
             implementation(libs.androidx.camera.core)

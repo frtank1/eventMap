@@ -1,5 +1,9 @@
 # Mapbox SDK — настройка для EventMap (Android, актуальные пути)
 
+> Переход на 2GIS описан в [2GIS_SETUP.md](2GIS_SETUP.md). Этот документ относится
+> к прежнему провайдеру `eventmap.mapProvider=mapbox`. Его Android-адаптер теперь
+> находится в `src/androidMapbox/kotlin/com/eventmap/map/EventMapView.android.kt`.
+
 > Порядок важен: сначала токены и репозиторий (иначе SDK не скачается и сборка упадёт), потом зависимость, потом вернуть боевую реализацию вместо placeholder. Делать по шагам, после каждого — пересборка.
 
 ---

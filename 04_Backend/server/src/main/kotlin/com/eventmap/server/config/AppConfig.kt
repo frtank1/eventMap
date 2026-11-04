@@ -32,6 +32,15 @@ data class AppConfig(
     val s3SecretKey: String = env("S3_SECRET_KEY", ""),
     val s3PublicBase: String = env("S3_PUBLIC_BASE", ""), // публичный CDN-домен бакета (опц.)
 
+    val videoProvider: String = env("VIDEO_PROVIDER", "storage"),
+    val muxTokenId: String = env("MUX_TOKEN_ID", ""),
+    val muxTokenSecret: String = env("MUX_TOKEN_SECRET", ""),
+    val muxWebhookSecret: String = env("MUX_WEBHOOK_SECRET", ""),
+    val muxSigningKeyId: String = env("MUX_SIGNING_KEY_ID", ""),
+    val muxSigningPrivateKey: String = env("MUX_SIGNING_PRIVATE_KEY", ""),
+    val muxMaxUploadsPerDay: Int = env("MUX_MAX_UPLOADS_PER_DAY", "20").toInt(),
+    val muxMaxDurationSeconds: Int = env("MUX_MAX_DURATION_SECONDS", "120").toInt(),
+
     // Push (FCM HTTP v1). Из service-account JSON Firebase: project_id, client_email, private_key.
     // Пусто = пуши выключены (отправка — no-op). private_key с \n-экранированием — нормализуется.
     val fcmProjectId: String = env("FCM_PROJECT_ID", ""),
@@ -39,6 +48,8 @@ data class AppConfig(
     val fcmPrivateKey: String = env("FCM_PRIVATE_KEY", ""),
 ) {
     init {
+        require(videoProvider in setOf("storage", "mux")) { "VIDEO_PROVIDER: storage | mux" }
+        require(muxMaxUploadsPerDay in 1..1000 && muxMaxDurationSeconds in 1..600)
         require(!(appEnv == "prod" && jwtSecret == DEV_SECRET)) {
             "JWT_SECRET обязателен в prod — dev-дефолт запрещён"
         }

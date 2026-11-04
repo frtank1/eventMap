@@ -49,6 +49,7 @@ import com.eventmap.views.video.VideoPlayer
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import kotlinx.coroutines.delay
+import com.eventmap.base_screen.RequestErrorBanner
 
 // =====================================================================
 //  D1a / D1b / D1c — Event Reel  (Figma «🎬 D · Событие»)
@@ -77,12 +78,18 @@ data class EventReelScreen(
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
         val pager = rememberPagerState(initialPage = startIndex) { events.size }
-        // D9: комментарии с бэка (/events/{id}/comments); при офлайне — демо в шторке
+        // D9: комментарии только с backend; ошибки показываются в шторке
         val commentsVm = koinScreenModel<CommentsViewModel>()
         // Медиа события (GET /events/{id}/media) — ролик текущей страницы для плеера
         val detailVm = koinScreenModel<EventDetailViewModel>()
-        LaunchedEffect(pager.currentPage) { detailVm.load(events[pager.currentPage].id) }
+        LaunchedEffect(pager.currentPage) { detailVm.load(events[pager.currentPage].id, force = true) }
         val media by detailVm.media.collectAsState()
+        LaunchedEffect(pager.currentPage) {
+            while (true) {
+                delay(10_000)
+                if (detailVm.media.value.any { it.status in setOf("uploading", "processing") }) detailVm.refreshMedia()
+            }
+        }
         val detail by detailVm.event.collectAsState()
         val friendsGoing by detailVm.friendsGoing.collectAsState()
         val interested by detailVm.interested.collectAsState()
@@ -90,7 +97,7 @@ data class EventReelScreen(
         // ролик берём только когда медиа уже про текущую страницу (иначе при свайпе мигал бы чужой)
         val currentVideoUrl = media
             .takeIf { detail?.id == events[pager.currentPage].id }
-            ?.firstOrNull { it.type == "video" && it.url.isNotBlank() }?.url
+            ?.firstOrNull { it.type == "video" && it.status == "ready" && it.url.isNotBlank() }?.url
 
         Box(Modifier.fillMaxSize().background(NightBackground)) {
             VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
@@ -122,6 +129,20 @@ data class EventReelScreen(
                     onBack = { nav.pop() },
                     onOpenGallery = { nav.push(EventGalleryScreen(events[page].id)) },
                     onOpenParticipants = { nav.push(EventParticipantsScreen(events[page].id)) },
+                )
+            }
+            RequestErrorBanner(detailVm, onRetry = detailVm::reload, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding())
+            if (currentVideoUrl == null && media.any { it.type == "video" }) {
+                val status = media.first { it.type == "video" }.status
+                Text(
+                    when (status) {
+                        "uploading", "processing" -> "Видео обрабатывается — появится автоматически"
+                        "errored" -> "Видео не удалось обработать. Загрузите другой файл"
+                        "unavailable" -> "Видеосервис временно недоступен"
+                        else -> "Ролик недоступен"
+                    },
+                    color = Color.White, fontSize = 13.sp,
+                    modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(12.dp)).padding(16.dp),
                 )
             }
         }
@@ -581,29 +602,10 @@ private fun CtaBlock(
 //  D9 — Comments Sheet
 // ─────────────────────────────────────────────────────────────────────────────
 
-private data class StubComment(
-    val emoji: String, val user: String, val time: String,
-    val text: String, val likes: Int, val isReply: Boolean = false,
-)
-
-private val stubComments = listOf(
-    StubComment("😎", "damir_a", "2 мин", "Лучший опен-майк в городе, я уже тут 🔥", 24),
-    StubComment("🥰", "aliya.k", "5 мин", "Кто едет с Достыка? Возьму +1 в такси", 8),
-    StubComment("🎤", "sxodka_comedy", "8 мин", "Сегодня специальный гость, не пропустите 👀", 56),
-    StubComment("🤓", "timur_zh", "3 мин", "@aliya.k я! пиши в лс", 2, isReply = true),
-    StubComment("😄", "sabina_m", "12 мин", "А вход точно свободный?", 1),
-)
-
 @Composable
 private fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
-    // Реальные комментарии (D9); при офлайне остаёмся на демо-ленте
-    val liveComments by vm.comments.collectAsState()
+    val shown by vm.comments.collectAsState()
     val live by vm.live.collectAsState()
-    val shown: List<EventComment> =
-        if (live) liveComments
-        else stubComments.map { c ->
-            EventComment(id = c.user, authorName = c.user, body = c.text, likeCount = c.likes, parentId = if (c.isReply) "x" else null)
-        }
     var draft by remember { mutableStateOf("") }
     Column(
         modifier
@@ -626,6 +628,7 @@ private fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
         )
+        RequestErrorBanner(vm)
         LazyColumn(
             Modifier.weight(1f).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -693,8 +696,8 @@ private fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier
             Box(
                 Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient))
                     .clickableNoRipple {
-                        vm.send(draft) // POST /events/{id}/comments
-                        draft = ""
+                        val submitted = draft
+                        vm.send(submitted) { if (draft == submitted) draft = "" }
                     },
                 contentAlignment = Alignment.Center,
             ) { Text("➤", color = Color.White, fontSize = 15.sp) }

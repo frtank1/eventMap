@@ -10,11 +10,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  E3/E4 — запись и публикация рилса.
 //  Камера отдаёт RecordedVideo (core/ui views/camera) → publishReel
-//  (presign → PUT → confirm → POST /videos). Без камеры (desktop) — демо-режим.
+//  (presign → PUT → confirm → POST /videos). Без файла публикация невозможна.
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum class RecordPhase { Recording, Preview }
@@ -30,6 +31,8 @@ data class RecordVideoState(
     val frontCamera: Boolean = false,
     val stopping: Boolean = false,     // ждём финализацию файла камерой
     val errorText: String? = null,
+    val uploadProgress: Float = 0f,
+    val publishedMessage: String? = null,
 )
 
 class RecordVideoViewModel(
@@ -70,13 +73,13 @@ class RecordVideoViewModel(
         _state.value = _state.value.copy(stopping = true)
     }
 
-    /** Файл готов (или null при демо/ошибке) → превью E4 */
+    /** Файл готов (или null при ошибке камеры) → превью E4 */
     fun onRecorded(video: RecordedVideo?) {
         recorded = video
         _state.value = _state.value.copy(
             phase = RecordPhase.Preview,
             stopping = false,
-            errorText = null, // демо-режим (video == null) ошибкой не считаем
+            errorText = if (video == null) "Камера не сохранила видео. Запишите ролик заново" else null,
         )
     }
 
@@ -96,20 +99,29 @@ class RecordVideoViewModel(
     }
 
     fun publish(eventId: String? = null, onDone: () -> Unit) {
+        if (_state.value.publishing) return
+        if (_state.value.publishedMessage != null) { onDone(); return }
+        if (eventId.isNullOrBlank()) {
+            _state.value = _state.value.copy(errorText = "Откройте событие и добавьте ролик из его карточки")
+            return
+        }
         val video = recorded
+        if (video == null || video.bytes.isEmpty()) {
+            _state.value = _state.value.copy(errorText = "Нет видео для публикации. Запишите ролик заново")
+            return
+        }
+        if (video.bytes.size > 60 * 1024 * 1024) {
+            _state.value = _state.value.copy(errorText = "Видео больше 60 МБ. Запишите более короткий ролик")
+            return
+        }
+        _state.value = _state.value.copy(publishing = true, errorText = null, uploadProgress = 0f)
         screenModelScope.launch {
-            _state.value = _state.value.copy(publishing = true, errorText = null)
-            if (video == null) {
-                // демо-режим (нет камеры на платформе): имитация, как в прототипе
-                delay(1_200)
-                _state.value = _state.value.copy(publishing = false)
-                onDone()
-                return@launch
-            }
-            when (val r = repository.publishReel(video.bytes, video.contentType, eventId = eventId, caption = _state.value.caption)) {
+            try {
+            when (val r = repository.publishReel(video.bytes, video.contentType, eventId = eventId, caption = _state.value.caption,
+                onProgress = { p -> _state.value = _state.value.copy(uploadProgress = p) })) {
                 is KtorResponse.Success -> {
-                    _state.value = _state.value.copy(publishing = false)
-                    onDone()
+                    _state.value = _state.value.copy(publishedMessage = if (r.data.status == "ready")
+                        "Ролик опубликован" else "Ролик загружен и обрабатывается. Он появится в событии автоматически")
                 }
                 is KtorResponse.Failure -> {
                     _state.value = _state.value.copy(
@@ -118,6 +130,9 @@ class RecordVideoViewModel(
                     )
                 }
             }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { _state.value = _state.value.copy(errorText = "Не удалось опубликовать. Повторите попытку") }
+            finally { _state.value = _state.value.copy(publishing = false) }
         }
     }
 

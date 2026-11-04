@@ -14,11 +14,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 class EventDetailViewModel(
     private val repository: EventRepository,
     // null — в тестах/на платформах без нотификаций
     private val reminders: com.eventmap.core.platform.reminders.LocalReminders? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : BaseScreenModel() {
 
     private val _event = MutableStateFlow<EventDetail?>(null)
@@ -62,35 +66,76 @@ class EventDetailViewModel(
     val ratingSent: StateFlow<Boolean> = _ratingSent.asStateFlow()
 
     private var loadedId: String? = null
+    private var loadJob: Job? = null
+    private var attending = false
+    private var refreshingMedia = false
 
-    fun load(id: String) {
-        if (loadedId == id) return
+    /** Called by visible media screens; refreshes processing status and expiring signed URLs. */
+    fun refreshMedia() {
+        val id = loadedId ?: return
+        if (refreshingMedia) return
+        refreshingMedia = true
+        screenModelScope.launch(dispatcher) {
+            try {
+                when (val result = repository.getMedia(id)) {
+                    is KtorResponse.Success -> if (loadedId == id) _media.value = result.data
+                    is KtorResponse.Failure -> if (loadedId == id) emitError(result.error)
+                }
+            } finally { refreshingMedia = false }
+        }
+    }
+
+    fun reload() { loadedId?.let { load(it, force = true) } }
+
+    fun load(id: String, force: Boolean = false) {
+        if (!force && loadedId == id && _event.value != null) return
+        loadJob?.cancel()
         loadedId = id
-        screenModelScope.launch {
+        _event.value = null
+        _participants.value = emptyList()
+        _media.value = emptyList()
+        _ratings.value = emptyList()
+        _friendsGoing.value = null
+        _attended.value = false
+        _interested.value = false
+        _confirmed.value = false
+        _joinStatus.value = ""
+        _ticketStatus.value = "none"
+        _ratingSent.value = false
+        loadJob = screenModelScope.launch(dispatcher) {
+            clearError()
             _loading.value = true
-            // Бэкенд может быть недоступен — показываем демо-данные (fallback).
-            _event.value = (repository.getEvent(id) as? KtorResponse.Success)?.data ?: sampleEvent(id)
-            _participants.value = (repository.getParticipants(id, "going") as? KtorResponse.Success)?.data ?: sampleParticipants()
+            when (val result = repository.getEvent(id)) {
+                is KtorResponse.Success -> _event.value = result.data
+                is KtorResponse.Failure -> {
+                    emitError(result.error)
+                    _loading.value = false
+                    return@launch
+                }
+            }
+            _participants.value = repository.getParticipants(id, "going").dataOrError().orEmpty()
             _friendsGoing.value = (repository.friendsGoing(id) as? KtorResponse.Success)?.data
-            _media.value = (repository.getMedia(id) as? KtorResponse.Success)?.data ?: sampleMedia()
-            _ratings.value = (repository.getRatings(id) as? KtorResponse.Success)?.data ?: sampleRatings()
+            _media.value = repository.getMedia(id).dataOrError().orEmpty()
+            _ratings.value = repository.getRatings(id).dataOrError().orEmpty()
             _loading.value = false
         }
     }
 
     fun purchase() {
+        if (_purchasing.value || _event.value == null) return
         val id = loadedId ?: return
-        screenModelScope.launch {
-            _purchasing.value = true
+        _purchasing.value = true
+        screenModelScope.launch(dispatcher) {
             when (val r = repository.purchase(id)) {
                 is KtorResponse.Success -> {
                     _purchasing.value = false
-                    _ticketStatus.value = r.data.status.ifBlank { "paid" }
-                    scheduleReminder() // билет = идёшь → напомним за час
+                    if (loadedId == id) {
+                        _ticketStatus.value = r.data.status.ifBlank { "none" }
+                        if (r.data.status == "paid") scheduleReminder()
+                    }
                 }
                 is KtorResponse.Failure -> {
                     _purchasing.value = false
-                    _ticketStatus.value = "paid" // без бэка — считаем оформленным
                     emitError(r.error)
                 }
             }
@@ -98,11 +143,12 @@ class EventDetailViewModel(
     }
 
     fun submitRating(value: Int, review: String) {
+        if (_event.value == null) return
         val id = loadedId ?: return
-        screenModelScope.launch {
+        screenModelScope.launch(dispatcher) {
             when (val r = repository.rateEvent(id, value, review)) {
-                is KtorResponse.Success -> markRated(value, review)
-                is KtorResponse.Failure -> { markRated(value, review); emitError(r.error) }
+                is KtorResponse.Success -> if (loadedId == id) markRated(value, review)
+                is KtorResponse.Failure -> emitError(r.error)
             }
         }
     }
@@ -112,25 +158,25 @@ class EventDetailViewModel(
         _ratingSent.value = true
     }
 
-    private fun sampleRatings() = listOf(
-        Rating(5, "Огонь, приду ещё!", "Айдана", "вчера"),
-        Rating(4, "Хорошо, но людно", "Тимур", "2 дня назад"),
-    )
 
     fun attend() {
+        if (attending || _event.value == null) return
         val id = loadedId ?: return
-        screenModelScope.launch {
+        attending = true
+        screenModelScope.launch(dispatcher) {
+          try {
             when (val r = repository.attend(id)) {
                 is KtorResponse.Success -> {
-                    _attended.value = true
-                    scheduleReminder() // «иду» → напомним за час до старта
+                    if (loadedId == id) {
+                        _attended.value = true
+                        scheduleReminder()
+                    }
                 }
                 is KtorResponse.Failure -> {
-                    // офлайн/без бэка — всё равно отметим локально
-                    _attended.value = true
                     emitError(r.error)
                 }
             }
+          } finally { attending = false }
         }
     }
 
@@ -139,10 +185,12 @@ class EventDetailViewModel(
     fun confirmHere() = toggleSignal("confirm")
 
     private fun toggleSignal(type: String) {
+        if (_event.value == null) return
         val id = loadedId ?: return
-        screenModelScope.launch {
+        screenModelScope.launch(dispatcher) {
             when (val r = repository.toggleSignal(id, type)) {
                 is KtorResponse.Success -> {
+                    if (loadedId != id) return@launch
                     if (type == "interest") _interested.value = r.data.enabled else _confirmed.value = r.data.enabled
                     _event.value = _event.value?.let {
                         if (type == "interest") it.copy(interestCount = r.data.count)
@@ -155,13 +203,19 @@ class EventDetailViewModel(
     }
 
     fun join(message: String = "") {
+        if (_event.value == null) return
         val id = loadedId ?: return
-        screenModelScope.launch {
+        screenModelScope.launch(dispatcher) {
             when (val r = repository.joinEvent(id, message)) {
-                is KtorResponse.Success -> _joinStatus.value = r.data
+                is KtorResponse.Success -> if (loadedId == id) _joinStatus.value = r.data
                 is KtorResponse.Failure -> emitError(r.error)
             }
         }
+    }
+
+    private fun <T> KtorResponse<T>.dataOrError(): T? = when (this) {
+        is KtorResponse.Success -> data
+        is KtorResponse.Failure -> { emitError(error); null }
     }
 
     // Локальное напоминание за час до старта; прошедшее/непарсибельное время — игнор
@@ -179,36 +233,4 @@ class EventDetailViewModel(
         )
     }
 
-    private fun sampleEvent(id: String) = EventDetail(
-        id = id,
-        title = "Концерт у Байтерека",
-        description = "Indie-вечер под открытым небом: живая музыка, фудкорт и тёплая атмосфера старого центра. Приходи один или с компанией — будет душевно.",
-        category = "Концерт",
-        status = "live",
-        startAt = "2026-06-08T18:00:00Z",
-        endAt = "2026-06-08T23:00:00Z",
-        location = EventLocation(51.1283, 71.4306, "Байтерек, Астана"),
-        price = EventPrice("paid", 3000, "KZT"),
-        goingCount = 48,
-        liveViewers = 128,
-        ratingAvg = 4.6,
-        ratingCount = 128,
-        organizerId = "o1",
-        organizerName = "Astana Live",
-    )
-
-    private fun sampleParticipants() = listOf(
-        Participant("u1", "Айдана", type = "going"),
-        Participant("u2", "Тимур", type = "going"),
-        Participant("u3", "Мария", type = "going"),
-        Participant("u4", "Данияр", type = "going"),
-        Participant("u5", "Алия", type = "going"),
-    )
-
-    private fun sampleMedia() = listOf(
-        MediaItem("m1", "", "photo", "Айдана"),
-        MediaItem("m2", "", "video", "Тимур"),
-        MediaItem("m3", "", "photo", "Мария"),
-        MediaItem("m4", "", "photo", "Данияр"),
-    )
 }

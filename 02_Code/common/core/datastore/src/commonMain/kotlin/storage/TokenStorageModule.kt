@@ -23,7 +23,8 @@ val tokenStorageModule = module {
     single {
         // черновик формы создания события (D6)
         EventDraftStorage(
-            storage = get(named("vault"))
+            storage = get(named("vault")),
+            activeOwner = get<TokenStorage>()::activeAccountId,
         )
     }
 }

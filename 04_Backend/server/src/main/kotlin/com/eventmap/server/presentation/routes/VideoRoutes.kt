@@ -18,6 +18,8 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
+import com.eventmap.server.domain.repository.MediaFailure
+import com.eventmap.server.domain.usecase.MuxVideoService
 
 private fun ApplicationCall.userId(): String? =
     principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
@@ -30,11 +32,12 @@ fun Route.videoRoutes(
     feed: GetVideoFeedUseCase,
     react: ReactVideoUseCase,
     create: CreateVideoUseCase,
+    mux: MuxVideoService,
 ) {
     // Лента доступна гостям; viewerId — для отметки liked.
     authenticate("auth-jwt", optional = true) {
         get("/videos/now") {
-            call.respond(feed(call.userId()).map { it.toDto() })
+            call.mediaResult { call.respond(feed(call.userId()).map { mux.decorate(it).toDto() }) }
         }
     }
 
@@ -53,6 +56,15 @@ fun Route.videoRoutes(
         post("/videos") {
             val uid = call.userId() ?: return@post call.unauthorized()
             val body = call.receive<CreateVideoRequest>()
+            if (body.mediaId?.startsWith("mux-") == true) {
+                return@post call.mediaResult {
+                    val video = mux.publish(body.mediaId, uid, body.eventId, body.caption)
+                    call.respond(if (video.status == "ready") HttpStatusCode.Created else HttpStatusCode.Accepted, video.toDto())
+                }
+            }
+            if (mux.enabled) return@post call.mediaResult {
+                throw MediaFailure(422, "BAD_REQUEST", "Обновите приложение: требуется mediaId загрузки Mux")
+            }
             when (val r = create(uid, body.eventId, body.mediaUrl, body.thumb, body.caption, body.category)) {
                 is CreateVideoUseCase.Result.Ok -> call.respond(HttpStatusCode.Created, r.video.toDto())
                 is CreateVideoUseCase.Result.EventNotFound ->

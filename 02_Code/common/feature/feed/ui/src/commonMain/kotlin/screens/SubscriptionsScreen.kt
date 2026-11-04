@@ -69,6 +69,7 @@ class SubscriptionsScreen : Screen {
                 .fillMaxSize()
                 .background(NightBackground),
         ) {
+            com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::reload)
             // Топ-бар
             Row(
                 Modifier

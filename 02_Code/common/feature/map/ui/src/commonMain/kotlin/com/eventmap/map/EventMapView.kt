@@ -19,11 +19,12 @@ data class ViewportState(
     val zoom: Double,
     val bearing: Double = 0.0,
     val pitch: Double = 0.0,
+    // Invalidate overlays when projection changes without moving the camera (e.g. resize).
+    val projectionRevision: Long = 0L,
 )
 
 /**
- * Style preset for the map. Each maps to a Mapbox Studio style URL
- * configured in MapStyles object.
+ * Provider-independent theme. Holiday/custom presets currently use the dark theme.
  */
 enum class MapStyle {
     DayLight,
@@ -34,11 +35,11 @@ enum class MapStyle {
 }
 
 /**
- * Platform-specific Mapbox MapView wrapper. Implemented in androidMain
- * and iosMain via expect/actual.
+ * Platform map wrapper. Android selects 2GIS or Mapbox at build time.
+ * Other targets currently provide placeholders.
  *
  * Responsibilities:
- *   - Render base map (streets, parks, buildings) via Mapbox SDK
+ *   - Render the base map (streets, parks, buildings)
  *   - Expose viewport state to be observed by the Compose overlay
  *   - Provide projection LatLng -> screen Offset for overlay rendering
  *   - Apply theme styles (day/night/holiday) on the fly
@@ -51,13 +52,13 @@ expect class EventMapController {
     val viewport: StateFlow<ViewportState>
 
     /**
-     * Project geo-point to screen offset (in dp, relative to the MapView).
+     * Project geo-point to screen offset (physical pixels, relative to the MapView).
      * Returns null if the point is outside the visible area.
      */
     fun project(point: LatLng): Offset?
 
     /**
-     * Inverse projection — for tap handling.
+     * Inverse projection of physical pixels — for tap handling.
      */
     fun unproject(offset: Offset): LatLng
 

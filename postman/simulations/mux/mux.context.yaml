@@ -1,0 +1,30 @@
+purpose:
+  stands_in_for: Mux direct-upload creation, not transcoding or playback.
+  unblocks: Exercise EventMap's actual HTTP client without provider credentials or spending.
+assumptions:
+  - id: signed-upload-contract
+    status: supported
+    claim: Mux direct uploads use Basic auth and return data.id and data.url; signed playback policy is chosen on asset creation.
+    reason: Provider API docs and Orbit integration brief describe this request and response.
+    verification: On 2026-11-05 MuxGatewayTest ran the actual JDK HTTP client against CLI 1.85.0 simulation. Logs show four POST /video/v1/uploads calls returning 201, 503, HTML 502 and 401; client assertions all passed. Mock validates Basic auth, signed policy, basic quality, passthrough and timeout. No actual Mux account used.
+    source: https://www.mux.com/docs/api-reference/video/direct-uploads
+    updated_at: '2026-11-05'
+  - id: caller-fails-closed
+    status: supported
+    claim: In the simulated 401, 503 and HTML 502 scenarios EventMap surfaces VIDEO_PROVIDER_ERROR and does not return a usable upload URL.
+    reason: Real HTTP client tests passed against the local stand-in; this is scoped to the simulated responses, not all provider failures.
+    verification: MuxGatewayTest.realHttpClientAgainstPostmanSimulation passed 2026-11-05. Simulation observed one 201 and three failure calls; no fallback storage requests exist on this code path.
+    source: 04_Backend/server/src/test/kotlin/com/eventmap/server/MuxGatewayTest.kt
+    updated_at: '2026-11-05'
+  - id: real-provider-readiness
+    status: unknown
+    claim: The deployed Mux account accepts uploads and delivers ready webhooks to EventMap.
+    reason: No Mux account, secrets or production webhook configured during this work.
+    verification: Pending real-device upload, webhook delivery and HLS playback.
+    source: 05_Docs/MUX_VIDEO.md
+    updated_at: '2026-11-05'
+fingerprints:
+  - id: local-implementation
+    date: '2026-11-05'
+    commit: 719dea7ca2ce75aedeb35f882e56a043bc2e0e09 (dirty worktree with integration and pre-existing user changes)
+    cli: 1.85.0

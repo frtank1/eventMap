@@ -9,6 +9,8 @@ import kotlinx.serialization.Serializable
 data class PresignRequest(
     val kind: String,
     val contentType: String,
+    val eventId: String? = null,
+    val sizeBytes: Long? = null,
 )
 
 @Serializable
@@ -16,6 +18,7 @@ data class PresignResponse(
     val mediaId: String,
     val uploadUrl: String,   // presigned PUT в R2/S3 (SigV4 в query)
     val publicUrl: String,   // постоянный URL объекта
+    val provider: String = "storage",
 )
 
 @Serializable
@@ -36,6 +39,9 @@ data class MediaDto(
     val kind: String = "",
     val eventId: String? = null,
     val createdAt: Long = 0,
+    val provider: String = "storage",
+    val status: String = "ready",
+    val thumbnailUrl: String? = null,
 )
 
 // Тело POST /videos — публикация рилса после загрузки файла.
@@ -46,4 +52,5 @@ data class CreateVideoRequest(
     val thumb: String? = null,
     val caption: String = "",
     val category: String = "",
+    val mediaId: String? = null,
 )

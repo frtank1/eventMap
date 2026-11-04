@@ -65,7 +65,7 @@ iosApp/                    обёртка под Xcode
 Все репозитории ходят на реальные эндпоинты (`05_Docs/API_CONTRACT.md`), но при недоступном бэкенде ViewModel отдают **демо-данные** (sample-фолбэк), чтобы UI был виден без сервера. Чтобы перейти на боевые данные:
 
 1. **Бэкенд** — задать `baseUrl` и пути в `CoreConfig` (дефолт в `composeApp/.../PlatformSdk.kt`: `https://api.eventmap.app/v1/`). Auth-флоу (login/register/refresh) уже под JSON-контракт EventMap.
-2. **Mapbox** — карта (`feature/map`) рендерится только с токеном. Подключение — `feature/map/ui/MAPBOX_SETUP.md` (Android `MAPBOX_DOWNLOADS_TOKEN` + `MAPBOX_ACCESS_TOKEN`, iOS cocoapods + `MBXAccessToken`). На Desktop/Web сейчас placeholder.
+2. **Карта** — Android по умолчанию использует Mapbox. Подготовлен переход на 2GIS через `-Peventmap.mapProvider=2gis`: [инструкция и ключ](common/feature/map/ui/2GIS_SETUP.md). До получения ключа остаётся прежний провайдер: [Mapbox](common/feature/map/ui/MAPBOX_SETUP.md). iOS/Desktop/Web пока используют заглушки.
 3. **Списки из API** — `participants`/`media`/`feed`/`subscriptions` десериализуются как голый массив. Если бэкенд вернёт envelope `{ "items": [...], "nextCursor": ... }` — добавить wrapper-DTO в соответствующем `data/ktor`.
 4. **Камера (E3)** и **плеер видео (E2)** — заглушки; подключаются платформенно (CameraX / AVFoundation, HLS-плеер).
 

@@ -54,6 +54,7 @@ actual fun VideoPlayer(
 
     UIKitView(
         factory = { PlayerContainerView(player) },
+        update = { it.setPlayer(player) },
         modifier = modifier,
     )
 
@@ -72,6 +73,8 @@ private class PlayerContainerView(player: AVQueuePlayer) : UIView(frame = CGRect
     init {
         layer.addSublayer(playerLayer)
     }
+
+    fun setPlayer(player: AVQueuePlayer) { playerLayer.player = player }
 
     override fun layoutSubviews() {
         super.layoutSubviews()

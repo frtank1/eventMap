@@ -8,6 +8,8 @@ import kotlinx.serialization.Serializable
 data class PresignRequest(
     val kind: String,          // "image" | "video"
     val contentType: String,   // напр. "video/mp4"
+    val eventId: String? = null,
+    val sizeBytes: Long? = null,
 )
 
 @Serializable
@@ -15,6 +17,7 @@ data class PresignResponse(
     val mediaId: String,
     val uploadUrl: String,     // временная ссылка для прямого PUT в storage
     val publicUrl: String,     // публичная ссылка на файл после загрузки
+    val provider: String = "storage",
 )
 
 @Serializable
@@ -33,4 +36,5 @@ data class CreateVideoRequest(
     val thumb: String? = null,
     val caption: String = "",
     val category: String = "",
+    val mediaId: String? = null,
 )

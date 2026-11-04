@@ -14,7 +14,10 @@
 - [API_CONTRACT.md](API_CONTRACT.md) — текущий API;
 - [ARCHITECTURE.md](ARCHITECTURE.md) — существующая архитектура;
 - [STORAGE_SETUP.md](STORAGE_SETUP.md) — хранение медиа;
+- [MUX_VIDEO.md](MUX_VIDEO.md) — загрузка и обработка роликов, приватность, включение Mux и проверки;
 - [PUSH_SETUP.md](PUSH_SETUP.md) — уведомления.
+- [2GIS_SETUP.md](../02_Code/common/feature/map/ui/2GIS_SETUP.md) — подготовка Android-карты 2GIS, ключ и ограничения платформ;
+- [STACK_REVIEW_2026-10-30.md](STACK_REVIEW_2026-10-30.md) — применение предложенного хакатонного стека к EventMap.
 
 ## Исследовательские и устаревшие документы
 

@@ -1,0 +1,7 @@
+simulation: eventmap-mux
+routing: path
+mocks:
+  - name: mux
+    routeKey: mux
+    origin: api.mux.com
+    path: postman/mocks/mux

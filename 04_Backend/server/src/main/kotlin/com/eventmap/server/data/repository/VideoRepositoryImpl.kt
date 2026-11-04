@@ -4,6 +4,7 @@ import com.eventmap.server.data.db.EventsTable
 import com.eventmap.server.data.db.UsersTable
 import com.eventmap.server.data.db.VideoLikesTable
 import com.eventmap.server.data.db.VideosTable
+import com.eventmap.server.data.db.MediaTable
 import com.eventmap.server.domain.model.Video
 import com.eventmap.server.domain.repository.VideoRepository
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +14,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.plus
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -27,6 +29,7 @@ class VideoRepositoryImpl : VideoRepository {
     private val joined = VideosTable
         .join(EventsTable, JoinType.LEFT, onColumn = VideosTable.eventId, otherColumn = EventsTable.id)
         .join(UsersTable, JoinType.LEFT, onColumn = VideosTable.authorUserId, otherColumn = UsersTable.id)
+        .join(MediaTable, JoinType.LEFT, onColumn = VideosTable.mediaId, otherColumn = MediaTable.id)
 
     override suspend fun feedNow(viewerId: String?): List<Video> = tx {
         val likedIds: Set<String> = viewerId?.let { uid ->
@@ -37,6 +40,10 @@ class VideoRepositoryImpl : VideoRepository {
         } ?: emptySet()
 
         joined.selectAll()
+            .where {
+                ((VideosTable.eventId.isNull()) or ((EventsTable.visibility eq "public") and (EventsTable.kind neq "private"))) and
+                    ((VideosTable.mediaId.isNull()) or (MediaTable.status eq "ready"))
+            }
             .orderBy(VideosTable.createdAtMs, SortOrder.DESC)
             .limit(50)
             .map { toVideo(it, likedIds) }
@@ -103,5 +110,7 @@ class VideoRepositoryImpl : VideoRepository {
         likes = r[VideosTable.likeCount],
         liked = r[VideosTable.id] in likedIds,
         category = r[VideosTable.category].ifBlank { r.getOrNull(EventsTable.category) ?: "" },
+        status = r.getOrNull(MediaTable.status) ?: "ready",
+        mediaId = r[VideosTable.mediaId],
     )
 }

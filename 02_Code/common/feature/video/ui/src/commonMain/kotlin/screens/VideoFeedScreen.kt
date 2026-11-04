@@ -30,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -65,10 +68,16 @@ class VideoFeedScreen : Screen {
         val vm = koinScreenModel<VideoViewModel>()
         val items by vm.items.collectAsState()
         val loading by vm.loading.collectAsState()
+        val error by vm.errorText.collectAsState()
+        // Re-entering the screen fetches fresh signed playback URLs.
+        LaunchedEffect(Unit) { vm.load() }
 
         Box(Modifier.fillMaxSize().background(Color.Black)) {
 
             when {
+                error != null && items.isEmpty() -> com.eventmap.base_screen.RequestErrorBanner(
+                    vm, onRetry = vm::load, modifier = Modifier.align(Alignment.Center),
+                )
                 loading -> CircularProgressIndicator(
                     color = Color.White,
                     strokeWidth = 2.dp,
@@ -79,8 +88,10 @@ class VideoFeedScreen : Screen {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text("📭", fontSize = 48.sp)
-                    Text("Сейчас никто не в эфире", color = NightTextSecondary, fontSize = 14.sp)
+                    Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = NightTextSecondary, modifier = Modifier.size(48.dp))
+                    Text("Пока нет готовых роликов", color = NightTextSecondary, fontSize = 14.sp)
+                    Text("После обработки видео появится здесь", color = NightTextSecondary, fontSize = 12.sp)
+                    Text("Обновить", color = Color.White, modifier = Modifier.clickableNoRipple { vm.load() }.padding(12.dp))
                 }
                 else -> {
                     val pager = rememberPagerState(pageCount = { items.size })
@@ -95,6 +106,9 @@ class VideoFeedScreen : Screen {
                 }
             }
 
+            if (items.isNotEmpty()) com.eventmap.base_screen.RequestErrorBanner(
+                vm, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
+            )
             // ── Топ-бар ─────────────────────────────────────────────────
             Row(
                 Modifier.fillMaxWidth().padding(top = 52.dp, start = 16.dp, end = 16.dp),
@@ -121,9 +135,9 @@ class VideoFeedScreen : Screen {
 
                 Box(
                     Modifier.size(36.dp).clip(CircleShape).background(Brush.linearGradient(BrandGradient))
-                        .clickableNoRipple { nav.push(RecordVideoScreen()) },
+                        .clickableNoRipple { vm.load() },
                     contentAlignment = Alignment.Center,
-                ) { Text("🎬", fontSize = 16.sp) }
+                ) { Icon(Icons.Rounded.Refresh, contentDescription = "Обновить ролики", tint = Color.White, modifier = Modifier.size(20.dp)) }
             }
         }
     }
@@ -151,7 +165,7 @@ private fun VideoPage(item: VideoItem, playing: Boolean, onLike: () -> Unit, onM
                 ),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White.copy(alpha = 0.10f), modifier = Modifier.size(80.dp))
+                Text("Ролик временно недоступен. Обновите ленту", color = NightTextSecondary, modifier = Modifier.padding(24.dp))
             }
         }
 
