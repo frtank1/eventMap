@@ -43,20 +43,28 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
 /**
- * Единый набор Material Rounded для интерфейса EventMap.
+ * Единый контурный набор для основного интерфейса EventMap.
  * Emoji остаются только контентом (реакции и категории), но не кнопками навигации.
  */
 object EventMapIcons {
-    val Map: ImageVector = Icons.Rounded.Map
-    val Reels: ImageVector = Icons.Rounded.EmojiEvents
-    val Video: ImageVector = Icons.Rounded.Bolt
-    val Profile: ImageVector = Icons.Rounded.Person
+    val Map: ImageVector = OutlineIcons.Map
+    val Reels: ImageVector = OutlineIcons.Compass
+    val Video: ImageVector = OutlineIcons.Video
+    val Profile: ImageVector = OutlineIcons.Profile
     val Flame: ImageVector = Icons.Rounded.LocalFireDepartment
-    val Bell: ImageVector = Icons.Rounded.Notifications
-    val Plus: ImageVector = Icons.Rounded.Add
-    val Heart: ImageVector = Icons.Rounded.Favorite
-    val Comment: ImageVector = Icons.Rounded.ChatBubble
-    val Share: ImageVector = Icons.Rounded.Share
+    val Bell: ImageVector = OutlineIcons.Bell
+    val Plus: ImageVector = OutlineIcons.Plus
+    val Heart: ImageVector = OutlineIcons.Heart
+    val Comment: ImageVector = OutlineIcons.Comment
+    val Share: ImageVector = OutlineIcons.Share
+    val Play: ImageVector = OutlineIcons.Play
+    val Pause: ImageVector = OutlineIcons.Pause
+    val Back: ImageVector = OutlineIcons.Back
+    val Chevron: ImageVector = OutlineIcons.Chevron
+    val Refresh: ImageVector = OutlineIcons.Refresh
+    val Volume: ImageVector = OutlineIcons.Volume
+    val Muted: ImageVector = OutlineIcons.Muted
+    val Settings: ImageVector = OutlineIcons.Settings
     val Food: ImageVector = Icons.Rounded.Restaurant
     val Leaf: ImageVector = Icons.Rounded.Spa
 
@@ -65,16 +73,16 @@ object EventMapIcons {
     val Heat: ImageVector = Icons.Rounded.LocalFireDepartment
     val Fog: ImageVector = Icons.Rounded.BlurOn
     val People: ImageVector = Icons.Rounded.Groups
-    val Compass: ImageVector = Icons.Rounded.Explore
+    val Compass: ImageVector = OutlineIcons.Compass
     val Day: ImageVector = Icons.Rounded.WbSunny
     val Night: ImageVector = Icons.Rounded.DarkMode
-    val Calendar: ImageVector = Icons.Rounded.CalendarMonth
+    val Calendar: ImageVector = OutlineIcons.Calendar
     val Camera: ImageVector = Icons.Rounded.PhotoCamera
     val Edit: ImageVector = Icons.Rounded.Edit
     val Delete: ImageVector = Icons.Rounded.Delete
-    val Place: ImageVector = Icons.Rounded.Place
-    val Search: ImageVector = Icons.Rounded.Search
-    val Close: ImageVector = Icons.Rounded.Close
+    val Place: ImageVector = OutlineIcons.Place
+    val Search: ImageVector = OutlineIcons.Search
+    val Close: ImageVector = OutlineIcons.Close
     val Star: ImageVector = Icons.Rounded.Star
 }
 

@@ -1,5 +1,7 @@
 package com.eventmap.views.media
 
+import platform.Foundation.timeIntervalSince1970
+
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned

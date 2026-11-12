@@ -603,14 +603,14 @@ private fun CtaBlock(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun CommentsSheet(vm: CommentsViewModel, onDismiss: () -> Unit, modifier: Modifier = Modifier, heightFraction: Float = 0.67f) {
     val shown by vm.comments.collectAsState()
     val live by vm.live.collectAsState()
     var draft by remember { mutableStateOf("") }
     Column(
         modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.67f)
+            .fillMaxHeight(heightFraction)
             .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .background(Color(0xFF0D1623))
             .clickableNoRipple { /* consume */ },

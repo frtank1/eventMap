@@ -35,6 +35,7 @@ kotlin {
             // QrScanner (views/qr): распознавание QR через ImageAnalysis
             implementation(libs.zxing.core)
         }
+        commonTest.dependencies { implementation(libs.kotlin.test) }
     }
 }
 

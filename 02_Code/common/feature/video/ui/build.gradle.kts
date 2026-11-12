@@ -13,6 +13,10 @@ kotlin { sourceSets {
         implementation(projects.common.core.ui)
         implementation(projects.common.core.network)
         implementation(projects.common.feature.video.domain)
+        implementation(projects.common.feature.event.domain)
+        implementation(projects.common.feature.event.ui)
+        implementation(projects.common.core.platform)
+        implementation(libs.androidx.lifecycle.runtimeCompose)
     }
     androidMain.dependencies {
         implementation(libs.compose.uiToolingPreview)

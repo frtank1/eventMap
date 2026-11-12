@@ -4,6 +4,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import com.eventmap.base_screen.BaseScreenModel
 import com.eventmap.core.network.ktor.KtorResponse
 import com.eventmap.video.VideoRepository
+import com.eventmap.event.EventRepository
 import com.eventmap.video.models.VideoItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +13,7 @@ import kotlinx.coroutines.launch
 
 class VideoViewModel(
     private val repository: VideoRepository,
+    private val eventRepository: EventRepository,
 ) : BaseScreenModel() {
 
     private val _items = MutableStateFlow<List<VideoItem>>(emptyList())
@@ -19,6 +21,20 @@ class VideoViewModel(
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
+    private val _commentCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val commentCounts = _commentCounts.asStateFlow()
+    private val counting = mutableSetOf<String>()
+
+    fun loadCommentCount(eventId: String) {
+        if (eventId.isBlank() || !counting.add(eventId)) return
+        screenModelScope.launch {
+            try {
+                val result = eventRepository.getEvent(eventId)
+                if (result is KtorResponse.Success) _commentCounts.value = _commentCounts.value + (eventId to result.data.commentsCount)
+            } finally { counting.remove(eventId) }
+        }
+    }
 
     fun load() {
         screenModelScope.launch {

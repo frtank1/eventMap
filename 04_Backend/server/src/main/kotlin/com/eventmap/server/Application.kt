@@ -93,6 +93,8 @@ import com.eventmap.server.presentation.routes.ticketRoutes
 import com.eventmap.server.presentation.routes.userRoutes
 import com.eventmap.server.presentation.routes.feedRoutes
 import com.eventmap.server.presentation.routes.searchRoutes
+import com.eventmap.server.presentation.routes.worldRoutes
+import io.ktor.server.routing.route
 import com.eventmap.server.security.JwtService
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -142,16 +144,6 @@ fun Application.module() {
 
     install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; prettyPrint = true }) }
     install(CallLogging)
-    install(CORS) {
-        allowHeader(HttpHeaders.ContentType)
-        allowHeader(HttpHeaders.Authorization)
-        // dev: CORS_HOSTS пуст → anyHost; prod: только whitelist (проверка в AppConfig)
-        if (config.corsHosts.isEmpty()) {
-            anyHost()
-        } else {
-            config.corsHosts.forEach { allowHost(it, schemes = listOf("https")) }
-        }
-    }
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             call.respond(HttpStatusCode.InternalServerError, ErrorResponse(ErrorResponse.Body("INTERNAL", cause.message ?: "error")))
@@ -257,6 +249,15 @@ fun Application.module() {
     val eventRepository: com.eventmap.server.domain.repository.EventRepository by inject()
 
     routing {
+        // The public content channel has its own CORS policy. Do not widen API origins.
+        worldRoutes()
+        route("/") {
+            install(CORS) {
+                allowHeader(HttpHeaders.ContentType)
+                allowHeader(HttpHeaders.Authorization)
+                if(config.corsHosts.isEmpty()) anyHost()
+                else config.corsHosts.forEach { allowHost(it,schemes=listOf("https")) }
+            }
         // Health-check для Render/любого хоста — должен возвращать 200 без БД и авторизации.
         get("/health") { call.respondText("OK") }
         authRoutes(register, login, issueTokens, refreshSession, logout, saveInterests)
@@ -281,5 +282,6 @@ fun Application.module() {
         feedRoutes(getFeed, getNotifications, markNotificationsRead, getSubscriptions, getSubscriptionRequests, respondSubscriptionRequest)
         searchRoutes(searchUseCase)
         adminRoutes(businessRepository, questRepository, config.adminKey) // /admin — модерация бизнесов и квестов
+        }
     }
 }

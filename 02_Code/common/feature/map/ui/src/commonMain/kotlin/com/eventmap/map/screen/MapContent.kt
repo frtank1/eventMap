@@ -74,6 +74,8 @@ import com.eventmap.theme.EventMapIcons
 import com.eventmap.theme.LiveGradient
 import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightSurface
+import com.eventmap.theme.NightOutline
+import com.eventmap.theme.NightAccentSurface
 import com.eventmap.theme.NightTextSecondary
 import com.eventmap.theme.NightTextTertiary
 import com.eventmap.theme.Violet400
@@ -165,16 +167,23 @@ fun MapContent(
                 ?.let { "+${it.second} за 10 мин · ${it.first}" }
                 .orEmpty(),
             onAnomalyClick = { a -> controller?.animateCamera(LatLng(a.lat, a.lng), 15.0) },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 158.dp, start = 16.dp, end = 16.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = if (compass == null) 148.dp else 190.dp, start = 20.dp, end = 20.dp),
         )
 
         // ── Верхняя панель: поиск + чипы фильтров ──────────────────────
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 52.dp, start = 16.dp, end = 16.dp),
+                .padding(top = 18.dp, start = 20.dp, end = 20.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(EventMapIcons.Place, null, tint = Violet400, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Астана", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text("Твой город рядом", color = NightTextSecondary, fontSize = 11.sp)
+            }
             MapSearchBar(
                 activeFilters = filter.categories.size + (if (filter.freeOnly) 1 else 0),
                 onFilterClick = { showFilters = true },
@@ -340,20 +349,21 @@ private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearch
             modifier = Modifier
                 .weight(1f)
                 .height(46.dp)
-                .clip(RoundedCornerShape(999.dp))
+                .clip(RoundedCornerShape(15.dp))
                 .background(NightSurface)
+                .border(1.dp, NightOutline, RoundedCornerShape(15.dp))
                 .clickableNoRipple(onSearchClick)
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Rounded.Search,
+                EventMapIcons.Search,
                 contentDescription = null,
                 tint = NightTextSecondary,
                 modifier = Modifier.size(17.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Text("Поиск событий и мест", color = NightTextSecondary, fontSize = 14.sp)
+            Text("Что тебе интересно?", color = NightTextSecondary, fontSize = 13.sp)
         }
         val hasFilters = activeFilters > 0
         Box(
@@ -368,7 +378,7 @@ private fun MapSearchBar(activeFilters: Int, onFilterClick: () -> Unit, onSearch
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                Icons.Rounded.Tune,
+                EventMapIcons.Settings,
                 contentDescription = "Фильтры",
                 tint = if (hasFilters) Color.White else NightTextSecondary,
                 modifier = Modifier.size(20.dp),
@@ -386,7 +396,7 @@ private fun FilterChipsRow(filter: MapFilter, vm: MapViewModel, onLiveClick: () 
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             val sel = filter.whenFilter == WhenFilter.Today
-            FilterChip(label = "Сегодня", emoji = "📅", selected = sel) {
+            FilterChip(label = "Сегодня", icon = EventMapIcons.Calendar, selected = sel) {
                 vm.setWhen(if (sel) WhenFilter.Now else WhenFilter.Today)
             }
         }
@@ -394,16 +404,17 @@ private fun FilterChipsRow(filter: MapFilter, vm: MapViewModel, onLiveClick: () 
             // LIVE chip → открывает ленту live-видео
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(Brush.linearGradient(LiveGradient))
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(NightAccentSurface)
+                    .border(1.dp, NightOutline, RoundedCornerShape(11.dp))
                     .clickableNoRipple(onLiveClick)
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LivePulseDot()
+                Icon(EventMapIcons.Video, null, tint = Violet400, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(5.dp))
                 Text(
-                    "LIVE",
+                    "Моменты",
                     color = Color.White,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -413,27 +424,30 @@ private fun FilterChipsRow(filter: MapFilter, vm: MapViewModel, onLiveClick: () 
         }
         items(filterableCategories) { cat ->
             val sel = cat in filter.categories
-            FilterChip(label = cat.label(), emoji = cat.emoji(), selected = sel) { vm.toggleCategory(cat) }
+            FilterChip(label = cat.label(), icon = EventMapIcons.Place, selected = sel) { vm.toggleCategory(cat) }
         }
     }
 }
 
 @Composable
-private fun FilterChip(label: String, emoji: String, selected: Boolean, onClick: () -> Unit) {
-    Box(
+private fun FilterChip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (selected) Violet600.copy(alpha = 0.28f) else NightSurface.copy(alpha = 0.92f))
+            .clip(RoundedCornerShape(11.dp))
+            .background(if (selected) NightAccentSurface else NightSurface.copy(alpha = 0.96f))
             .border(
                 1.dp,
                 if (selected) Violet400.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.08f),
-                RoundedCornerShape(999.dp),
+                RoundedCornerShape(11.dp),
             )
             .clickableNoRipple(onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(icon, null, tint = if (selected) Violet400 else NightTextSecondary, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(5.dp))
         Text(
-            "$emoji $label",
+            label,
             color = if (selected) Violet400 else NightTextSecondary,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,

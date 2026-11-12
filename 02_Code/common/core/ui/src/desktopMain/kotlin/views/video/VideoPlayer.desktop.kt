@@ -18,6 +18,7 @@ actual fun VideoPlayer(
     playing: Boolean,
     muted: Boolean,
     loop: Boolean,
+    onPlaybackState: (VideoPlaybackState) -> Unit,
 ) {
     Box(modifier.background(Color(0xFF0D0818)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

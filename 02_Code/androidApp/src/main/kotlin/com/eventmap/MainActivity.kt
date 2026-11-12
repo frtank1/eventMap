@@ -3,6 +3,7 @@ package com.eventmap
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.fragment.app.FragmentActivity
@@ -12,7 +13,10 @@ import com.eventmap.core.biometry.BiometricActivityHolder
 // FragmentActivity (а не ComponentActivity) — этого требует BiometricPrompt
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         FileKit.init(this)
         requestLocationPermissionIfNeeded() // гео (Q3/D1c) + камера и микрофон (рилсы E3)

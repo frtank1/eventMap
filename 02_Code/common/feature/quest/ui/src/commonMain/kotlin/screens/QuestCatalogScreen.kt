@@ -14,6 +14,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.material3.Icon
+import com.eventmap.theme.EventMapIcons
+import com.eventmap.theme.NightOutline
+import com.eventmap.theme.NightAccentSurface
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -64,6 +70,9 @@ class QuestCatalogScreen : Screen {
         // Данные с бэка (/quests/nearby); при недоступном бэке — демо (паттерн MapViewModel)
         val vm = koinScreenModel<QuestCatalogViewModel>()
         val quests by vm.items.collectAsState()
+        val loading by vm.loading.collectAsState()
+        val live by vm.live.collectAsState()
+        val demonstration = !live || quests.any { quest -> quest.points.any { it.questId.isBlank() } }
 
         Column(
             Modifier
@@ -74,21 +83,21 @@ class QuestCatalogScreen : Screen {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = 56.dp, start = 20.dp, end = 20.dp, bottom = 4.dp),
+                    .padding(top = 20.dp, start = 20.dp, end = 20.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column {
-                    Text("Игры рядом", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                    Text("Квесты от бизнеса · получи приз", fontSize = 13.sp, color = NightTextSecondary, modifier = Modifier.padding(top = 2.dp))
+                    Text("Квесты", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                    Text("Знакомые улицы. Новые открытия.", fontSize = 12.sp, color = NightTextSecondary, modifier = Modifier.padding(top = 4.dp))
                 }
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(BrandGradient))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .background(NightAccentSurface)
+                        .padding(12.dp),
                 ) {
-                    Text("🗺 Карта", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(EventMapIcons.Compass, null, tint = Violet400, modifier = Modifier.size(22.dp))
                 }
             }
 
@@ -96,13 +105,26 @@ class QuestCatalogScreen : Screen {
 
             LazyColumn(
                 Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF554093), Color(0xFF2D345C))))
+                        .padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("ГОРОД — ТВОЁ ПРИКЛЮЧЕНИЕ", fontSize = 10.sp, color = Color(0xFFD4C5FF), letterSpacing = 1.sp)
+                        Text("Открой город\nпо-новому", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 30.sp)
+                        Text("Проходи маршруты, находи интересные места и получай награды за участие.", color = Color(0xFFD1D2EE), fontSize = 12.sp, lineHeight = 18.sp)
+                    }
+                }
+                item {
+                    Text(if (loading) "Загружаем маршруты…" else if (demonstration) "Примеры маршрутов · данные сервера недоступны или каталог пуст" else "Маршруты рядом · ${quests.size}",
+                        color = NightTextSecondary, fontSize = 12.sp)
+                }
                 items(quests, key = { it.id }) { q ->
                     QuestCard(q, onClick = { nav.push(QuestDetailScreen(q)) })
                 }
-                item { Spacer(Modifier.height(80.dp)) }
+                item { Spacer(Modifier.height(12.dp)) }
             }
         }
     }
@@ -113,12 +135,14 @@ class QuestCatalogScreen : Screen {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun QuestCard(q: QuestItem, onClick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(NightSurface)
+            .border(1.dp, NightOutline, RoundedCornerShape(18.dp))
             .clickableNoRipple(onClick)
             .padding(16.dp),
     ) {
@@ -128,10 +152,10 @@ fun QuestCard(q: QuestItem, onClick: () -> Unit) {
                 Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Brush.linearGradient(BrandGradient)),
+                    .background(NightAccentSurface),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(q.emoji, fontSize = 24.sp)
+                Icon(EventMapIcons.Compass, null, tint = Violet400, modifier = Modifier.size(26.dp))
             }
 
             Spacer(Modifier.width(14.dp))
@@ -153,7 +177,7 @@ fun QuestCard(q: QuestItem, onClick: () -> Unit) {
 
         // Прогресс-бар (если в процессе)
         if (q.pointsDone > 0) {
-            val progress = q.pointsDone.toFloat() / q.pointsTotal
+            val progress = (q.pointsDone.toFloat() / q.pointsTotal.coerceAtLeast(1)).coerceIn(0f, 1f)
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(999.dp)),
@@ -165,14 +189,14 @@ fun QuestCard(q: QuestItem, onClick: () -> Unit) {
         }
 
         // Метаданные
-        Row(
+        FlowRow(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             MetaPill("${q.pointsDone}/${q.pointsTotal} точек")
-            MetaPill(q.checkInType.emoji + " " + q.checkInType.label)
-            MetaPill("⏱ ${q.deadlineLabel}")
+            MetaPill(q.checkInType.label)
+            MetaPill(q.deadlineLabel)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -191,7 +215,7 @@ fun QuestCard(q: QuestItem, onClick: () -> Unit) {
                     .padding(horizontal = 12.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("🎁", fontSize = 13.sp)
+                Icon(EventMapIcons.Star, null, tint = Soft, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(5.dp))
                 Text(q.rewardLabel, fontSize = 12.sp, color = Soft, fontWeight = FontWeight.SemiBold)
             }

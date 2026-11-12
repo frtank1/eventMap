@@ -20,6 +20,8 @@ kotlin {
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
 
             implementation(libs.koin.core)
             implementation(libs.voyager.screenModel) // ScreenModel — супертип BaseScreenModel
@@ -38,6 +40,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
+            implementation("androidx.webkit:webkit:1.14.0")
             if (mapProvider == "2gis") {
                 implementation("ru.dgis.sdk:sdk-map:14.2.0")
             } else {

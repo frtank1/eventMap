@@ -61,7 +61,7 @@ import org.koin.mp.KoinPlatform.getKoin
 //  H1 — Мой профиль (Aurora Violet, ночная тема)
 // =====================================================================
 
-private val profileTabs = listOf("События", "Галерея", "Рекоменд.", "История", "Видео")
+private val profileTabs = listOf("События", "История")
 
 @Composable
 fun ProfileContent(
@@ -90,7 +90,7 @@ fun ProfileContent(
         return
     }
     if (p == null) {
-        Column(modifier.fillMaxSize().background(NightBackground).padding(top = 56.dp)) {
+        Column(modifier.fillMaxSize().background(NightBackground).padding(top = 20.dp)) {
             com.eventmap.base_screen.RequestErrorBanner(vm, onRetry = vm::load)
         }
         return
@@ -111,14 +111,14 @@ fun ProfileContent(
         Spacer(Modifier.height(12.dp))
         Column(Modifier.padding(horizontal = 16.dp)) {
             when (tab) {
-                3 -> {
+                1 -> {
                     if (history.isEmpty()) EmptyState("📭", "История посещений пуста")
                     else history.forEach { HistoryRow(it, onClick = { onOpenEvent(it.eventId) }) }
                 }
-                0 -> EmptyState("🗓️", "Ещё нет созданных событий")
-                1 -> EmptyState("🖼️", "Галерея пока пустая")
-                2 -> EmptyState("⭐", "Рекомендации появятся после посещений")
-                4 -> EmptyState("🎬", "Видео ещё не опубликованы")
+                0 -> {
+                    Text("Созданные события, участники и управление публикациями — в разделе «Мои события».",
+                        color = NightTextSecondary, fontSize = 13.sp, lineHeight = 20.sp, modifier = Modifier.padding(vertical = 20.dp))
+                }
             }
         }
         Spacer(Modifier.height(28.dp))
@@ -170,106 +170,36 @@ fun ProfileContent(
 
 @Composable
 private fun ProfileHeader(p: UserProfile, onEdit: () -> Unit, onSettings: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 56.dp, bottom = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // Аватар с градиентным бордером
-        Box(
-            modifier = Modifier
-                .size(90.dp)
-                .clip(CircleShape)
-                .background(NightSurface)
-                .border(2.dp, Brush.linearGradient(BrandGradient), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .size(84.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(BrandGradient)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(p.name.take(1).uppercase(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Профиль", Modifier.weight(1f), fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+            androidx.compose.material3.IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)
+                .clip(RoundedCornerShape(14.dp)).background(NightSurface)
+                .border(1.dp, com.eventmap.theme.NightOutline, RoundedCornerShape(14.dp))) {
+                Icon(com.eventmap.theme.EventMapIcons.Settings, "Настройки", tint = NightTextSecondary)
             }
         }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Имя + галочка верификации
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(p.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-            if (p.isVerified) {
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Rounded.Verified, contentDescription = "Подтверждён", tint = Info, modifier = Modifier.size(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(BrandGradient)),
+                contentAlignment = Alignment.Center) {
+                Text(p.name.take(1).uppercase(), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.name, Modifier.weight(1f, fill = false), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+                        color = Color.White, maxLines = 2)
+                    if (p.isVerified) Icon(Icons.Rounded.Verified, "Подтверждён", tint = Info, modifier = Modifier.padding(start = 5.dp).size(17.dp))
+                }
+                Text("@${p.username.ifBlank { p.name.lowercase().replace(" ", "") }}", color = NightTextSecondary, fontSize = 12.sp)
             }
         }
-        Text(
-            "@${p.username.ifBlank { p.name.lowercase().replace(" ", "") }}",
-            fontSize = 13.sp,
-            color = NightTextSecondary,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-        if (p.bio.isNotBlank()) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                p.bio,
-                fontSize = 13.sp,
-                color = NightTextSecondary,
-                textAlign = TextAlign.Center,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(horizontal = 40.dp),
-            )
-        }
-
-        Spacer(Modifier.height(12.dp))
-
-        // Пилюля уровня
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(999.dp))
-                .background(Violet600.copy(alpha = 0.18f))
-                .border(1.dp, Violet400.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("🏅", fontSize = 13.sp)
-            Spacer(Modifier.width(6.dp))
-            Text("Ур.7 · Городской исследователь", color = Violet400, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // Кнопки «Редактировать» + ⚙
-        Row(
-            Modifier
-                .padding(horizontal = 16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .clickableNoRipple(onEdit),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Редактировать", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .clickableNoRipple(onSettings),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.Settings, contentDescription = "Настройки", tint = NightTextSecondary, modifier = Modifier.size(18.dp))
-            }
+        if (p.bio.isNotBlank()) Text(p.bio, color = NightTextSecondary, fontSize = 13.sp, lineHeight = 20.sp)
+        androidx.compose.material3.OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(13.dp)) {
+            Icon(com.eventmap.theme.EventMapIcons.Edit, null, Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Редактировать профиль", color = Color.White)
         }
     }
 }
@@ -293,8 +223,7 @@ private fun StatsRow(p: UserProfile, modifier: Modifier = Modifier) {
         StatItem(p.subscribers, "Подписчики")
         StatDivider()
         StatItem(p.eventsCount, "События")
-        StatDivider()
-        StatItem(0, "Видео")
+
     }
 }
 
@@ -381,7 +310,7 @@ private fun HistoryRow(item: HistoryItem, onClick: () -> Unit) {
                 color = NightTextTertiary,
             )
         }
-        Text("📍 был", fontSize = 11.sp, color = Soft, fontWeight = FontWeight.Medium)
+        Text("Посетил", fontSize = 11.sp, color = Soft, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -394,7 +323,7 @@ private fun EmptyState(emoji: String, text: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(emoji, fontSize = 36.sp)
+        Icon(com.eventmap.theme.EventMapIcons.Calendar, null, tint = Violet400, modifier = Modifier.size(36.dp))
         Text(text, color = NightTextSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
     }
 }

@@ -1,5 +1,7 @@
 package com.eventmap.core.platform.reminders
 
+import platform.Foundation.timeIntervalSince1970
+
 import PlatformConfiguration
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge

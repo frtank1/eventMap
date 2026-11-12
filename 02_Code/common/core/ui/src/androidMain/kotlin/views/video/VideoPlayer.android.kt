@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 // ExoPlayer: loop, автоплей, без контроллера — кадр заполняет экран (RESIZE_MODE_ZOOM)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class) // PlayerView.resizeMode
@@ -30,11 +31,13 @@ actual fun VideoPlayer(
     playing: Boolean,
     muted: Boolean,
     loop: Boolean,
+    onPlaybackState: (VideoPlaybackState) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     var buffering by remember(url) { mutableStateOf(true) }
     var failed by remember(url) { mutableStateOf(false) }
+    val reportState by rememberUpdatedState(onPlaybackState)
 
     val exoPlayer = remember(url) {
         ExoPlayer.Builder(context).build().apply {
@@ -50,6 +53,18 @@ actual fun VideoPlayer(
         exoPlayer.playWhenReady = active
     }
     LaunchedEffect(exoPlayer, muted) { exoPlayer.volume = if (muted) 0f else 1f }
+    LaunchedEffect(exoPlayer, lifecycle) {
+        if (!lifecycle.isAtLeast(Lifecycle.State.STARTED)) return@LaunchedEffect
+        while (true) {
+            reportState(VideoPlaybackState(
+                positionMs = exoPlayer.currentPosition.coerceAtLeast(0),
+                durationMs = exoPlayer.duration.coerceAtLeast(0),
+                buffering = buffering,
+                failed = failed,
+            ))
+            delay(300)
+        }
+    }
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {

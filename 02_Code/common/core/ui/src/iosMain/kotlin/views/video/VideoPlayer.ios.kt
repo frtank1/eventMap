@@ -4,6 +4,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
+import platform.AVFoundation.currentTime
+import platform.AVFoundation.currentItem
+import platform.AVFoundation.duration
+import platform.CoreMedia.CMTimeGetSeconds
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -29,8 +36,10 @@ actual fun VideoPlayer(
     playing: Boolean,
     muted: Boolean,
     loop: Boolean,
+    onPlaybackState: (VideoPlaybackState) -> Unit,
 ) {
     val player = remember(url) { AVQueuePlayer() }
+    val reportState by rememberUpdatedState(onPlaybackState)
     // looper держим в памяти, пока жив плеер — иначе loop отвалится
     val looper = remember(url) {
         val nsUrl = NSURL.URLWithString(url) ?: return@remember null
@@ -45,6 +54,17 @@ actual fun VideoPlayer(
 
     LaunchedEffect(player, playing) { if (playing) player.play() else player.pause() }
     LaunchedEffect(player, muted) { player.muted = muted }
+    LaunchedEffect(player, playing) {
+        while (playing) {
+            val position = CMTimeGetSeconds(player.currentTime())
+            val duration = player.currentItem?.let { CMTimeGetSeconds(it.duration) } ?: 0.0
+            reportState(VideoPlaybackState(
+                positionMs = if (position.isFinite()) (position * 1000).toLong().coerceAtLeast(0) else 0,
+                durationMs = if (duration.isFinite()) (duration * 1000).toLong().coerceAtLeast(0) else 0,
+            ))
+            delay(300)
+        }
+    }
     DisposableEffect(player) {
         onDispose {
             player.pause()

@@ -80,7 +80,8 @@ fun App() {
         }
     }
 
-    EventMapTheme {
+    // Main screens use the night palette; don't mix them with light Material controls/system bars.
+    EventMapTheme(darkTheme = true) {
         Scaffold(
             snackbarHost = { SnackbarHost(globalSnackbar) }
         ) { innerPadding ->

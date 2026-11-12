@@ -1,0 +1,14 @@
+{
+  "name": "eventmap-game-city",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "export": "node --experimental-vm-modules export-models.mjs",
+    "build": "node build.mjs",
+    "stage-content": "node stage-content.mjs",
+    "test": "node --test test/*.test.mjs",
+    "preview": "node preview.mjs"
+  },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

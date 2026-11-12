@@ -5,7 +5,7 @@ import com.eventmap.video.ui.viewmodel.VideoViewModel
 import org.koin.dsl.module
 
 val videoModule = module {
-    factory { VideoViewModel(repository = get()) }
+    factory { VideoViewModel(repository = get(), eventRepository = get()) }
     // раньше не был зарегистрирован — RecordVideoScreen падал бы на koinScreenModel
     factory { RecordVideoViewModel(repository = get()) }
 }

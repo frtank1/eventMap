@@ -26,6 +26,26 @@ class PublicationTest {
 
     private fun video() = PickedMedia(byteArrayOf(1), "video/mp4", "video.mp4")
 
+    @Test fun cityPrefillPreservesDraftAndIsAppliedOnlyOnce() = runTest {
+        val vm=model(FakeEventRepository())
+        vm.prefillLocation(51.12822,71.43056,"Байтерек")
+        assertEquals("Football",vm.form.value.title)
+        assertEquals("Байтерек",vm.form.value.locationName)
+        assertTrue(vm.form.value.locationSelected)
+        vm.update { it.copy(locationName="Другой вход") }
+        vm.prefillLocation(51.12822,71.43056,"Байтерек")
+        assertEquals("Другой вход",vm.form.value.locationName)
+    }
+
+    @Test fun cityPrefillRejectsInvalidCoordinatesAndPendingPublication() = runTest {
+        val vm=model(FakeEventRepository())
+        vm.prefillLocation(Double.NaN,71.4,"bad")
+        assertEquals("Field",vm.form.value.locationName)
+        vm.update { it.copy(pendingEventId="already-created") }
+        vm.prefillLocation(51.12822,71.43056,"Байтерек")
+        assertEquals("Field",vm.form.value.locationName)
+    }
+
     @Test fun missingMapSelectionDoesNotPublishRandomCoordinates() = runTest {
         val repo = FakeEventRepository()
         val vm = model(repo)

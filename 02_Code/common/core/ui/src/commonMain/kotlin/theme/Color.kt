@@ -34,10 +34,10 @@ val success_green = Color(0xFF22C55E)
 // =====================================================================
 
 // --- Brand ---
-val Violet600 = Color(0xFF7C5CFF) // Primary
+val Violet600 = Color(0xFF8561FF) // Primary
 val Violet700 = Color(0xFF6644E0) // PrimaryDark / pressed
-val Violet400 = Color(0xFFA78BFF) // PrimaryLight / disabled
-val Coral500 = Color(0xFFFF5C8A)  // Accent
+val Violet400 = Color(0xFFB39AFF) // PrimaryLight / text on dark surfaces
+val Coral500 = Color(0xFFFF688F)  // Accent
 val Coral600 = Color(0xFFE04A75)  // AccentDark
 
 // --- Semantic ---
@@ -53,11 +53,14 @@ val NightMapRoad = Color(0xFF1A2A3D)
 val NightMapPark = Color(0xFF0F2419)
 val NightMapWater = Color(0xFF0A2540)
 val NightMapBuilding = Color(0xFF11212F)
-val NightBackground = Color(0xFF0A1420)
-val NightSurface = Color(0xFF11212F)
-val NightTextPrimary = Color(0xFFFFFFFF)
-val NightTextSecondary = Color(0xFF7E8D9F)
-val NightTextTertiary = Color(0xFF56657A)
+val NightBackground = Color(0xFF0D1523)
+val NightSurface = Color(0xFF172235)
+val NightRaised = Color(0xFF202D43)
+val NightOutline = Color(0xFF2B3851)
+val NightAccentSurface = Color(0xFF2C2547)
+val NightTextPrimary = Color(0xFFF4F6FF)
+val NightTextSecondary = Color(0xFF9BAAC3)
+val NightTextTertiary = Color(0xFF8797B0)
 
 // --- Day surfaces ---
 val DayMapBg = Color(0xFFE8F4FB)
@@ -72,6 +75,6 @@ val DayTextSecondary = Color(0xFF6B7280)
 val DayTextTertiary = Color(0xFF9CA3AF)
 
 // --- Brand gradients ---
-val BrandGradient = listOf(Violet600, Coral500)
+val BrandGradient = listOf(Violet600, Color(0xFFB35CD6), Coral500)
 val LiveGradient = listOf(Live, Coral500)
 

@@ -26,7 +26,7 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Violet600,
+    primary = Violet400,
     onPrimary = Color.White,
     primaryContainer = Violet700,
     secondary = Coral500,
@@ -35,11 +35,11 @@ private val DarkColors = darkColorScheme(
     onBackground = NightTextPrimary,
     surface = NightSurface,
     onSurface = NightTextPrimary,
-    surfaceVariant = Color(0x12FFFFFF),
+    surfaceVariant = NightRaised,
     onSurfaceVariant = NightTextSecondary,
     error = Live,
     onError = Color.White,
-    outline = Color(0xFF2A3A4D),
+    outline = NightOutline,
 )
 
 /**

@@ -86,6 +86,7 @@ class CreateEventViewModel(
     private val draftOwner = drafts?.ownerId()
     private var existingEndAt = ""
     private var existingExpiresAtMs: Long? = null
+    private var locationPrefilled = false
 
     private val _step = MutableStateFlow(0)         // 0..2
     val step: StateFlow<Int> = _step.asStateFlow()
@@ -147,6 +148,14 @@ class CreateEventViewModel(
         if (_editingId.value == null) {
             saveDraft()
         }
+    }
+
+    /** Explicit map selection replaces only location, preserving the user's draft and media. */
+    fun prefillLocation(lat:Double,lng:Double,name:String) {
+        if(locationPrefilled || _editingId.value!=null || _loading.value || _form.value.pendingEventId!=null) return
+        if(!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+        locationPrefilled=true
+        update { it.copy(lat=lat,lng=lng,locationName=name.take(120),locationSelected=true,landmark="") }
     }
 
     /** Префилл формы полями существующего события (экран D6 переиспользуется для правки). */

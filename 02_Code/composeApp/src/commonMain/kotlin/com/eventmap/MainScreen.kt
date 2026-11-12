@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cafe.adriel.voyager.core.screen.Screen
@@ -48,11 +52,13 @@ import com.eventmap.feed.ui.FeedContent
 import com.eventmap.feed.ui.NotificationsContent
 import com.eventmap.feed.ui.screens.SubscriptionsScreen
 import com.eventmap.map.screen.MapContent
+import com.eventmap.map.city.GameCityContent
 import com.eventmap.profile.ui.ProfileContent
 import com.eventmap.profile.ui.screens.EditProfileScreen
 import com.eventmap.profile.ui.screens.SettingsScreen
 import com.eventmap.search.ui.screens.SearchScreen
 import com.eventmap.video.ui.screens.VideoFeedScreen
+import com.eventmap.video.ui.screens.VideoFeedContent
 import com.eventmap.video.ui.screens.RecordVideoScreen
 import com.eventmap.quest.ui.screens.QuestCatalogScreen
 import androidx.compose.material3.Icon
@@ -63,23 +69,27 @@ import com.eventmap.theme.EventMapIcons
 import com.eventmap.theme.NightBackground
 import com.eventmap.theme.NightSurface
 import com.eventmap.theme.Violet600
+import com.eventmap.theme.Violet400
+import com.eventmap.theme.NightOutline
+import com.eventmap.theme.NightAccentSurface
+import com.eventmap.theme.NightTextSecondary
 import com.eventmap.theme.ui_kit.clickableNoRipple
 
 // =====================================================================
-//  Главный экран — Aurora Violet v2
-//  Таббар по дизайн-прототипу (BOTTOM NAV): Карта · ⚡Сейчас · [🎬 запись] · 🎮Квесты · Профиль
+//  Главный экран — Mobile Polish
+//  Таббар: Карта · Сейчас · [+ событие] · Квесты · Профиль
 //  Лента/уведомления F4 — по колокольчику на вкладке «Сейчас»
 // =====================================================================
 
-private val NightTextTertiary = Color(0xFF56657A)
+private val NightTextTertiary = NightTextSecondary
 
 private data class NavTab(val icon: ImageVector?, val label: String)
 
 private val navTabs = listOf(
     NavTab(EventMapIcons.Map, "Карта"),
-    NavTab(EventMapIcons.Video, "Сейчас"),   // ⚡ live-лента (E1/E2)
-    NavTab(null, ""),                         // центральный FAB — 🎬 снять момент (E3)
-    NavTab(EventMapIcons.Reels, "Квесты"),   // 🎮 Q1 каталог
+    NavTab(EventMapIcons.Video, "Сейчас"),
+    NavTab(null, ""),                         // центральная кнопка — создать событие
+    NavTab(EventMapIcons.Reels, "Квесты"),
     NavTab(EventMapIcons.Profile, "Профиль"),
 )
 
@@ -87,7 +97,8 @@ class MainScreen : Screen {
     @Composable
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
-        var selected by remember { mutableStateOf(0) }
+        var selected by rememberSaveable { mutableStateOf(0) }
+        var gameCity by rememberSaveable { mutableStateOf(false) }
 
         // Дошли до главного экрана после входа — один раз предложим настроить PIN.
         val appLock = remember { getKoin().get<AppLockController>() }
@@ -96,33 +107,27 @@ class MainScreen : Screen {
         Column(Modifier.fillMaxSize().background(NightBackground)) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 when (selected) {
-                    0 -> MapContent(
-                        modifier = Modifier.fillMaxSize(),
-                        onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
-                        onSearchClick = { nav.push(SearchScreen()) },
-                        onOpenLive = { nav.push(VideoFeedScreen()) },
-                        // «Я тоже здесь · снять момент»: рилс с привязкой к событию
-                        onRecordMoment = { id, title -> nav.push(RecordVideoScreen(eventId = id, eventTitle = title)) },
-                    )
-                    // ⚡ «Сейчас»: live-видео + колокольчик (лента/уведомления F4)
-                    1 -> Box(Modifier.fillMaxSize()) {
-                        VideoFeedScreen().Content()
-                        Box(
-                            Modifier.align(Alignment.TopEnd)
-                                .padding(top = 52.dp, end = 16.dp)
-                                .size(40.dp).clip(CircleShape)
-                                .background(NightSurface.copy(alpha = 0.85f))
-                                .clickableNoRipple { nav.push(FeedScreen()) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                EventMapIcons.Bell,
-                                contentDescription = "Уведомления",
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp),
-                            )
-                        }
+                    0 -> if (gameCity) GameCityContent(
+                        modifier=Modifier.fillMaxSize(),
+                        onExit={gameCity=false},
+                        onOpenEvent={id -> nav.push(EventReelScreen(listOf(EventDetail(id=id,title=""))))},
+                        onCreateHere={lat,lng,name -> nav.push(CreateEventScreen(initialLat=lat,initialLng=lng,initialLocationName=name))},
+                    ) else Box(Modifier.fillMaxSize()) {
+                        MapContent(
+                            modifier = Modifier.fillMaxSize(),
+                            onOpenEvent = { id -> nav.push(EventReelScreen(listOf(EventDetail(id = id, title = "")))) },
+                            onSearchClick = { nav.push(SearchScreen()) },
+                            onOpenLive = { nav.push(VideoFeedScreen()) },
+                            // «Я тоже здесь · снять момент»: рилс с привязкой к событию
+                            onRecordMoment = { id, title -> nav.push(RecordVideoScreen(eventId = id, eventTitle = title)) },
+                        )
+                        androidx.compose.material3.FilledTonalButton(
+                            onClick={gameCity=true},
+                            modifier=Modifier.align(Alignment.BottomEnd).padding(end=12.dp,bottom=100.dp),
+                        ) { Text("3D-город · пилот") }
                     }
+                    // «Сейчас»: ролики участников + колокольчик (лента/уведомления)
+                    1 -> VideoFeedContent(onNotifications = { nav.push(FeedScreen()) })
                     // 🎮 Квесты (Q1, по дизайну — своя вкладка)
                     3 -> QuestCatalogScreen().Content()
                     4 -> ProfileContent(
@@ -145,7 +150,7 @@ class MainScreen : Screen {
                 selected = selected,
                 onSelect = { selected = it },
                 // Центр таббара — ＋ создать событие (привычный UX);
-                // съёмка момента 🎬 — из ленты «Сейчас» (кнопка в топбаре VideoFeedScreen).
+                // съёмка момента — из события, с сохранением его идентификатора.
                 onCreateClick = { nav.push(CreateEventScreen()) },
             )
         }
@@ -153,27 +158,26 @@ class MainScreen : Screen {
 }
 
 @Composable
-private fun BottomNavBar(selected: Int, onSelect: (Int) -> Unit, onCreateClick: () -> Unit) {
+fun BottomNavBar(selected: Int, onSelect: (Int) -> Unit, onCreateClick: () -> Unit) {
     Box(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
             .background(NightSurface),
     ) {
         Box(
             Modifier.fillMaxWidth().height(1.dp)
-                .background(Color.White.copy(alpha = 0.06f))
+                .background(NightOutline)
                 .align(Alignment.TopCenter),
         )
         Row(
-            Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp, start = 4.dp, end = 4.dp),
+            Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp, start = 9.dp, end = 9.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             navTabs.forEachIndexed { i, tab ->
                 if (i == 2) {
-                    CreateFab(onCreateClick)
+                    Box(Modifier.width(64.dp), contentAlignment = Alignment.Center) { CreateFab(onCreateClick) }
                 } else {
-                    NavItem(tab = tab, active = selected == i, onClick = { onSelect(i) })
+                    NavItem(tab = tab, active = selected == i, onClick = { onSelect(i) }, modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -181,35 +185,28 @@ private fun BottomNavBar(selected: Int, onSelect: (Int) -> Unit, onCreateClick: 
 }
 
 @Composable
-private fun NavItem(tab: NavTab, active: Boolean, onClick: () -> Unit) {
+private fun NavItem(tab: NavTab, active: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val labelColor by animateColorAsState(
-        targetValue = if (active) Violet600 else NightTextTertiary,
+        targetValue = if (active) Violet400 else NightTextSecondary,
         animationSpec = tween(200),
     )
-    val scale by animateFloatAsState(
-        targetValue = if (active) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f),
-    )
-
     Column(
-        Modifier.width(64.dp).clickableNoRipple(onClick).padding(vertical = 2.dp),
+        modifier.height(54.dp).clip(RoundedCornerShape(15.dp))
+            .background(if (active) NightAccentSurface else Color.Transparent)
+            .selectable(selected = active, role = Role.Tab, onClick = onClick).padding(vertical = 7.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
             imageVector = tab.icon!!,
-            contentDescription = tab.label,
+            contentDescription = null,
             tint = labelColor,
-            modifier = Modifier.size(24.dp).scale(scale),
+            modifier = Modifier.size(22.dp),
         )
         Text(
             tab.label, color = labelColor, fontSize = 10.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
-        )
-        Box(
-            Modifier.size(4.dp).clip(CircleShape)
-                .background(if (active) Violet600 else Color.Transparent),
         )
     }
 }
@@ -217,9 +214,9 @@ private fun NavItem(tab: NavTab, active: Boolean, onClick: () -> Unit) {
 @Composable
 private fun CreateFab(onClick: () -> Unit) {
     Box(
-        Modifier.size(52.dp).clip(CircleShape)
+        Modifier.size(48.dp).clip(RoundedCornerShape(16.dp))
             .background(Brush.linearGradient(BrandGradient))
-            .clickableNoRipple(onClick),
+            .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

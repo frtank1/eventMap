@@ -1,0 +1,29 @@
+Locally vendored ES modules (no runtime CDN imports)
+==================================================
+
+vector-tile.js: @mapbox/vector-tile 2.0.4, BSD-3-Clause
+Source: https://cdn.jsdelivr.net/npm/@mapbox/vector-tile@2.0.4/index.js
+License: VECTOR-TILE-LICENSE.txt
+Only modification: @mapbox/point-geometry import -> ./point-geometry.js.
+
+pbf.js: pbf 4.0.1, BSD-3-Clause
+Source: https://cdn.jsdelivr.net/npm/pbf@4.0.1/index.js
+License: PBF-LICENSE.txt
+No runtime dependencies. The package's schema compiler is not included or used.
+The embedded UTF-8 Buffer routines credit feross/buffer; their MIT license is
+included as BUFFER-LICENSE.txt (https://github.com/feross/buffer/blob/master/LICENSE).
+
+point-geometry.js: @mapbox/point-geometry 1.1.0, ISC
+Source: https://cdn.jsdelivr.net/npm/@mapbox/point-geometry@1.1.0/index.js
+License: POINT-GEOMETRY-LICENSE.txt
+
+Map data is streamed, not bundled. Applications displaying the stream must
+visibly credit OpenFreeMap, OpenMapTiles, and OpenStreetMap contributors.
+The module exposes the live TileJSON attribution at group.userData.attribution.
+OpenFreeMap: https://openfreemap.org/
+OpenMapTiles: https://openmaptiles.org/
+OpenStreetMap data / ODbL: https://www.openstreetmap.org/copyright
+
+API references:
+https://github.com/hyperknot/openfreemap
+https://github.com/mapbox/vector-tile-js/tree/v2.0.4

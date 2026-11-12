@@ -69,4 +69,7 @@ dependencies {
     implementation(compose.ui)
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+    debugImplementation(projects.common.core.ui)
+    debugImplementation(projects.common.feature.video.ui)
+    debugImplementation(projects.common.feature.video.domain)
 }

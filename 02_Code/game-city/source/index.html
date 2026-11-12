@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#edf0ed">
+  <meta name="description" content="Игровая Астана: диорамные здания, ночные огни и новогоднее оформление. Исследуй Байтерек, соседние кварталы и Астана Арену.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://tiles.openfreemap.org; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'">
+  <title>EventMap · Игровая Астана</title>
+  <link rel="stylesheet" href="style.css">
+  <style>@media(min-width:901px){.place-card{max-height:calc(100dvh - 400px);overflow-y:auto;scrollbar-width:thin}}</style>
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/controls/OrbitControls.js":"./vendor/OrbitControls.js","./app.js":"./app.js?v=civic-20261112-4","./city-landmarks.js":"./city-landmarks.js?v=civic-20261112-4","./civic-landmarks.js":"./civic-landmarks.js?v=civic-20261112-4","./civic-extras.js":"./civic-extras.js?v=civic-20261112-4"}}</script>
+</head>
+<body>
+  <main id="world" aria-label="Интерактивная 3D-карта Астаны">
+    <canvas id="scene" aria-label="3D-сцена: перетащите для вращения, колесо или два пальца для масштаба"></canvas>
+    <div id="labels" aria-hidden="true"></div>
+    <div id="loader" role="status"><div class="loader-orb"></div><strong>Собираем город</strong><span>Улицы, дома и маленькие открытия</span></div>
+    <div id="failure" hidden role="alert"><strong>Не удалось открыть 3D-сцену</strong><p id="failure-text"></p><button id="retry">Попробовать ещё раз</button></div>
+  </main>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="EventMap — начало"><span class="brand-mark">e<span>m</span></span><span class="brand-word">eventmap<small>ГОРОД, КОТОРЫЙ ЖИВЁТ</small></span></a>
+    <nav class="places" aria-label="Участки города"><button data-place="city" class="active" aria-pressed="true">Вся Астана</button><button data-place="baiterek" aria-pressed="false">Байтерек</button><button data-place="arena" aria-pressed="false">Арена</button></nav>
+    <div class="top-actions"><span class="lab-label">3D ПРОТОТИП</span><button id="help-button" class="round" aria-label="Об этом прототипе">?</button></div>
+  </header>
+  <section class="location-heading" aria-label="Текущий район"><span class="eyebrow">АСТАНА · КАЗАХСТАН</span><h1 id="place-title">Астана · живой город</h1><p id="place-subtitle">Кварталы подгружаются по мере исследования.</p><label class="sr-only" for="poi-select">Перелететь к зданию</label><select id="poi-select" aria-label="Перелететь к зданию"><option>Загрузка мест…</option></select><div id="stream-status" role="status">Подключаем географию города…</div></section>
+  <div class="scene-tools" aria-label="Управление видом">
+    <button class="round compass" id="north" aria-label="Вернуть север наверх"><span id="compass-arrow">↑</span><small>С</small></button>
+    <div class="tool-group"><button id="zoom-in" aria-label="Приблизить">+</button><span></span><button id="zoom-out" aria-label="Отдалить">−</button></div>
+    <button class="round" id="home" aria-label="Вернуться к главному объекту">⌖</button>
+    <button class="round" id="night" aria-label="Включить вечернее освещение" aria-pressed="false">☾</button>
+    <button class="round appearance-toggle" id="appearance-toggle" aria-label="Оформление карты" aria-controls="appearance-panel" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m12 3 8 5-8 5-8-5 8-5Z M4 12l8 5 8-5 M4 16l8 5 8-5"/></svg><small>Вид</small></button>
+    <button class="round appearance-toggle" id="city-event-toggle" aria-label="Анимации города" aria-controls="city-event-panel" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z M20 2v4 M18 4h4"/></svg><small>События</small></button>
+  </div>
+  <section id="city-event-panel" class="city-event-panel" aria-label="Десять анимаций города" hidden>
+    <div class="appearance-heading"><div><span class="eyebrow">ГОРОД ОЖИВАЕТ · ДЕМО</span><h2>10 сценариев</h2></div><button id="city-event-close" aria-label="Закрыть анимации">×</button></div>
+    <label for="city-event-select">Что происходит у Байтерека</label>
+    <select id="city-event-select"><option value="none">Без события</option></select>
+    <p id="city-event-description">Выбери сценарий: салют, концерт, марафон и другие игровые события.</p>
+    <div class="city-event-actions"><button id="city-event-play">Запустить салют</button><button id="city-event-focus" aria-label="Приблизить выбранное событие">↘</button></div>
+    <div class="city-event-note">Можно вращать, приближать и отдалять карту. Это вымышленные визуальные сценарии, без звука и без реальных участников.</div>
+  </section>
+  <section class="appearance-panel" id="appearance-panel" aria-label="Оформление карты" hidden>
+    <div class="appearance-heading"><div><span class="eyebrow">ТВОЙ ГОРОД</span><h2>Оформление</h2></div><button id="appearance-close" aria-label="Закрыть оформление">×</button></div>
+    <div class="appearance-options" role="group" aria-label="Сезонное оформление">
+      <button data-theme="default" aria-pressed="true" class="active"><span class="theme-swatch theme-default" aria-hidden="true"></span><span>Обычное<small>Тёплая диорама</small></span><i aria-hidden="true"></i></button>
+      <button data-theme="winter" aria-pressed="false"><span class="theme-swatch theme-winter" aria-hidden="true"></span><span>Зима<small>Снег и прохладный свет</small></span><i aria-hidden="true"></i></button>
+      <button data-theme="newyear" aria-pressed="false"><span class="theme-swatch theme-newyear" aria-hidden="true"></span><span>Новый год<small>Ёлка, огни и гирлянды</small></span><i aria-hidden="true"></i></button>
+    </div>
+    <div class="appearance-time"><span>Время суток</span><div role="group" aria-label="Время суток"><button data-light="day" class="active" aria-pressed="true">День</button><button data-light="night" aria-pressed="false">Ночь</button></div></div>
+    <p id="appearance-note">Диорамные фасады и детали улиц. Время суток выбирается отдельно.</p>
+    <div class="appearance-saved"><span id="appearance-current">Обычное</span><span>Сохраняется на устройстве</span></div>
+  </section>
+  <aside class="place-card" id="place-card">
+    <div class="card-top"><span class="card-kicker"><span class="status-dot"></span><span id="card-kicker">СЕРДЦЕ ЛЕВОГО БЕРЕГА</span></span><button id="card-toggle" aria-label="Свернуть карточку" aria-expanded="true">−</button></div>
+    <h2 id="card-title">Байтерек</h2>
+    <p id="card-description">Золотой шар над бульваром. Приблизься, чтобы увидеть деревья, окна и детали площади.</p>
+    <div class="card-content">
+      <div class="card-facts"><span><b id="building-count">—</b> контуров зданий</span><span id="area-size">Контуры OSM</span></div>
+      <div class="activity-label"><span>Сценарий места</span><small>ДЕМО</small></div>
+      <div class="activity-options" id="activity-options"><button data-event="calm" class="active" aria-pressed="true">Обычный день</button><button data-event="live" aria-pressed="false">Вечер на площади</button></div>
+      <p class="activity-note" id="activity-note">Выбери сценарий, чтобы увидеть, как место оживает.</p>
+      <button class="primary" id="explore">Рассмотреть поближе <span>↗</span></button>
+    </div>
+  </aside>
+  <section id="match-panel" class="match-panel" aria-label="Матч Астана — Тобол" hidden>
+    <div class="match-heading"><span><i></i> АСТАНА АРЕНА</span><small>ПОСТАНОВОЧНЫЙ МАТЧ</small></div>
+    <h2><span class="team astana">Астана</span><span class="versus">—</span><span class="team tobol">Тобол</span></h2>
+    <p id="match-caption">Две команды. Полные трибуны. Город слышит игру.</p>
+    <div class="match-actions"><button id="match-start" class="match-launch" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2 13 8 4 14Z"/></svg><span>Запустить матч</span></button><button id="match-sound" aria-label="Включить звук трибун" aria-pressed="false" title="Включить звук трибун"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4Z M17 8q4 4 0 8 M20 5q6 7 0 14"/></svg></button></div>
+    <div class="match-audio"><label for="match-volume">Громкость</label><input id="match-volume" type="range" min="0" max="100" value="65"><output id="match-volume-label" for="match-volume">65%</output></div>
+    <div class="match-proximity"><span id="match-distance">Камера · — м</span><span id="match-level">Звук выключен</span></div>
+    <div class="match-meter" aria-hidden="true"><span id="match-meter-fill"></span></div>
+    <p id="match-audio-status" role="status">Звук включится по кнопке. Ближе к арене — громче.</p>
+    <div class="match-camera"><button id="match-near">К полю <span>↘</span></button><button id="match-far">Отлететь <span>↗</span></button></div>
+    <div id="match-scenarios"></div>
+    <small class="match-disclaimer">Игроки, болельщики и кричалки — синтетическая демонстрация, не прямой эфир.</small>
+  </section>
+  <section class="scale-control" aria-label="Детализация и масштаб">
+    <div class="scale-copy"><span><i></i><span id="lod-label">Обзор района</span></span><small id="lod-description">Здания и улицы</small></div>
+    <div class="scale-buttons"><button data-scale="district" class="active" aria-pressed="true">Район</button><button data-scale="block" aria-pressed="false">Квартал</button><button data-scale="near" aria-pressed="false">Рядом</button></div>
+    <label class="sr-only" for="distance">Приближение карты</label><input id="distance" type="range" min="0" max="100" value="25" aria-label="Приближение карты">
+  </section>
+  <div class="gesture-hint" id="gesture-hint">Вращай · приближай · исследуй<span>Перемещение: правая кнопка / два пальца · «Вид» — сезоны</span></div>
+  <footer><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap</a><a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a><a href="https://openmaptiles.org" target="_blank" rel="noopener">© OpenMapTiles</a><span>Стилизованные модели · события вымышлены</span><button id="source-button">Об источниках</button></footer>
+  <dialog id="about"><div class="dialog-head"><span class="eyebrow">EVENTMAP · CITY LAB</span><button id="close-about" class="round" aria-label="Закрыть">×</button></div><h2>Реальный город.<br>Игровое ощущение.</h2><p>Это отдельный прототип. Он не подключён к аккаунтам, событиям или геолокации мобильного приложения.</p><h3>Что здесь настоящее</h3><p>Положение и контуры зданий, улиц и зелёных участков взяты из OpenStreetMap. Данные получены 11 ноября 2026 года. Высоты из OSM используются там, где они указаны; остальные — приближённые.</p><h3>Что стилизовано</h3><p>Байтерек и стадион построены программно как узнаваемые игровые модели, а не точные архитектурные копии. Фасады, деревья, люди, свет и события — оформление демонстрации. Поляна или сцена не означают реальное мероприятие.</p><h3>Как исследовать</h3><p>Мышь: перетаскивание — вращение, колесо — масштаб, правая кнопка — перемещение. Телефон: один палец — вращение, два — масштаб и перемещение. Можно пользоваться кнопками «Район», «Квартал», «Рядом».</p><p class="source-links"><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">Данные OSM · ODbL</a><a href="vendor/THREE-LICENSE.txt" target="_blank">Three.js · MIT</a><a href="sources.html" target="_blank">Модели и ограничения</a></p></dialog>
+  <script type="module">import('./app.js').catch(error=>{console.error(error);document.getElementById('loader').classList.add('done');document.getElementById('failure').hidden=false;document.getElementById('failure-text').textContent='Не удалось загрузить 3D-модуль. Проверь соединение и обнови страницу.';document.getElementById('retry').onclick=()=>location.reload();});</script>
+</body>
+</html>

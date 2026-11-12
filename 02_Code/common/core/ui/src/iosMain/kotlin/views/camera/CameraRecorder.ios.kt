@@ -1,5 +1,7 @@
 package com.eventmap.views.camera
 
+import platform.Foundation.timeIntervalSince1970
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember

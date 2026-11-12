@@ -1,6 +1,7 @@
 package com.eventmap.event.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,7 +74,12 @@ import kotlinx.datetime.toLocalDateTime
 
 private val eventCategories = listOf("Музыка", "Спорт", "Еда", "Лекция", "Стендап", "Арт", "Игры", "Природа")
 
-data class CreateEventScreen(val editEventId: String? = null) : Screen {
+data class CreateEventScreen(
+    val editEventId: String? = null,
+    val initialLat: Double? = null,
+    val initialLng: Double? = null,
+    val initialLocationName: String = "",
+) : Screen {
 
     @Composable
     override fun Content() {
@@ -92,7 +98,10 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
         val scope = rememberCoroutineScope()
 
         // Режим правки: префилл формы полями события (D6 переиспользуется)
-        LaunchedEffect(editEventId) { editEventId?.let { vm.loadForEdit(it) } }
+        LaunchedEffect(editEventId,initialLat,initialLng,initialLocationName) {
+            if(editEventId!=null) vm.loadForEdit(editEventId)
+            else if(initialLat!=null && initialLng!=null) vm.prefillLocation(initialLat,initialLng,initialLocationName)
+        }
         LaunchedEffect(created) { if (created) nav.pop() }
         // показываем ошибки валидации/сети (раньше они молча терялись → «кнопка не работает»)
         LaunchedEffect(Unit) { vm.errorMessage.collect { errorText = it } }
@@ -131,16 +140,24 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
 
         Box(Modifier.fillMaxSize().background(NightBackground)) {
         Column(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().imePadding(),
         ) {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.IconButton(onClick = { if (!loading) nav.pop() }, enabled = !loading) {
+                    Icon(EventMapIcons.Back, "Закрыть форму", tint = NightTextPrimary)
+                }
+                Text(if (editEventId == null) "Создание события" else "Редактирование", color = NightTextPrimary,
+                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("${step + 1} из 3", color = NightTextSecondary, fontSize = 12.sp)
+            }
             // Step progress bar (3 equal segments)
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 58.dp),
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 repeat(3) { i ->
                     Box(
-                        Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(999.dp))
+                        Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(999.dp))
                             .background(
                                 if (i <= step) Brush.linearGradient(BrandGradient)
                                 else Brush.linearGradient(
@@ -157,9 +174,9 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
             Text(
                 titles[step],
                 color = Color.White,
-                fontSize = 20.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(start = 16.dp, top = 16.dp),
+                modifier = Modifier.padding(start = 20.dp, top = 20.dp),
             )
             Text(
                 subs[step],
@@ -169,7 +186,7 @@ data class CreateEventScreen(val editEventId: String? = null) : Screen {
             )
 
             Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
             ) {
                 if (form.pendingEventId != null) {
                     Text("Событие уже создано. Осталось завершить публикацию видео; повторная попытка не создаёт новое событие.", color = Color.White)
@@ -334,36 +351,39 @@ private fun StepBasics(
         onSelect = onKind,
     )
     Spacer(Modifier.height(16.dp))
+    FormLabel("Название события")
+    FormInput("Например, футбол после работы", title, onTitle)
+    Spacer(Modifier.height(16.dp))
+    FormLabel("Что будет происходить?")
+    FormInput("Для кого встреча и что взять с собой", description, onDesc, height = 80.dp)
+    Spacer(Modifier.height(18.dp))
     // Обложка: показываем саму картинку (декод из выбранных байтов)
     val coverBitmap = remember(cover) {
         cover?.bytes?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
     }
-    MediaPickCard(
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Box(Modifier.weight(1f)) { MediaPickCard(
         pickedLabel = cover?.name?.let { "Обложка · $it" },
         idleIcon = EventMapIcons.Camera,
         idleText = "Добавить обложку",
-        height = 160.dp,
+        height = 124.dp,
         onClick = onPickCover,
         onClear = null,
         imagePreview = coverBitmap,
-    )
-    Spacer(Modifier.height(12.dp))
+    ) }
     // Ролик: мини-плеер из временного файла (muted, loop)
-    MediaPickCard(
+    Box(Modifier.weight(1f)) { MediaPickCard(
         pickedLabel = reel?.name?.let { "Ролик · $it" },
         idleIcon = EventMapIcons.Video,
-        idleText = "Добавить ролик · до 30 сек",
-        height = if (reel?.localUrl != null) 160.dp else 88.dp,
+        idleText = "Ролик · до 30 сек",
+        height = 124.dp,
         onClick = onPickReel,
         onClear = if (reel != null) onClearReel else null,
         videoPreviewUrl = reel?.localUrl,
-    )
-    Spacer(Modifier.height(20.dp))
-    FormLabel("НАЗВАНИЕ")
-    FormInput("Напр. «Йога на рассвете»", title, onTitle)
-    Spacer(Modifier.height(16.dp))
-    FormLabel("ОПИСАНИЕ")
-    FormInput("Расскажи, что будет, для кого…", description, onDesc, height = 80.dp)
+    ) }
+    }
+    Spacer(Modifier.height(10.dp))
+    Text("Обложка и ролик помогут участникам понять, что их ждёт.", color = NightTextSecondary, fontSize = 11.sp)
 }
 
 // Карточка выбора медиа: пустая (тап → пикер) или с именем выбранного файла (+✕ для очистки).
@@ -382,7 +402,8 @@ private fun MediaPickCard(
     val hasPreview = imagePreview != null || videoPreviewUrl != null
     Box(
         Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(14.dp))
-            .background(if (picked) Violet600.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
+            .background(if (picked) NightAccentSurface else NightSurface)
+            .border(1.dp, NightOutline, RoundedCornerShape(14.dp))
             .clickableNoRipple(onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -730,7 +751,7 @@ private fun FormInput(
     val multiline = height > 50.dp
     Box(
         Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.06f)).padding(horizontal = 14.dp),
+            .background(NightSurface).border(1.dp, NightOutline, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp),
         contentAlignment = if (multiline) Alignment.TopStart else Alignment.CenterStart,
     ) {
         BasicTextField(

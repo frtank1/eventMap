@@ -35,3 +35,11 @@ dgissdk.key
 
 _to_delete/
 ._write_test_em
+
+# Local session/build helpers and recoverable scratch backups (not product source)
+/.build_done
+/.build_request
+/.build_stop
+/build_log.txt
+/eventmap_build.command
+/tmp/
