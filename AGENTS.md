@@ -1,3 +1,5 @@
-## Imported Claude Cowork project instructions
+# Инструкции для агентов
 
-Проект связанный событиями на карте
+Проект связанный событиями на карте.
+
+Все инструкции для агентов — в [CLAUDE.md](CLAUDE.md). Текущее состояние и задачи — в [05_Docs/HANDOFF_FABLE_5.2_2026-11-16.md](05_Docs/HANDOFF_FABLE_5.2_2026-11-16.md).
