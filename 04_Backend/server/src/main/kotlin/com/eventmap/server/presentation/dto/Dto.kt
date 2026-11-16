@@ -47,6 +47,8 @@ import kotlinx.serialization.Serializable
     val minAge: Int? = null,
     val expiresAtMs: Long? = null,
     val proofMediaId: String? = null,
+    val venue: com.eventmap.server.domain.model.EventVenue? = null,
+    val clearVenue: Boolean = false,
 )
 @Serializable data class EventDto(
     val id: String, val title: String, val description: String, val category: String, val status: String,
@@ -59,6 +61,7 @@ import kotlinx.serialization.Serializable
     val audience: String = "everyone", val minAge: Int? = null,
     val capacity: Int? = null, val expiresAtMs: Long? = null,
     val confirmationCount: Int = 0, val interestCount: Int = 0,
+    val venue: com.eventmap.server.domain.model.EventVenue? = null,
 )
 @Serializable data class OrganizerDto(
     val id: String, val name: String, val bio: String, val avatarUrl: String? = null,
@@ -191,7 +194,7 @@ fun Event.toDto() = EventDto(
     PriceDto(price.type, price.amount, price.currency),
     goingCount, liveViewers, ratingAvg, ratingCount, cover, organizerId ?: "", organizerName,
     commentsCount, kind, sourceType, visibility, joinPolicy, audience, minAge,
-    capacity, expiresAtMs, confirmationCount, interestCount,
+    capacity, expiresAtMs, confirmationCount, interestCount, venue,
 )
 
 fun Organizer.toDto() = OrganizerDto(id, name, bio, avatarUrl, isVerified, eventsCount, subscribers)

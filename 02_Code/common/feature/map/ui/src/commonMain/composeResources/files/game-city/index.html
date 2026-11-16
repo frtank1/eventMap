@@ -1,7 +1,32 @@
 <!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://tiles.openfreemap.org https://eventmap-guo1.onrender.com http://127.0.0.1:* http://localhost:*; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://tiles.openfreemap.org https://eventmap-guo1.onrender.com http://127.0.0.1:* http://localhost:*; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>EventMap · игровой город</title><link rel="stylesheet" href="mobile.css"></head>
-<body><canvas aria-label="Игровая карта Астаны"></canvas><div id="labels"></div>
-<div id="caption"><div id="status">Встроенная карта · pilot-1</div><div id="tiles"></div><div>OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors</div></div>
+<body><canvas aria-label="Игровая карта Астаны"></canvas><div id="labels"></div><div id="event-labels"></div>
+<div id="city-hud"><div id="scene-note">Город · события от участников</div><div class="hud-actions"><button id="nearby-button" aria-expanded="false"></button><button id="self-button"></button><button id="scene-button" aria-label="Настроить сцену" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg><span>Сцена</span></button></div></div>
+<div class="zoom-controls"><button id="zoom-in" aria-label="Приблизить"></button><button id="zoom-out" aria-label="Отдалить"></button></div>
+<section id="nearby-list" class="city-sheet" aria-label="События рядом" hidden></section>
+<section id="scene-settings" class="city-sheet scene-settings" role="dialog" aria-modal="false" aria-labelledby="scene-title" hidden>
+  <div class="sheet-heading"><div><small>ASTANA / CITY LAB</small><h2 id="scene-title">Живой город</h2></div><button id="scene-done" class="close-sheet">Готово</button></div>
+  <p class="muted">Эффекты — художественное демо, не реальные события или прогноз погоды.</p>
+  <div class="effect-options">
+    <button data-effect="light" aria-pressed="false"><span>01</span><strong>Подсветка</strong><small>Свет вокруг Байтерека</small></button>
+    <button data-effect="fireworks" aria-pressed="false"><span>02</span><strong>Салют</strong><small>Короткий запуск · 6 с</small></button>
+    <button data-effect="snow" aria-pressed="false"><span>03</span><strong>Снег</strong><small>Снежинки рядом с камерой</small></button>
+  </div>
+  <div class="scene-views"><button id="quarter-overview">Обзор</button><button id="quarter-close">Площадь</button><button id="quarter-walk" aria-pressed="false">Прогулка · демо</button></div>
+  <div class="scene-views"><button id="whole-city">Вся Астана</button><button id="quarter-baiterek">Байтерек</button><button id="quarter-arena">Астана Арена</button></div>
+  <label class="quality-label">Перейти к зданию<select id="city-place-select"><option value="">Выбрать место</option></select></label>
+  <label class="quality-label">Качество<select id="scene-quality"><option value="auto">Авто · по плавности</option><option value="balanced">Сбалансированное</option><option value="low">Экономное</option></select></label>
+  <label class="stats-label"><input id="show-metrics" type="checkbox">Показать показатели</label>
+  <p class="muted">Весь город подгружается кварталами по сети. Вблизи Байтерека включается детальный встроенный квартал, у Арены есть встроенный резерв. Модели стилизованы; полнота застройки зависит от OSM. FPS здесь — текущий замер, не гарантия для телефона.</p>
+</section>
+<output id="scene-metrics" aria-live="off" hidden></output>
+<section id="avatar-editor" class="city-sheet" role="dialog" aria-modal="true" aria-labelledby="avatar-title" hidden>
+  <div class="sheet-heading"><div><small>ТВОЙ ОБРАЗ В ГОРОДЕ</small><h2 id="avatar-title">Это ты</h2></div><button id="avatar-done" class="close-sheet">Готово</button></div>
+  <div class="avatar-views" aria-label="Осмотр персонажа"><button data-avatar-view="front">Лицо</button><button data-avatar-view="three-quarter">¾</button><button data-avatar-view="back">Сзади</button><button id="avatar-step" aria-pressed="false">Шаг</button></div>
+  <div id="avatar-options"></div><div class="avatar-extras"><button id="hair-style"></button><button id="backpack"></button></div>
+  <p id="avatar-note" class="muted">Образ хранится на устройстве. Геопозиция не используется.</p>
+</section>
+<div id="caption"><div id="status">Встроенная карта · pilot-1</div><div id="tiles"></div><div id="geography">Адреса и входы · встроенные данные</div><div>OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors</div></div>
 <script src="mobile.js"></script></body></html>

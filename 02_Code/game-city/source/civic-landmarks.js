@@ -74,22 +74,28 @@ function akorda(b){
   const {box,cyl,bar,ring,dome,roof}=b;
   box('stone',112,1.8,78,0,.9,0);box('ivory',102,27,62,0,15.3,0);
   box('ivory',91,6.4,51,0,32,0);roof(104,64,29.2);roof(93,53,35.5);
-  for(const y of [4.3,10.7,18.3,27.9])box('trim',103,.45,63,0,y,0);
+  for(const y of [4.3,18.3,27.9])box('trim',103,.65,63,0,y,0);
   // Recessed glazing between tall pilasters; the rear and sides are finished too.
-  for(const side of [-1,1])for(let x=-46;x<=46;x+=6.1){for(const y of [7,14.8,22.5,32])box('glass',3.5,y===32?2:5.2,.38,x,y,side*(y===32?25.65:31.2),true);box('trim',.65,24,.7,x+2.6,16,side*31.5,true)}
+  for(const side of [-1,1])for(let x=-45;x<=45;x+=7.5){for(const y of [7,14.8,22.5,32])box('glass',4.4,y===32?2:5.2,.38,x,y,side*(y===32?25.65:31.2),true);box('trim',1.05,24,.9,x+3,16,side*31.5,true)}
   for(const side of [-1,1])for(let z=-25;z<=25;z+=6)for(const y of [7,15,23])box('glass',.35,5.1,3.3,side*51.2,y,z,true);
   // Rounded front portico, separate columns and capitals.
   b.put('glass',new THREE.CylinderGeometry(18.3,18.3,25,32,1,false,-Math.PI/2,Math.PI).translate(0,15,25));
-  for(let j=0;j<9;j++){const a=-Math.PI*.46+j/8*Math.PI*.92,x=Math.sin(a)*20,z=25+Math.cos(a)*20;cyl('ivory',.85,1.15,25,x,15,z,12,true);cyl('trim',1.6,1.55,.9,x,3,z,12,true);box('trim',3,1.2,3,x,27.5,z,true)}
+  // The freestanding portico columns are defining architecture, so remain at
+  // every detail level. Capitals are broad blocks, not a forest of tiny rails.
+  for(let j=0;j<9;j++){const a=-Math.PI*.46+j/8*Math.PI*.92,x=Math.sin(a)*20,z=25+Math.cos(a)*20;cyl('ivory',1.05,1.3,25,x,15,z,12);cyl('trim',1.6,1.55,.9,x,3,z,12);box('trim',3,1.2,3,x,27.5,z)}
   b.put('trim',new THREE.CylinderGeometry(21,21,1.7,40,1,false,-Math.PI/2,Math.PI).translate(0,29,25));
-  b.stairs(36,54);box('dark',12,10,.7,0,7,44,true);
-  cyl('ivory',17,17,3.8,0,37,0,40);dome('blue',17.2,20,0,39,0,18);
+  for(let i=0;i<6;i++){const h=(i+1)*.28;box('stone',36,h,2.2,0,h/2,54-i*1.8);}
+  box('dark',12,10,.7,0,7,44);
+  box('trim',14,1,2.4,0,12.5,43.9);box('glow',10,.18,1.4,0,11.92,44.3);
+  cyl('ivory',17,17,3.8,0,37,0,40);dome('blue',17.2,20,0,39,0,10);
   cyl('gold',.45,1.6,23,0,70.5,0,16);cyl('gold',.18,.45,2,0,83,0,12);
   b.put('gold',new THREE.SphereGeometry(1.0,12,8).translate(0,84.8,0),true);
   for(let j=0;j<12;j++){const a=j/12*TAU;bar('gold',[Math.cos(a)*1.2,84.8+Math.sin(a)*1.2,0],[Math.cos(a)*1.6,84.8+Math.sin(a)*1.6,0],.08)}
   ring('gold',17.4,39.2);ring('glow',17.2,39.7,0,0,.13);
-  // Abstract roof balustrade — no invented inscriptions or interior information.
-  for(let x=-48;x<=48;x+=3)for(const z of [-31.4,31.4])box('ivory',.32,1.6,.32,x,30.8,z,true);
+  // A continuous stone parapet reads as a cornice at mobile scale. No invented
+  // inscriptions or ornamental pin lattice around the roofline.
+  for(const z of [-31.4,31.4])box('ivory',102,1.3,.85,0,30.35,z);
+  for(const x of [-50.6,50.6])box('ivory',.85,1.3,62,x,30.35,0);
 }
 
 function hazret(b){

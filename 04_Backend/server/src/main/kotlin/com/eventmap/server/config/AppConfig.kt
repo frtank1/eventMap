@@ -11,6 +11,8 @@ data class AppConfig(
     val jwtIssuer: String = env("JWT_ISSUER", "eventmap"),
     val jwtAudience: String = env("JWT_AUDIENCE", "eventmap-app"),
     val port: Int = env("PORT", "8080").toInt(),
+    val host: String = env("HOST", "0.0.0.0"),
+    val demoSeedEnabled: Boolean = env("SEED_DEMO_DATA", "false").toBooleanStrict(),
     // Админ-операции (модерация бизнеса/квестов, наборы анимаций) + HMAC QR-кодов чеков.
     val adminKey: String = env("ADMIN_KEY", DEV_ADMIN_KEY),
     // Разрешённые CORS-хосты через запятую (например "app.eventmap.kz,eventmap.kz").
@@ -48,6 +50,7 @@ data class AppConfig(
     val fcmPrivateKey: String = env("FCM_PRIVATE_KEY", ""),
 ) {
     init {
+        require(!demoSeedEnabled || appEnv == "dev") { "SEED_DEMO_DATA разрешён только при APP_ENV=dev" }
         require(videoProvider in setOf("storage", "mux")) { "VIDEO_PROVIDER: storage | mux" }
         require(muxMaxUploadsPerDay in 1..1000 && muxMaxDurationSeconds in 1..600)
         require(!(appEnv == "prod" && jwtSecret == DEV_SECRET)) {

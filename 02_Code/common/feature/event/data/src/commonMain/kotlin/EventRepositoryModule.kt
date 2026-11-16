@@ -10,4 +10,5 @@ val eventRepositoryModule = module {
     single { EventRemoteDataSource(httpClient = get()) }
     single { MediaRemoteDataSource(apiClient = get(), uploadClient = get(named("upload"))) }
     single<EventRepository> { EventRepositoryImpl(remote = get(), media = get()) }
+    single<com.eventmap.event.VenueRepository> { VenueRepositoryImpl(get()) }
 }

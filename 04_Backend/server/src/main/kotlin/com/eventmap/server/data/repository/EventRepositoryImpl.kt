@@ -29,7 +29,7 @@ import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransacti
 import org.jetbrains.exposed.sql.update
 import java.util.UUID
 
-class EventRepositoryImpl : EventRepository {
+class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Database? = null) : EventRepository {
 
     // events LEFT JOIN organizers — имя организатора одним запросом (без N+1)
     private val joined = EventsTable.join(
@@ -48,6 +48,7 @@ class EventRepositoryImpl : EventRepository {
         }
         if (query.categories.isNotEmpty()) q.andWhere { EventsTable.category inList query.categories }
         query.priceType?.let { p -> q.andWhere { EventsTable.priceType eq p } }
+        query.buildingId?.let { b -> q.andWhere { EventsTable.buildingId eq b } }
         q.map(::toEvent).withLiveCounts()
     }
 
@@ -129,6 +130,9 @@ class EventRepositoryImpl : EventRepository {
             it[minAge] = draft.minAge
             it[expiresAtMs] = draft.expiresAtMs
             it[proofMediaId] = draft.proofMediaId
+            it[buildingId] = draft.venue?.buildingId
+            it[floorId] = draft.venue?.floorId
+            it[roomId] = draft.venue?.roomId
         }
         draft.copy(id = eid)
     }
@@ -157,6 +161,9 @@ class EventRepositoryImpl : EventRepository {
             it[minAge] = draft.minAge
             it[expiresAtMs] = draft.expiresAtMs
             it[proofMediaId] = draft.proofMediaId
+            it[buildingId] = draft.venue?.buildingId
+            it[floorId] = draft.venue?.floorId
+            it[roomId] = draft.venue?.roomId
         }
         if (updated == 0) null
         else EventsTable.selectAll().where { EventsTable.id eq id }.singleOrNull()?.let(::toEvent)
@@ -254,6 +261,7 @@ class EventRepositoryImpl : EventRepository {
         }.map(::toEvent)
         val wanted = normalizeSignalTitle(draft.title)
         candidates
+            .filter { it.venue == draft.venue }
             .filter { it.expiresAtMs == null || it.expiresAtMs > now }
             .minByOrNull { titleDistance(wanted, normalizeSignalTitle(it.title)) }
             ?.takeIf { titleDistance(wanted, normalizeSignalTitle(it.title)) <= 2 }
@@ -287,7 +295,7 @@ class EventRepositoryImpl : EventRepository {
         }
     }
 
-    private suspend fun <T> tx(block: () -> T) = newSuspendedTransaction(Dispatchers.IO) { block() }
+    private suspend fun <T> tx(block: () -> T) = newSuspendedTransaction(Dispatchers.IO, db = database) { block() }
 
     private fun toEvent(r: ResultRow): Event = Event(
         id = r[EventsTable.id],
@@ -319,6 +327,7 @@ class EventRepositoryImpl : EventRepository {
         proofMediaId = r[EventsTable.proofMediaId],
         confirmationCount = r[EventsTable.confirmationCount],
         interestCount = r[EventsTable.interestCount],
+        venue = r[EventsTable.buildingId]?.let { com.eventmap.server.domain.model.EventVenue(it, r[EventsTable.floorId], r[EventsTable.roomId]) },
     )
 
     private fun normalizeSignalTitle(value: String): Set<String> =

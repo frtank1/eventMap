@@ -1,17 +1,17 @@
 # Local static landmark assets
 
 Generated from the existing original procedural THREE models, not downloaded
-models or architectural scans. Runtime/native/backend integration is out of scope.
+models or architectural scans. All 19 city landmarks use this content channel.
 
-From `02_Code/game-city`, run with the installed Node (no dependencies needed):
+From `02_Code/game-city`, use installed Node and the project's esbuild dependency:
 
 ```sh
 node --experimental-vm-modules export-models.mjs
 node --experimental-vm-modules check-export.mjs
 ```
 
-`manifest.json` and `generated/seed.js` stay on **pilot-1**. The seed has four
-literal JSON imports: the manifest and exactly its three model assets, for esbuild.
+`manifest.json` and `generated/seed.js` stay on **pilot-1**, now engineVersion=2.
+The seed has 20 literal JSON imports: the manifest and its 19 model assets.
 No source model code is imported by the seed.
 
 **TEST RELEASE ONLY:** `releases/pilot-2.json` demonstrates a content update. Only
@@ -36,7 +36,13 @@ simulation groups, and light nodes are excluded. Visible architectural lighting
 fixtures/trim remain ordinary meshes with scalar materials. Civic snow shader
 hooks are discarded; source daytime surface values are retained. Match and crowd
 constructors are inert VM-only dependencies, so their simulations never execute.
-Only Akorda is retained from the civic collection; no other civic model is saved.
+Akorda, both mosque models and the additional civic landmarks are retained.
+City authoring code is bundled into an isolated export VM; runtime content remains
+inert JSON. Generic facade/night shaders are supplied by the app engine, not the pack.
+
+Engine v2 accepts up to 32 models / 18 MiB total. v1 engines reject a v2 manifest
+and keep their fallback. v2 rejects v1 manifests rather than losing the city catalogue.
+Rollbacks between compatible v2 packs are supported; deployment is a separate step.
 
 Arena uses `source/arena.json` center: longitude **71.4025**, latitude **51.10806**.
 Its height 55 / radius 155 use the original map POI framing in `source/app.js` (the

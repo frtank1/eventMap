@@ -1,5 +1,7 @@
 // Content only: no URLs, scripts, shaders, textures, or ObjectLoader input inside models.
-export const ENGINE = 1;
+// Engine 2 supports a city-wide catalogue. v1 clients reject it and retain
+// their existing fallback; v2 must not silently replace 19 models with a v1 pack.
+export const ENGINE = 2;
 const MAX_FILE = 6 * 1024 * 1024, MAX_PACK = 18 * 1024 * 1024;
 const finite = (n, lo, hi) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
 const integer = (n, lo, hi) => Number.isInteger(n) && finite(n, lo, hi);
@@ -7,7 +9,7 @@ const demand = (ok, reason) => { if (!ok) throw new Error(reason); };
 export function validateManifest(m) {
   demand(m?.schemaVersion === 1 && m.engineVersion === ENGINE, 'incompatible-version');
   demand(typeof m.release === 'string' && /^[a-zA-Z0-9._-]{1,64}$/.test(m.release), 'invalid-release');
-  demand(Array.isArray(m.models) && m.models.length > 0 && m.models.length <= 12, 'model-count');
+  demand(Array.isArray(m.models) && m.models.length > 0 && m.models.length <= 32, 'model-count');
   let bytes = 0; const ids = new Set();
   for (const x of m.models) {
     demand(typeof x.id === 'string' && /^[a-z0-9-]{1,64}$/.test(x.id) && !ids.has(x.id), 'model-id');
@@ -50,7 +52,7 @@ export function manifestUrl(value) {
   demand(u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)), 'https-required');
   demand(!u.username && !u.password && !u.search && !u.hash, 'invalid-url'); return u;
 }
-async function readLimited(response, limit) {
+export async function readLimited(response, limit) {
   demand(response.ok, `http-${response.status}`);
   const declared = Number(response.headers.get('content-length'));
   demand(!declared || declared <= limit, 'response-too-large');
@@ -71,9 +73,10 @@ const decode = bytes => JSON.parse(new TextDecoder('utf-8', {fatal: true}).decod
 
 // One transaction, one last-known-good pack. No partial manifest activation.
 export class BrowserCache {
+  constructor(name='eventmap-city-v1'){this.name=name;}
   async db() {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open('eventmap-city-v1', 1);
+      const request = indexedDB.open(this.name, 1);
       request.onupgradeneeded = () => request.result.createObjectStore('packs');
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);

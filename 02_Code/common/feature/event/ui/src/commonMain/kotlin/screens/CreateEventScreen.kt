@@ -79,6 +79,7 @@ data class CreateEventScreen(
     val initialLat: Double? = null,
     val initialLng: Double? = null,
     val initialLocationName: String = "",
+    val initialVenue: com.eventmap.event.models.EventVenue? = null,
 ) : Screen {
 
     @Composable
@@ -98,9 +99,9 @@ data class CreateEventScreen(
         val scope = rememberCoroutineScope()
 
         // Режим правки: префилл формы полями события (D6 переиспользуется)
-        LaunchedEffect(editEventId,initialLat,initialLng,initialLocationName) {
+        LaunchedEffect(editEventId,initialLat,initialLng,initialLocationName,initialVenue) {
             if(editEventId!=null) vm.loadForEdit(editEventId)
-            else if(initialLat!=null && initialLng!=null) vm.prefillLocation(initialLat,initialLng,initialLocationName)
+            else if(initialLat!=null && initialLng!=null) vm.prefillLocation(initialLat,initialLng,initialLocationName,initialVenue)
         }
         LaunchedEffect(created) { if (created) nav.pop() }
         // показываем ошибки валидации/сети (раньше они молча терялись → «кнопка не работает»)
@@ -226,11 +227,17 @@ data class CreateEventScreen(
                         onPickReel = { pickReel() },
                         onClearReel = { vm.setReel(null) },
                     )
-                    1 -> StepLocation(form.locationName, form.landmark, form.locationSelected,
+                    1 -> {
+                    StepLocation(form.locationName, form.landmark, form.locationSelected,
                         onAddress = { v -> vm.update { it.copy(locationName = v, locationSelected = false) } },
                         onLandmark = { v -> vm.update { it.copy(landmark = v) } },
                         onOpenPicker = { showPicker = true },
                     )
+                    form.venue?.let { venue ->
+                        com.eventmap.map.city.VenueBrowser(venue=venue,onSelect={ selected -> vm.update { it.copy(venue=selected) } },showEvents=false)
+                        TextButton(onClick={vm.update { it.copy(venue=null) }}) { Text("Убрать привязку к зданию") }
+                    }
+                    }
                     else -> StepDetails(
                         form = form,
                         onDate = { v -> vm.update { it.copy(date = v) } },

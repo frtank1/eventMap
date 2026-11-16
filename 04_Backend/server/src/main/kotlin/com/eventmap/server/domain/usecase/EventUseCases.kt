@@ -10,7 +10,7 @@ class GetEventsUseCase(private val repo: EventRepository) {
     suspend operator fun invoke(query: EventQuery = EventQuery()): List<Event> = repo.search(query)
 }
 
-class CreateEventUseCase(private val repo: EventRepository) {
+class CreateEventUseCase(private val repo: EventRepository, private val venues: com.eventmap.server.domain.repository.VenueCatalog) {
     sealed interface Result {
         data class Ok(val event: Event) : Result
         data class Error(val message: String) : Result
@@ -18,6 +18,7 @@ class CreateEventUseCase(private val repo: EventRepository) {
 
     suspend operator fun invoke(draft: Event): Result {
         draft.validationError()?.let { return Result.Error(it) }
+        venues.validate(draft.venue)?.let { return Result.Error(it) }
         if (draft.kind == "live_signal" && draft.sourceType == "witness") {
             val creatorId = draft.organizerId.orEmpty()
             val existing = repo.findLiveSignalCandidate(draft)
@@ -33,7 +34,7 @@ class CreateEventUseCase(private val repo: EventRepository) {
     }
 }
 
-class UpdateEventUseCase(private val repo: EventRepository) {
+class UpdateEventUseCase(private val repo: EventRepository, private val venues: com.eventmap.server.domain.repository.VenueCatalog) {
     sealed interface Result {
         data class Ok(val event: Event) : Result
         data object NotFound : Result
@@ -41,11 +42,14 @@ class UpdateEventUseCase(private val repo: EventRepository) {
         data class Error(val message: String) : Result
     }
 
-    suspend operator fun invoke(userId: String, id: String, draft: Event): Result {
+    suspend operator fun invoke(userId: String, id: String, draft: Event, clearVenue: Boolean = false): Result {
         val existing = repo.byId(id) ?: return Result.NotFound
         if (existing.organizerId != userId) return Result.Forbidden
-        draft.validationError()?.let { return Result.Error(it) }
-        val saved = repo.update(id, draft) ?: return Result.NotFound
+        val effective = if (draft.venue == null && !clearVenue && draft.location.lat == existing.location.lat && draft.location.lng == existing.location.lng)
+            draft.copy(venue = existing.venue) else draft
+        effective.validationError()?.let { return Result.Error(it) }
+        venues.validate(effective.venue)?.let { return Result.Error(it) }
+        val saved = repo.update(id, effective) ?: return Result.NotFound
         return Result.Ok(saved)
     }
 }

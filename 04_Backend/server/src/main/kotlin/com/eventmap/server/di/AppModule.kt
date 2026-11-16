@@ -101,6 +101,8 @@ val appModule = module {
     single<com.eventmap.server.domain.repository.NotificationPort> { com.eventmap.server.data.push.FcmPushSender(get(), get()) }
 
     single<EventRepository> { EventRepositoryImpl() }
+    single<com.eventmap.server.domain.repository.VenueEditor> { com.eventmap.server.data.venue.DbVenueCatalog() }
+    single<com.eventmap.server.domain.repository.VenueCatalog> { get<com.eventmap.server.domain.repository.VenueEditor>() }
     single<OrganizerRepository> { OrganizerRepositoryImpl() }
     single<UserRepository> { UserRepositoryImpl() }
     single<RefreshTokenRepository> { RefreshTokenRepositoryImpl() }
@@ -126,8 +128,8 @@ val appModule = module {
 
     factory { GetEventsUseCase(get()) }
     factory { GetEventUseCase(get()) }
-    factory { CreateEventUseCase(get()) }
-    factory { com.eventmap.server.domain.usecase.UpdateEventUseCase(get()) }
+    factory { CreateEventUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.UpdateEventUseCase(get(), get()) }
     factory { com.eventmap.server.domain.usecase.DeleteEventUseCase(get()) }
     factory { GetOrganizerUseCase(get()) }
     factory { GetOrganizerEventsUseCase(get()) }

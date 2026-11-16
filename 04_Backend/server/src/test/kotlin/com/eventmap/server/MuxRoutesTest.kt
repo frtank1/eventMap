@@ -22,9 +22,25 @@ import kotlinx.serialization.json.*
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.eventmap.server.data.db.MuxWebhookEventsTable
+import com.eventmap.server.data.db.EventsTable
+import org.jetbrains.exposed.sql.update
 import kotlin.test.*
 
 class MuxRoutesTest {
+    @Test fun eventCoverUploadedBeforeCreationIsReadableOnlyThroughAccessibleEvent() = app {
+        val repository = MediaRepositoryImpl()
+        repository.create("cover", "owner", "https://cdn.example.invalid/cover.jpg", "image/jpeg", "image", null)
+        repository.create("foreign", "outsider", "https://cdn.example.invalid/foreign.jpg", "image/jpeg", "image", null)
+        transaction { EventsTable.update({ EventsTable.id eq "public" }) { it[cover] = "cover" } }
+        val response = client.get("/events/public/media")
+        assertEquals(HttpStatusCode.OK,response.status)
+        assertEquals("cover",Json.parseToJsonElement(response.bodyAsText()).jsonArray.single().jsonObject["id"]!!.jsonPrimitive.content)
+        transaction { EventsTable.update({ EventsTable.id eq "private" }) { it[cover] = "cover" } }
+        assertEquals(HttpStatusCode.Forbidden,client.get("/events/private/media").status)
+        assertEquals(HttpStatusCode.OK,client.get("/events/private/media") { asUser() }.status)
+        transaction { EventsTable.update({ EventsTable.id eq "public" }) { it[cover] = "foreign" } }
+        assertEquals("[]",client.get("/events/public/media").bodyAsText())
+    }
     private fun app(config: AppConfig = muxTestConfig(), block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         createMuxTestDatabase()
         application {

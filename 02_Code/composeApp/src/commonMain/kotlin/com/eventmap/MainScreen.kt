@@ -111,7 +111,7 @@ class MainScreen : Screen {
                         modifier=Modifier.fillMaxSize(),
                         onExit={gameCity=false},
                         onOpenEvent={id -> nav.push(EventReelScreen(listOf(EventDetail(id=id,title=""))))},
-                        onCreateHere={lat,lng,name -> nav.push(CreateEventScreen(initialLat=lat,initialLng=lng,initialLocationName=name))},
+                        onCreateHere={point -> nav.push(CreateEventScreen(initialLat=point.lat,initialLng=point.lng,initialLocationName=point.locationLabel,initialVenue=point.venue))},
                     ) else Box(Modifier.fillMaxSize()) {
                         MapContent(
                             modifier = Modifier.fillMaxSize(),

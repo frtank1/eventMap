@@ -24,4 +24,6 @@ data class CreateEventRequest(
     val minAge: Int? = null,
     val expiresAtMs: Long? = null,
     val proofMediaId: String? = null,
+    val venue: com.eventmap.event.models.EventVenue? = null,
+    val clearVenue: Boolean = false,
 )

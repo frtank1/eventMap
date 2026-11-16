@@ -57,6 +57,7 @@ data class EventDetail(
     val expiresAtMs: Long? = null,
     val confirmationCount: Int = 0,
     val interestCount: Int = 0,
+    val venue: EventVenue? = null,
 ) {
     fun statusEnum(): EventStatus = when (status) {
         "live" -> EventStatus.Live
@@ -102,6 +103,7 @@ data class CreateEventDraft(
     val minAge: Int? = null,
     val expiresAtMs: Long? = null,
     val proofMediaId: String? = null,
+    val venue: EventVenue? = null,
 )
 
 @Serializable

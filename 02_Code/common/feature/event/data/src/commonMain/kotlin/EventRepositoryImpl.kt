@@ -95,6 +95,8 @@ class EventRepositoryImpl(
                     minAge = draft.minAge,
                     expiresAtMs = draft.expiresAtMs,
                     proofMediaId = draft.proofMediaId,
+                    venue = draft.venue,
+                    clearVenue = draft.venue == null,
                 )
             )
         }
@@ -127,6 +129,8 @@ class EventRepositoryImpl(
                     minAge = draft.minAge,
                     expiresAtMs = draft.expiresAtMs,
                     proofMediaId = draft.proofMediaId,
+                    venue = draft.venue,
+                    clearVenue = draft.venue == null,
                 )
             )
         }

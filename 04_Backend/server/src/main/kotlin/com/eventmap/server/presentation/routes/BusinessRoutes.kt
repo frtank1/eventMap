@@ -84,20 +84,24 @@ fun Route.businessRoutes(
 
     // ===== Админ (MVP: заголовок X-Admin-Key, до полноценных ролей) =====
     post("/admin/business/{id}/review") {
-        if (call.request.header("X-Admin-Key") != adminKey) {
+        if (!call.validAdminKey(adminKey)) {
             return@post call.respond(HttpStatusCode.Forbidden, ErrorResponse(ErrorResponse.Body("FORBIDDEN", "Неверный админ-ключ")))
         }
         val b = call.receive<ReviewRequest>()
         if (b.decision != "approved" && b.decision != "rejected") {
             return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(ErrorResponse.Body("BAD_REQUEST", "decision: approved | rejected")))
         }
-        val r = review(call.parameters["id"].orEmpty(), b.decision == "approved", b.reason)
+        val reason = b.reason?.trim()
+        if (b.decision == "rejected" && (reason.isNullOrBlank() || reason.length > 1000)) {
+            return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(ErrorResponse.Body("INVALID_REASON", "Причина отказа: от 1 до 1000 символов")))
+        }
+        val r = review(call.parameters["id"].orEmpty(), b.decision == "approved", reason)
         if (r == null) call.respond(HttpStatusCode.NotFound, ErrorResponse(ErrorResponse.Body("NOT_FOUND", "Заявка не найдена")))
         else call.respond(r.toDto()) // TODO: пуш+email заявителю (M6)
     }
 
     post("/admin/animation-sets") {
-        if (call.request.header("X-Admin-Key") != adminKey) {
+        if (!call.validAdminKey(adminKey)) {
             return@post call.respond(HttpStatusCode.Forbidden, ErrorResponse(ErrorResponse.Body("FORBIDDEN", "Неверный админ-ключ")))
         }
         val b = call.receive<AddAnimationRequest>()

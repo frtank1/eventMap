@@ -1,0 +1,30 @@
+purpose:
+  stands_in_for: Public building floor-plan revisions and event filtering reads.
+  unblocks: Real mobile repository over HTTP without publishing fake indoor plans or events.
+assumptions:
+  - id: compatible-updates
+    status: supported
+    claim: The installed reader accepts newly published floors without an application update and rejects malformed or incompatible plans.
+    reason: The actual mobile VenueRepositoryImpl with Ktor OkHttp read empty, v1 and v2 revisions from one running local Postman simulation using the same client.
+    verification: VenueHttpSimulationTest passed on 2026-11-16 with no skips. Verified exact public event filtering, 503, malformed JSON, oversized response, incompatible schema, 10-second timeout and recovery. This establishes local caller behavior only; production deployment, real plans and physical-device behavior remain unverified.
+    source: 05_Docs/API_CONTRACT.md; 02_Code/common/feature/event/data/src/commonMain/kotlin/VenueRepositoryImpl.kt
+    updated_at: "2026-11-16"
+  - id: real-backend-contract
+    status: supported
+    claim: Local backend route, hierarchy validation and repository preserve exact building associations without mixing same-coordinate neighbours or private events.
+    reason: Seven VenuesTest tests passed against the actual Ktor route and Exposed repository using isolated H2 databases.
+    verification: Backend test task passed; H2 SchemaUtils is not evidence that Flyway V15 has run on production PostgreSQL. No external writes were performed.
+    source: 04_Backend/server/src/test/kotlin/com/eventmap/server/VenuesTest.kt
+    updated_at: "2026-11-16"
+  - id: mock-provenance
+    status: supported
+    claim: This locally owned mock contains synthetic geometry only and derives its response schema from the repository contract.
+    reason: It is not a surveyed MEGA floor plan; owner discovery was skipped because Postman is signed out.
+    verification: Reviewed handler and bounded schema; no mock deployment or account changes.
+    source: postman/mocks/venues/default.js; 05_Docs/API_CONTRACT.md
+    updated_at: "2026-11-16"
+fingerprints:
+  - id: venues-local-2026-11-16
+    date: "2026-11-16"
+    commit: "446a3aee4dd5a8d19073cf23690e6d62ee35a2e8 (dirty working tree; local uncommitted changes)"
+    cli: "1.85.0"

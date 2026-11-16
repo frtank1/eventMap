@@ -120,6 +120,9 @@ object EventsTable : Table("events") {
     val proofMediaId = varchar("proof_media_id", 64).nullable()
     val confirmationCount = integer("confirmation_count").default(0)
     val interestCount = integer("interest_count").default(0)
+    val buildingId = varchar("building_id", 100).nullable()
+    val floorId = varchar("floor_id", 64).nullable()
+    val roomId = varchar("room_id", 64).nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

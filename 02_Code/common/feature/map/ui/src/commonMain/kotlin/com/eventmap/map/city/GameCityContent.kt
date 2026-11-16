@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -17,8 +19,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.eventmap.core.network.CoreConfig
 import com.eventmap.core.network.ktor.KtorResponse
+import com.eventmap.core.network.ktor.createMediaHttpClient
 import com.eventmap.event.EventRepository
 import com.eventmap.event.models.EventDetail
+import com.eventmap.event.models.EventVenue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.encodeToString
@@ -31,7 +35,7 @@ import kotlin.math.*
 fun GameCityContent(
     onExit: () -> Unit,
     onOpenEvent: (String) -> Unit,
-    onCreateHere: (Double, Double, String) -> Unit,
+    onCreateHere: (CityCreationPoint) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = remember { getKoin().get<EventRepository>() }
@@ -43,6 +47,11 @@ fun GameCityContent(
         lifecycle.addObserver(observer); onDispose { lifecycle.removeObserver(observer) }
     }
     var events by remember { mutableStateOf<List<EventDetail>>(emptyList()) }
+    val coverClient = remember { createMediaHttpClient(allowRedirects = false) }
+    val coverLoader = remember { CityCovers(coverClient, repo::getMedia) }
+    DisposableEffect(coverClient) { onDispose { coverClient.close() } }
+    var coverIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var covers by remember { mutableStateOf<List<CityCover>>(emptyList()) }
     var eventsState by remember { mutableStateOf("Загружаем события…") }
     var fetchRevision by remember { mutableIntStateOf(0) }
     var focusRevision by remember { mutableIntStateOf(0) }
@@ -51,16 +60,26 @@ fun GameCityContent(
     var night by remember { mutableStateOf(false) }
     var theme by remember { mutableStateOf("default") }
     var place by remember { mutableStateOf<CityMessage?>(null) }
+    var selectedEntranceId by remember { mutableStateOf<String?>(null) }
+    var selectedVenue by remember { mutableStateOf<EventVenue?>(null) }
+    var options by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(active, events, coverIds, fetchRevision) {
+        // Clear immediately so replaced/deleted/private event covers cannot linger.
+        covers = covers.filter { c -> c.id in coverIds && events.any { it.id == c.id && it.cover == c.ref && it.visibility == "public" } }
+        if (!active) return@LaunchedEffect
+        delay(180) // debounce camera movement, then at most two downloads at once
+        covers = coverLoader.load(coverIds, events)
+    }
     LaunchedEffect(active, fetchRevision) {
         if (!active) return@LaunchedEffect
         do {
             try {
                 when (val result = repo.getEvents()) {
                     is KtorResponse.Success -> {
-                        events = result.data.filter { it.visibility == "public" && it.location.lat in 50.9..51.4 && it.location.lng in 71.1..71.9 }
-                        eventsState = if (events.isEmpty()) "Пока нет событий в этом районе" else "События: ${events.size} · обновление каждые 30 с"
+                        events = result.data.filter { it.visibility == "public" && it.status !in setOf("ended", "cancelled") && it.location.lat in 50.9..51.4 && it.location.lng in 71.1..71.9 }
+                        eventsState = if (events.isEmpty()) "Пока нет доступных событий в Астане" else "Загружено событий: ${events.size.coerceAtMost(150)} · обновление каждые 30 с"
                     }
                     is KtorResponse.Failure -> eventsState = "Не удалось обновить события · повторить"
                 }
@@ -71,14 +90,17 @@ fun GameCityContent(
     }
     LaunchedEffect(ready) { if (!ready) { delay(15_000); if (!ready) error = "3D не запустилась. Вернись к обычной карте и попробуй снова." } }
     val payload = cityJson.encodeToString(CitySnapshot(manifestUrl = manifest,
-        events = events.take(150).map { CityEvent(it.id,it.location.lat,it.location.lng) },
-        night=night,theme=theme,active=active,focusId=focus,focusRevision=focusRevision,updateRevision=updateRevision))
+        events = events.take(150).map { CityEvent(it.id,it.location.lat,it.location.lng,it.title,it.category,it.status,it.goingCount,it.endAt,it.expiresAtMs,
+            kind=it.kind,sourceType=it.sourceType,capacity=it.capacity,confirmationCount=it.confirmationCount,startAt=it.startAt,visibility=it.visibility,coverRef=it.cover) },
+        night=night,theme=theme,active=active,focusId=focus,focusRevision=focusRevision,updateRevision=updateRevision,
+        interactionBlocked=place!=null || options,covers=covers))
     Box(modifier.fillMaxSize()) {
         GameCityView(payload, Modifier.fillMaxSize()) { raw ->
             parseCityMessage(raw)?.let { message ->
                 when (message.type) {
                     "ready" -> { ready = true; error = null }
-                    "place" -> place = message
+                    "covers" -> coverIds = message.ids.filter { id -> events.take(150).any { it.id == id && it.cover != null } }
+                    "place" -> { place = message; selectedEntranceId = null; selectedVenue = message.buildingId?.let { EventVenue(it) } }
                     "event" -> if (events.any { it.id == message.id }) onOpenEvent(message.id)
                     "error" -> error = "3D недоступна на этом устройстве. Обычная карта остаётся доступна."
                 }
@@ -87,42 +109,86 @@ fun GameCityContent(
         Column(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(8.dp)
             .background(Color(0xED172536), RoundedCornerShape(18.dp)).padding(horizontal=8.dp,vertical=4.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.SpaceBetween, modifier=Modifier.fillMaxWidth()) {
-                TextButton(onClick=onExit) { Text("Обычная карта", color=Color.White) }
-                Text("3D · пилот",color=Color(0xFFC9B6FF),fontSize=12.sp)
-                TextButton(onClick={night = !night}) { Text(if(night) "День" else "Ночь",color=Color.White) }
-            }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly) {
-                listOf("baiterek" to "Байтерек", "akorda" to "Ак Орда", "arena" to "Арена").forEach { (id,title) ->
-                    TextButton(onClick={focus=id;focusRevision++}) { Text(title,color=Color.White,fontSize=12.sp) }
+                TextButton(onClick=onExit) { Text("Назад", color=Color.White) }
+                Column(horizontalAlignment=Alignment.CenterHorizontally) {
+                    Text("Астана",color=Color.White,fontSize=16.sp)
+                    Text("Живой город · пилот",color=Color(0xFFC9B6FF),fontSize=10.sp)
                 }
+                TextButton(onClick={options=true}) { Text("Вид",color=Color.White) }
             }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-                TextButton(onClick={theme=when(theme){"default"->"winter";"winter"->"newyear";else->"default"}}) {
-                    Text(when(theme){"winter"->"Зима";"newyear"->"Новый год";else->"Обычный стиль"},color=Color(0xFFC9B6FF),fontSize=11.sp)
-                }
-                TextButton(onClick={updateRevision++;fetchRevision++}) { Text("Обновить карту",color=Color.White,fontSize=11.sp) }
-            }
-            TextButton(onClick={fetchRevision++},modifier=Modifier.fillMaxWidth()) { Text(eventsState,color=Color(0xFFCBD6E4),fontSize=10.sp) }
+            Text(eventsState,color=Color(0xFFCBD6E4),fontSize=9.sp,modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
         }
         if (error != null) Surface(Modifier.align(Alignment.Center).padding(20.dp),shape=RoundedCornerShape(20.dp)) {
             Column(Modifier.padding(20.dp)) { Text(error!!); TextButton(onClick=onExit) { Text("К обычной карте") } }
         }
     }
+    if(options) ModalBottomSheet(onDismissRequest={options=false}) {
+        Column(Modifier.fillMaxWidth().padding(20.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Text("Вид города",style=MaterialTheme.typography.headlineSmall)
+            Text("Места",style=MaterialTheme.typography.titleSmall)
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
+                listOf("city" to "Вся Астана", "baiterek" to "Байтерек", "arena" to "Арена").forEach { (id,title) ->
+                    TextButton(onClick={focus=id;focusRevision++;options=false}) { Text(title) }
+                }
+            }
+            Text("Другие здания: кнопка «Сцена» на карте → «Перейти к зданию».",style=MaterialTheme.typography.bodySmall)
+            TextButton(onClick={night = !night}) { Text(if(night) "Включить день" else "Включить ночь") }
+            TextButton(onClick={theme=when(theme){"default"->"winter";"winter"->"newyear";else->"default"}}) {
+                Text("Сезон: " + when(theme){"winter"->"Зима";"newyear"->"Новый год";else->"Обычный"})
+            }
+            TextButton(onClick={updateRevision++;fetchRevision++;options=false}) { Text("Обновить карту и события") }
+            Text("Персонаж пока настраивается локально. Передача местоположения друзьям здесь не включена.",style=MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(20.dp))
+        }
+    }
     place?.let { p ->
         val nearby = events.filter { distanceMeters(p.lat!!, p.lng!!, it.location.lat,it.location.lng) <= 150 }.take(12)
         ModalBottomSheet(onDismissRequest={place=null}) {
-            Column(Modifier.fillMaxWidth().heightIn(max=470.dp).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                Text(p.title,style=MaterialTheme.typography.headlineSmall)
-                Text("${p.lat.toString().take(8)}, ${p.lng.toString().take(8)}",style=MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().heightIn(max=650.dp).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                CityPlaceDetails(p, selectedEntranceId) { selectedEntranceId = it }
+                if (p.buildingId != null) {
+                    VenueBrowser(venue=selectedVenue ?: EventVenue(p.buildingId),onSelect={selectedVenue=it},
+                        active=active,onOpenEvent={id -> place=null;onOpenEvent(id)})
+                } else {
+                if (p.geometryKind != "point") Text("У этого объекта пока нет устойчивого идентификатора здания. Можно создать событие в выбранной точке, но не назначить ему этаж.")
                 Text("События рядом · в радиусе 150 м",style=MaterialTheme.typography.titleSmall)
                 if(nearby.isEmpty()) Text(if(eventsState.contains("связи") || eventsState.contains("удалось")) "Данные сейчас недоступны" else "Пока ничего нет — можно создать своё событие")
                 nearby.forEach { e -> TextButton(onClick={place=null;onOpenEvent(e.id)}) { Text(e.title) } }
-                Button(onClick={place=null;onCreateHere(p.lat!!,p.lng!!,p.title)},modifier=Modifier.fillMaxWidth()) { Text("Создать событие здесь") }
+                }
+                Button(onClick={
+                    val point = p.creationPoint(selectedEntranceId)
+                    place=null
+                    onCreateHere(point.copy(venue=selectedVenue))
+                },modifier=Modifier.fillMaxWidth()) { Text("Создать событие здесь") }
                 Text("Выбор точки не подтверждает бронирование или право проводить мероприятие.",style=MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(12.dp))
             }
         }
     }
+}
+
+/** Shared by the live place sheet and the isolated Android debug preview. */
+@Composable
+fun CityPlaceDetails(place: CityMessage, selectedEntranceId: String?, onSelectEntrance: (String?) -> Unit) {
+    Text(place.title,style=MaterialTheme.typography.headlineSmall)
+    Text(place.addressLabel(),style=MaterialTheme.typography.bodyMedium)
+    if (place.id.isNotBlank()) Text("Объект: ${place.id}",style=MaterialTheme.typography.bodySmall)
+    if (place.sourceRef.isNotBlank()) Text("Источник объекта: ${place.sourceRef}",style=MaterialTheme.typography.bodySmall)
+    if (place.geometryKind == "stylized") Text("Стилизованная модель, не точная копия здания",style=MaterialTheme.typography.bodySmall)
+    Text("Исходная точка: ${place.lat}, ${place.lng}",style=MaterialTheme.typography.bodySmall)
+    Text("Входы",style=MaterialTheme.typography.titleSmall)
+    Text(place.entranceStatusLabel(),style=MaterialTheme.typography.bodySmall)
+    if (place.entranceStatus == CityEntranceStatus.MAPPED) {
+        place.entrances.forEach { entrance ->
+            OutlinedButton(onClick={onSelectEntrance(entrance.id)},modifier=Modifier.fillMaxWidth().semantics {
+                selected = selectedEntranceId == entrance.id
+            }) {
+                Text((if (selectedEntranceId == entrance.id) "Выбран · " else "Выбрать · ") + entrance.label())
+            }
+        }
+        if (selectedEntranceId != null) TextButton(onClick={onSelectEntrance(null)}) { Text("Сбросить выбор входа") }
+    }
+    Text(place.creationPoint(selectedEntranceId).selectionLabel(),style=MaterialTheme.typography.bodySmall)
 }
 
 internal fun distanceMeters(lat:Double,lng:Double,toLat:Double,toLng:Double):Double {

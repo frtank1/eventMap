@@ -8,6 +8,8 @@ import com.eventmap.event.EventRepository
 import com.eventmap.event.models.CreateEventDraft
 import com.eventmap.event.models.EventLocation
 import com.eventmap.event.models.EventPrice
+import com.eventmap.event.models.EventVenue
+import com.eventmap.event.models.structureValid
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +51,7 @@ data class CreateForm(
     val pendingEventId: String? = null,
     val pendingReelUrl: String? = null,
     val pendingReelMediaId: String? = null,
+    val venue: EventVenue? = null,
 )
 
 internal fun CreateForm.startInstant(): Instant =
@@ -143,7 +146,11 @@ class CreateEventViewModel(
 
     fun update(transform: (CreateForm) -> CreateForm) {
         if (_loading.value || _form.value.pendingEventId != null) return
-        _form.value = transform(_form.value)
+        val before = _form.value
+        val next = transform(before)
+        // A different geographic point/address invalidates indoor identity. It must be selected explicitly again.
+        _form.value = if (next.venue == before.venue &&
+            (next.lat != before.lat || next.lng != before.lng || next.locationName != before.locationName)) next.copy(venue = null) else next
         // автосохранение черновика (правка существующего события черновик не трогает)
         if (_editingId.value == null) {
             saveDraft()
@@ -151,11 +158,14 @@ class CreateEventViewModel(
     }
 
     /** Explicit map selection replaces only location, preserving the user's draft and media. */
-    fun prefillLocation(lat:Double,lng:Double,name:String) {
+    fun prefillLocation(lat:Double,lng:Double,name:String,venue:EventVenue? = null) {
         if(locationPrefilled || _editingId.value!=null || _loading.value || _form.value.pendingEventId!=null) return
         if(!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
         locationPrefilled=true
-        update { it.copy(lat=lat,lng=lng,locationName=name.take(120),locationSelected=true,landmark="") }
+        // Explicit prefill is the only coordinated location + venue replacement.
+        _form.value = _form.value.copy(lat=lat,lng=lng,locationName=name.take(255),locationSelected=true,landmark="",
+            venue=venue?.takeIf { it.structureValid() })
+        saveDraft()
     }
 
     /** Префилл формы полями существующего события (экран D6 переиспользуется для правки). */
@@ -190,6 +200,7 @@ class CreateEventViewModel(
                         audience = e.audience,
                         minAge = e.minAge?.toString().orEmpty(),
                         expiresInMinutes = "",
+                        venue = e.venue,
                     )
                 }
                 is KtorResponse.Failure -> emitError(r.error)
@@ -226,6 +237,7 @@ class CreateEventViewModel(
             val validationError = when {
                 f.title.isBlank() || f.category.isBlank() -> "Заполните название и категорию"
                 !f.hasValidLocation() || f.locationName.isBlank() -> "Укажите адрес и выберите точку на карте"
+                f.venue != null && !f.venue.structureValid() -> "Заново выберите здание, этаж или помещение"
                 start == null -> "Укажите корректные дату и время"
                 _editingId.value == null && f.kind != "live_signal" && start <= Clock.System.now() -> "Время начала должно быть в будущем"
                 f.priceAmount.isNotBlank() && (f.priceAmount.toIntOrNull() == null || f.priceAmount.toInt() < 0) -> "Укажите корректную цену"
@@ -263,6 +275,7 @@ class CreateEventViewModel(
                 // 2) Создаём событие (с обложкой, если загрузилась).
                 _uploadStage.value = UploadStage.Creating
                 val draft = CreateEventDraft(
+                    venue = f.venue,
                     title = f.title.trim(),
                     description = f.description.trim(),
                     coverMediaId = coverMediaId,

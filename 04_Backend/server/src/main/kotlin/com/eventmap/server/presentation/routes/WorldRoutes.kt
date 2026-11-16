@@ -8,6 +8,7 @@ import io.ktor.server.routing.*
 /** Public, immutable DATA only. No user content, file-system paths, scripts or auth. */
 fun Route.worldRoutes() {
     get("/world/manifest.json") { call.worldResource("manifest.json", immutable=false) }
+    get("/world/places-manifest.json") { call.worldResource("places-manifest.json", immutable=false) }
     get("/world/assets/{file}") {
         val file=call.parameters["file"].orEmpty()
         if(!Regex("[a-f0-9]{64}\\.json").matches(file)) { call.respond(HttpStatusCode.NotFound);return@get }

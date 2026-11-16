@@ -1,6 +1,8 @@
 package com.eventmap.server
 
 import com.eventmap.server.config.AppConfig
+import com.eventmap.server.presentation.routes.venueRoutes
+import com.eventmap.server.presentation.routes.adminVenueRoutes
 import com.eventmap.server.data.db.DatabaseFactory
 import com.eventmap.server.di.appModule
 import com.eventmap.server.domain.usecase.AddCommentUseCase
@@ -122,7 +124,8 @@ import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 
 fun main() {
-    embeddedServer(Netty, port = AppConfig().port, host = "0.0.0.0", module = Application::module).start(wait = true)
+    val config = AppConfig()
+    embeddedServer(Netty, port = config.port, host = config.host, module = Application::module).start(wait = true)
 }
 
 fun Application.module() {
@@ -136,7 +139,7 @@ fun Application.module() {
 
     // Демо-сид (только dev): пустая база после первого деплоя → карта с событиями Астаны.
     // Идемпотентно — при непустой базе no-op. Прод не трогаем.
-    if (config.appEnv == "dev") {
+    if (config.appEnv == "dev" && config.demoSeedEnabled) {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             runCatching { com.eventmap.server.data.seed.DemoSeed.seedIfEmpty() }
         }
@@ -247,11 +250,14 @@ fun Application.module() {
     val updateEvent: com.eventmap.server.domain.usecase.UpdateEventUseCase by inject()
     val deleteEvent: com.eventmap.server.domain.usecase.DeleteEventUseCase by inject()
     val eventRepository: com.eventmap.server.domain.repository.EventRepository by inject()
+    val venueCatalog: com.eventmap.server.domain.repository.VenueCatalog by inject()
+    val venueEditor: com.eventmap.server.domain.repository.VenueEditor by inject()
 
     routing {
         // The public content channel has its own CORS policy. Do not widen API origins.
         worldRoutes()
         route("/") {
+            venueRoutes(venueCatalog)
             install(CORS) {
                 allowHeader(HttpHeaders.ContentType)
                 allowHeader(HttpHeaders.Authorization)
@@ -282,6 +288,7 @@ fun Application.module() {
         feedRoutes(getFeed, getNotifications, markNotificationsRead, getSubscriptions, getSubscriptionRequests, respondSubscriptionRequest)
         searchRoutes(searchUseCase)
         adminRoutes(businessRepository, questRepository, config.adminKey) // /admin — модерация бизнесов и квестов
+        adminVenueRoutes(venueEditor, config.adminKey)
         }
     }
 }

@@ -99,7 +99,7 @@ fun Route.questRoutes(
     }
 
     post("/admin/quests/{id}/review") {
-        if (call.request.header("X-Admin-Key") != adminKey) {
+        if (!call.validAdminKey(adminKey)) {
             return@post call.respond(HttpStatusCode.Forbidden, ErrorResponse(ErrorResponse.Body("FORBIDDEN", "Неверный админ-ключ")))
         }
         val b = call.receive<QuestReviewRequest>()

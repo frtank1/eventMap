@@ -148,7 +148,7 @@ fun Route.eventRoutes(
             val userId = call.principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
                 ?: return@patch call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
             val body = call.receive<CreateEventRequest>()
-            when (val r = updateEvent(userId, call.parameters["id"].orEmpty(), body.toDraft(creatorId = userId))) {
+            when (val r = updateEvent(userId, call.parameters["id"].orEmpty(), body.toDraft(creatorId = userId), clearVenue = body.clearVenue)) {
                 is UpdateEventUseCase.Result.Ok -> call.respond(r.event.toDto())
                 is UpdateEventUseCase.Result.NotFound ->
                     call.respond(HttpStatusCode.NotFound, ErrorResponse(ErrorResponse.Body("EVENT_NOT_FOUND", "Событие не найдено")))
@@ -223,7 +223,7 @@ fun Route.eventRoutes(
 }
 
 // null = невалидный bbox (вернём 400). Отсутствие bbox — валидно (без гео-фильтра).
-private fun parseEventQuery(params: Parameters): EventQuery? {
+internal fun parseEventQuery(params: Parameters): EventQuery? {
     val bbox = params["bbox"]?.let { raw ->
         val parts = raw.split(",").mapNotNull { it.trim().toDoubleOrNull() }
         if (parts.size != 4) return null
@@ -231,10 +231,12 @@ private fun parseEventQuery(params: Parameters): EventQuery? {
     }
     val categories = params["categories"]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
     val price = params["price"]?.takeIf { it == "free" || it == "paid" }
-    return EventQuery(bbox = bbox, categories = categories, priceType = price)
+    val buildingId = params["buildingId"]
+    if (buildingId != null && !com.eventmap.server.domain.model.validBuildingId(buildingId)) return null
+    return EventQuery(bbox = bbox, categories = categories, priceType = price, buildingId = buildingId)
 }
 
-private fun CreateEventRequest.toDraft(creatorId: String) = Event(
+internal fun CreateEventRequest.toDraft(creatorId: String) = Event(
     id = "",
     title = title.trim(),
     description = description.trim(),
@@ -257,4 +259,5 @@ private fun CreateEventRequest.toDraft(creatorId: String) = Event(
     minAge = minAge,
     expiresAtMs = expiresAtMs,
     proofMediaId = proofMediaId,
+    venue = venue,
 )

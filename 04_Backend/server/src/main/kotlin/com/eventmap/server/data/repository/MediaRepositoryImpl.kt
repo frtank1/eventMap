@@ -1,6 +1,7 @@
 package com.eventmap.server.data.repository
 
 import com.eventmap.server.data.db.MediaTable
+import com.eventmap.server.data.db.EventsTable
 import com.eventmap.server.domain.model.Media
 import com.eventmap.server.domain.repository.MediaRepository
 import kotlinx.coroutines.Dispatchers
@@ -37,10 +38,21 @@ class MediaRepositoryImpl : MediaRepository {
     }
 
     override suspend fun byEvent(eventId: String): List<Media> = tx {
-        MediaTable.selectAll()
+        val attached = MediaTable.selectAll()
             .where { MediaTable.eventId eq eventId }
             .orderBy(MediaTable.createdAtMs, SortOrder.DESC)
             .map(::toMedia)
+        // The creation form uploads the cover BEFORE the event exists. Its event_id
+        // is null; the authoritative association is events.cover, not upload order.
+        val event = EventsTable.selectAll().where { EventsTable.id eq eventId }.singleOrNull()
+        val coverId = event?.get(EventsTable.cover)
+        val cover = coverId?.let { id ->
+            MediaTable.selectAll().where { MediaTable.id eq id }.singleOrNull()?.let(::toMedia)
+        }?.takeIf {
+            it.kind == "image" && it.status == "ready" && it.ownerUserId == event?.get(EventsTable.organizerId) &&
+                (it.eventId == null || it.eventId == eventId)
+        }
+        (listOfNotNull(cover) + attached).distinctBy { it.id }
     }
 
     override suspend fun byId(id: String): Media? = tx {

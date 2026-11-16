@@ -72,4 +72,7 @@ dependencies {
     debugImplementation(projects.common.core.ui)
     debugImplementation(projects.common.feature.video.ui)
     debugImplementation(projects.common.feature.video.domain)
+    debugImplementation(projects.common.feature.map.ui)
+    debugImplementation(projects.common.feature.event.domain)
+    debugImplementation(projects.common.core.network)
 }

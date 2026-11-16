@@ -6,6 +6,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.ViewGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -25,6 +26,7 @@ actual fun GameCityView(payload:String, modifier:Modifier, onMessage:(String)->U
     var ready by remember { mutableStateOf(false) }
     val web=remember {
         WebView(context).apply {
+            layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)
             settings.javaScriptEnabled=true; settings.domStorageEnabled=true
             settings.allowFileAccess=false;settings.allowContentAccess=false
             settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW

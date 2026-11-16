@@ -2,15 +2,19 @@ import * as THREE from 'three';
 import {mergeGeometries} from './vendor/BufferGeometryUtils.js';
 import {VectorTile} from './vendor/vector-tile.js';
 import Pbf from './vendor/pbf.js';
-import {decorateCityMaterial} from './city-facades.js';
+import {decorateQuarterMaterial} from '../runtime/quarter-materials.js';
+import {CITY_PALETTE} from '../runtime/art-direction.js';
+import {WORLD_BOUNDS} from '../runtime/world-state.js';
 import {createUrbanDetails} from './urban-details.js';
 import {createPedestrians} from './people.js';
+import {inPolygon, onOrInPolygon, ringBounds, footprintStyle, overviewRelief, createSpatialIndex, distanceSegment, treeCandidates} from './city-overview.js';
 
 const TILE_JSON = 'https://tiles.openfreemap.org/planet/latest';
-const URBAN = {west: 71.22, east: 71.70, south: 50.99, north: 51.25};
+const URBAN = WORLD_BOUNDS;
 // Mobile pilot budget; original browser presentation is unchanged.
 const MAX_REQUESTS = 2, MAX_CACHE = 16, MAX_DESIRED = 9, MAX_ATTEMPTS = 3;
 const TIMEOUT_MS = 18000, BATCH_VERTICES = 120000;
+const MAX_ARCHITECTURE = 320, MAX_OVERVIEW = 2200, MAX_OVERVIEW_VERTICES = 180000, MAX_TREES = 240;
 const RAD = Math.PI / 180, METERS = 111320;
 const clamp = THREE.MathUtils.clamp;
 const yieldTask = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -43,7 +47,11 @@ function overlaps(a, b) {
   return Math.floor(b.x / scale) === a.x && Math.floor(b.y / scale) === a.y;
 }
 
-function chooseZoom(distance, previous) {
+export function chooseZoom(distance, previous) {
+  if(previous===10&&distance>31000)return 10;
+  if(previous===11&&distance>17500&&distance<37000)return 11;
+  if(distance>34000)return 10;
+  if(distance>20000)return 11;
   // Hysteresis avoids repeated network churn at the two LOD boundaries.
   if (previous === 14 && distance < 5000) return 14;
   if (previous === 12 && distance > 10000) return 12;
@@ -73,13 +81,16 @@ function desiredTiles(lon, lat, distance, zoom, lonScale) {
 
 function makeMaterials() {
   const specs = {
-    cream: [0xe4d4b7, 0xb7b1a6], cyan: [0x789b9e, 0x718f98],
-    sand: [0xcba68c, 0xa99d8e], mint: [0xb1b8ae, 0x909e98],
-    landcover: [0x76976c, 0x2c4037], landuse: [0x729468, 0x293e35],
-    park: [0x6e956b, 0x243d36], water: [0x4e97a7, 0x244759],
-    roadEdge: [0xb5b39e, 0x4a5153], road: [0x59646b, 0x26313b],
-    path: [0xcec3a8, 0x52544d], rail: [0x7f8b80, 0x35434a],
-    trunk:[0x9a866e,0x685d50],foliage:[0x71936a,0x355c47],roof:[0x7a8b8f,0x566674],roofUnit:[0x6f8588,0x53646b],marking:[0xece8d5,0x9a9f99],car:[0xffffff,0xb3b9bd],carGlass:[0x3a606c,0x293f4f],bench:[0xbba17d,0x8e7c64],
+    cream: CITY_PALETTE.ivory, cyan: CITY_PALETTE.glass,
+    sand: CITY_PALETTE.sand, mint: CITY_PALETTE.sage,
+    landcover: CITY_PALETTE.land, landuse: CITY_PALETTE.grass,
+    park: CITY_PALETTE.grass, water: CITY_PALETTE.water,
+    roadEdge: CITY_PALETTE.kerb, road: CITY_PALETTE.road,
+    path: CITY_PALETTE.pavement, minorPath: CITY_PALETTE.pavement,
+    urban: CITY_PALETTE.urban, rail: CITY_PALETTE.dark, overview: CITY_PALETTE.sand,
+    trunk: CITY_PALETTE.trunk, foliage: CITY_PALETTE.leaf,
+    roof: CITY_PALETTE.roof, plinth: CITY_PALETTE.trim, roofUnit: CITY_PALETTE.roof,
+    marking: CITY_PALETTE.trim, car: [0xffffff,0xb3b9bd], carGlass: CITY_PALETTE.dark, bench: CITY_PALETTE.wood,
   };
   const materials = {};
   for (const [name, [day, night]] of Object.entries(specs)) {
@@ -87,7 +98,10 @@ function makeMaterials() {
     material.name = `city-${name}`;
     material.userData = {day, night};
     if (name === 'water') { material.roughness = 0.35; material.metalness = 0.12; }
-    if (['cream','cyan','sand','mint','roof'].includes(name)) material.userData.facade=decorateCityMaterial(material);
+    if (['cream','cyan','sand','mint','roof','path'].includes(name)) material.userData.facade=decorateQuarterMaterial(material,{glass:name==='cyan',paving:name==='path'});
+    if(name==='minorPath'){material.transparent=true;material.depthWrite=false;material.userData.facade=decorateQuarterMaterial(material,{paving:true,minorPath:true});}
+    // Separated layers and offsets keep overlapping GIS footprints stable while panning.
+    if(['cream','cyan','sand','mint'].includes(name)){material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;}
     materials[name] = material;
   }
   return materials;
@@ -208,7 +222,22 @@ function firstNumber(...values) {
   return values.map(numberProperty).find(Number.isFinite);
 }
 
-async function buildTile(bytes, tile, context, signal) {
+function buildingHeight(props) {
+  const levels = firstNumber(props['building:levels'], props.levels);
+  const top = clamp(firstNumber(props.render_height, props.height, props['building:height'], levels === undefined ? undefined : levels * 3.1) ?? 9, 0, 310);
+  const base = clamp(firstNumber(props.render_min_height, props.min_height, props['building:min_height']) ?? 0, 0, top);
+  return {top, base};
+}
+
+const hiddenBuilding = props => [true, 1, 'true'].includes(props.hide_3d);
+
+function extrude(shape, depth, y) {
+  const geometry = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled: false, steps: 1, curveSegments: 1});
+  geometry.rotateX(-Math.PI / 2); geometry.translate(0, y, 0);
+  return geometry;
+}
+
+async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
   checkAbort(signal);
   const parsed = new VectorTile(new Pbf(new Uint8Array(bytes)));
   const root = new THREE.Group();
@@ -216,7 +245,7 @@ async function buildTile(bytes, tile, context, signal) {
   const originX = (tile.west - context.center[0]) * context.lonScale;
   const originZ = -(tile.north - context.center[1]) * METERS;
   root.position.set(originX, 0, originZ);
-  root.userData = {key: tile.key, zoom: tile.z, buildings: 0, skipped: 0};
+  root.userData = {key: tile.key, zoom: tile.z, buildings: 0, skipped: 0,places:[],placeGrid:new Map()};
   const project = p => [(p[0] - tile.west) * context.lonScale, -(p[1] - tile.north) * METERS];
   const rect = {
     minX: (Math.max(tile.west, URBAN.west) - tile.west) * context.lonScale,
@@ -224,11 +253,13 @@ async function buildTile(bytes, tile, context, signal) {
     minZ: (tile.north - Math.min(tile.north, URBAN.north)) * METERS,
     maxZ: (tile.north - Math.max(tile.south, URBAN.south)) * METERS,
   };
-  const batches = new Map(), trees=[],roofs=[],roadSegments=[],walks=[],roofUnits=[],cars=[],benches=[];
+  const batches = new Map(), roofs=[],roadSegments=[],walks=[],roofUnits=[],cars=[],benches=[];
+  const treeAreas = [], obstacles = createSpatialIndex(), buildingIndex = createSpatialIndex();
+  let architectureCount = 0;
   const owns=p=>p[0]>=rect.minX&&p[0]<rect.maxX&&p[1]>=rect.minZ&&p[1]<rect.maxZ;
   const canDecorate=p=>owns(p)&&!context.excludeBuilding?.(tile.west+p[0]/context.lonScale,tile.north-p[1]/METERS);
-  const inside=(p,ring)=>{let hit=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const a=ring[i],b=ring[j];if((a[1]>p[1])!==(b[1]>p[1])&&p[0]<(b[0]-a[0])*(p[1]-a[1])/(b[1]-a[1])+a[0])hit=!hit}return hit};
-  function propsMesh(name,geometry,items){if(!items.length){geometry.dispose();return}const m=new THREE.InstancedMesh(geometry,context.materials[name],items.length),o=new THREE.Object3D();items.forEach((p,i)=>{o.position.set(p.x,p.y,p.z);o.scale.set(p.sx??1,p.sy??1,p.sz??1);o.rotation.y=p.angle||0;o.updateMatrix();m.setMatrixAt(i,o.matrix);if(p.color!==undefined)m.setColorAt(i,new THREE.Color(p.color))});m.instanceMatrix.needsUpdate=true;m.name=`city-${name}`;m.userData.cityDetail=true;m.computeBoundingSphere();root.add(m)}
+  const inBuilding = p => { for (const rings of buildingIndex.query(p)) if (inPolygon(p, rings)) return true; return false; };
+  function propsMesh(name,geometry,items){if(!items.length){geometry.dispose();return}const m=new THREE.InstancedMesh(geometry,context.materials[name],items.length),o=new THREE.Object3D();items.forEach((p,i)=>{o.position.set(p.x,p.y,p.z);o.scale.set(p.sx??1,p.sy??1,p.sz??1);o.rotation.y=p.angle||0;o.updateMatrix();m.setMatrixAt(i,o.matrix);if(p.color!==undefined)m.setColorAt(i,new THREE.Color(p.color))});m.instanceMatrix.needsUpdate=true;m.name=`city-${name}`;m.userData.cityDetail=true;m.computeBoundingSphere();root.add(m);return m}
   function flush(name) {
     const batch = batches.get(name);
     if (!batch?.geometries.length) return;
@@ -239,8 +270,8 @@ async function buildTile(bytes, tile, context, signal) {
     merged.computeBoundingSphere();
     const mesh = new THREE.Mesh(merged, context.materials[name]);
     mesh.name = `city-${name}`;
-    mesh.castShadow = ['cream', 'cyan', 'sand', 'mint'].includes(name) && tile.z === 14;
-    mesh.receiveShadow = true;
+    mesh.userData.cityBuilding = ['cream', 'cyan', 'sand', 'mint', 'roof', 'plinth'].includes(name);
+    if (name === 'overview') mesh.raycast = () => {}; // Never advertise cartographic relief as a place.
     root.add(mesh);
   }
   function add(name, geometry) {
@@ -256,6 +287,12 @@ async function buildTile(bytes, tile, context, signal) {
     if (batch.vertices >= BATCH_VERTICES) flush(name);
   }
   let sliceStart = performance.now(), processed = 0;
+  async function checkpoint() {
+    checkAbort(signal);
+    if (performance.now() - sliceStart >= 8) {
+      await yieldTask(); checkAbort(signal); sliceStart = performance.now();
+    }
+  }
   try {
     for (const layerName of ['landcover', 'landuse', 'park', 'water', 'transportation', 'building']) {
       const layer = parsed.layers[layerName];
@@ -268,33 +305,48 @@ async function buildTile(bytes, tile, context, signal) {
         const feature = layer.feature(i), props = feature.properties;
         try {
           if (layerName === 'building') {
-            if (feature.type !== 3 || props.hide_3d === true || props.hide_3d === 1 || props.hide_3d === 'true') continue;
-            const levels = firstNumber(props['building:levels'], props.levels);
-            const top = clamp(firstNumber(props.render_height, props.height, props['building:height'], levels === undefined ? undefined : levels * 3.1) ?? 9, 4, 310);
-            const base = clamp(firstNumber(props.render_min_height, props.min_height, props['building:min_height']) ?? 0, 0, top - 1);
+            if(tile.z<13)continue; // One LOD owner: never overlap silhouettes and real footprints.
+            if (feature.type !== 3 || hiddenBuilding(props)) continue;
+            const {top, base} = buildingHeight(props);
+            if(top<=base)continue;
             let added = 0;
             for (const rings of polygons(feature.toGeoJSON(tile.x, tile.y, tile.z).geometry)) {
+              if (++processed % 32 === 0) await checkpoint();
               // OpenMapTiles groups many buildings into one MultiPolygon. Apply
               // ownership/exclusions to EACH building, not the feature's bbox.
               let west=Infinity,east=-Infinity,north=-Infinity,south=Infinity;
               for(const p of rings[0]){west=Math.min(west,p[0]);east=Math.max(east,p[0]);south=Math.min(south,p[1]);north=Math.max(north,p[1])}
               const lon=(west+east)/2,lat=(south+north)/2;
-              if(lon<tile.west||lon>=tile.east||lat>tile.north||lat<=tile.south||!inUrban(lon,lat)||context.excludeBuilding?.(lon,lat))continue;
-              const hash=Math.abs(Math.round(lon*1e5)*31+Math.round(lat*1e5));
-              const material=top>70?'cyan':['cream','cyan','sand','mint'][hash%4];
+              if(lon<tile.west||lon>=tile.east||lat>tile.north||lat<=tile.south||!inUrban(lon,lat)||context.excludeBuilding?.(lon,lat,rings))continue;
+              const style = footprintStyle(rings, feature.id, top, base);
               const shape = makeShape(rings, project);
               if (!shape) continue;
-              const geometry = new THREE.ExtrudeGeometry(shape, {depth: top - base, bevelEnabled: false, steps: 1, curveSegments: 1});
-              geometry.rotateX(-Math.PI / 2); geometry.translate(0, base + 0.55, 0);
-              add(material, geometry); added++;
-              if(tile.z===14){
-                // The exact same cornices, roof caps and entrances in every tile.
-                const roof=new THREE.ExtrudeGeometry(shape,{depth:.65,bevelEnabled:false,steps:1,curveSegments:1});
-                roof.rotateX(-Math.PI/2);roof.translate(0,top+.55,0);add('roof',roof);
+              const detailed = architectureCount < MAX_ARCHITECTURE && rings.reduce((n,r)=>n+r.length,0) <= 64;
+              const plinth = detailed ? style.plinth : 0;
+              add(style.material, extrude(shape, top - base - plinth, base + plinth + .55)); added++;
+              if (detailed) {
+                architectureCount++;
+                if (plinth) add('plinth', extrude(shape, plinth, base + .55));
+                add('roof', extrude(shape, style.roof, top + .55));
+              }
+              // Vector-tile IDs can represent a whole MultiPolygon, not one OSM
+              // building. This view-local ID must not be used as a backend place ID.
+              const place={id:`footprint-${style.hash.toString(16)}`,geometryKind:'footprint',geoRings:rings,title:String(props['name:ru']||props.name||'Здание').slice(0,120),lng:lon,lat,top:top+1.2,rings:rings.map(r=>r.map(project))};
+              root.userData.places.push(place);
+              const bounds = ringBounds(place.rings[0]);
+              buildingIndex.insert(bounds, place.rings);
+              const minX=Math.floor(bounds.minX/100),maxX=Math.floor(bounds.maxX/100),minZ=Math.floor(bounds.minZ/100),maxZ=Math.floor(bounds.maxZ/100);
+              // Local 100 m cells bound marker-height/picking queries; very large
+              // footprints use the slow list rather than an unbounded cell fanout.
+              if((maxX-minX+1)*(maxZ-minZ+1)<=256)for(let x=minX;x<=maxX;x++)for(let z=minZ;z<=maxZ;z++){const key=`${x}:${z}`,list=root.userData.placeGrid.get(key)||[];list.push(place);root.userData.placeGrid.set(key,list);}
+              else {const list=root.userData.placeGrid.get('large')||[];list.push(place);root.userData.placeGrid.set('large',list);}
+              if(tile.z===14&&detailed){
                 let points=rings[0].map(project);const area=points.reduce((s,p,i)=>{const q=points[(i+1)%points.length];return s+p[0]*q[1]-q[0]*p[1]},0);if(area<0)points=points.reverse();
-                roofs.push({points,height:top-base,base:base+.55});
+                roofs.push({points,height:top-base,base:base+.55,hash:style.hash});
                 const p=project([lon,lat]);
-                if(top>8&&inside(p,points)&&!rings.slice(1).some(r=>inside(p,r.map(project))))roofUnits.push({x:p[0],y:top+2,z:p[1],sx:4,sy:2,sz:3});
+                const sx=Math.min(5,(bounds.maxX-bounds.minX)*.18),sz=Math.min(4,(bounds.maxZ-bounds.minZ)*.18);
+                const fits=[[0,0],[-sx/2,-sz/2],[sx/2,-sz/2],[sx/2,sz/2],[-sx/2,sz/2]].every(([x,z])=>inPolygon([p[0]+x,p[1]+z],place.rings));
+                if(style.roofUnit&&top>8&&sx>1&&sz>1&&fits)roofUnits.push({x:p[0],y:top+.55+style.roof+.65,z:p[1],sx,sy:1.3,sz});
               }
             }
             root.userData.buildings+=added;
@@ -307,16 +359,24 @@ async function buildTile(bytes, tile, context, signal) {
             const rail = kind === 'rail' || kind === 'transit';
             const widths = {motorway: 22, trunk: 19, primary: 16, secondary: 13, tertiary: 10, minor: 7, residential: 7, service: 4.5, path: 2.8, pedestrian: 5, track: 3, rail: 3, transit: 3};
             if (!(kind in widths)) continue;
-            if (tile.z === 12 && (pedestrian || kind === 'service')) continue;
-            const width = clamp(firstNumber(props.width) ?? widths[kind], 1.5, 36);
+            if (tile.z <= 12 && (pedestrian || kind === 'service')) continue;
+            const width = Math.max(clamp(firstNumber(props.width) ?? widths[kind], 1.5, 36),tile.z<14&&!pedestrian&&!rail?(tile.z<=11?40:tile.z===12?26:16):0);
             const bridge = props.brunnel === 'bridge';
-            const y = (bridge ? 5 + Math.max(0, Number(props.layer) || 0) * 3 : 0) + (pedestrian ? 0.46 : rail ? 0.49 : 0.38);
+            const y = (bridge ? 5 + Math.max(0, Number(props.layer) || 0) * 3 : 0) + (pedestrian ? 0.36 : rail ? 0.49 : 0.60);
             const geometry = feature.toGeoJSON(tile.x, tile.y, tile.z).geometry;
             const lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.type === 'MultiLineString' ? geometry.coordinates : [];
             for (const line of lines) {
               if (line.length < 2) continue;
-              if (!pedestrian && !rail) add('roadEdge', roadStrip(line, project, width + 2.2, y - 0.04, rect));
-              add(pedestrian ? 'path' : rail ? 'rail' : 'road', roadStrip(line, project, width, y, rect));
+              if(tile.z>=13&&!bridge){
+                const points=line.map(project),pad=width/2+5;
+                for(let j=1;j<points.length;j++){
+                  const a=points[j-1],b=points[j],box=ringBounds([a,b]);
+                  obstacles.insert({minX:box.minX-pad,maxX:box.maxX+pad,minZ:box.minZ-pad,maxZ:box.maxZ+pad},{a,b,pad});
+                }
+              }
+              if (!pedestrian && !rail) add('roadEdge', roadStrip(line, project, width + 1.0, y - 0.20, rect));
+              const minor=pedestrian&&width<4&&!props.name;
+              add(pedestrian ? minor?'minorPath':'path' : rail ? 'rail' : 'road', roadStrip(line, project, width, y, rect));
               if(tile.z===14&&!bridge&&!rail){
                 const pts=line.map(project);
                 for(let j=1;j<pts.length;j++){
@@ -326,7 +386,7 @@ async function buildTile(bytes, tile, context, signal) {
                   if(pedestrian&&owns(a)&&owns(b)){walks.push([a,b]);if(benches.length<60&&length>25){const p=[a[0]-uz*(width/2+1.4),a[1]+ux*(width/2+1.4)];if(canDecorate(p))benches.push({x:p[0],y:.85,z:p[1],sx:3,sy:.45,sz:1,angle})}}
                   if(!pedestrian&&width>=7){
                     for(let d=6;d<length-4;d+=15){const p=[a[0]+ux*d,a[1]+uz*d];if(owns(p))add('marking',new THREE.BoxGeometry(.45,.05,5).rotateY(angle).translate(p[0],y+.035,p[1]))}
-                    if(cars.length<65&&length>28){const t=.25+(cars.length%5)*.1,p=[a[0]+ux*length*t-uz*width*.23,a[1]+uz*length*t+ux*width*.23];if(owns(p))cars.push({x:p[0],y:1.15,z:p[1],sx:1.9,sy:1.2,sz:4.3,angle,color:[0xf0ece0,0x7d9c95,0x928ba7,0xb7bcbc][cars.length%4]})}
+                    if(cars.length<65&&length>28){const t=.25+(cars.length%5)*.1,p=[a[0]+ux*length*t-uz*width*.23,a[1]+uz*length*t+ux*width*.23];if(owns(p))cars.push({x:p[0],y:1.15,z:p[1],sx:1.9,sy:1.2,sz:4.3,angle,color:[CITY_PALETTE.ivory[0],CITY_PALETTE.sage[0],CITY_PALETTE.dark[0],CITY_PALETTE.sand[0]][cars.length%4]})}
                   }
                 }
               }
@@ -336,14 +396,16 @@ async function buildTile(bytes, tile, context, signal) {
           if (feature.type !== 3) continue;
           if (layerName === 'water' && props.brunnel === 'tunnel') continue;
           if (layerName === 'landcover' && !['wood', 'grass', 'farmland', 'wetland'].includes(props.class)) continue;
-          if (layerName === 'landuse' && !['park', 'forest', 'grass', 'meadow', 'recreation_ground', 'village_green', 'garden', 'allotments', 'cemetery', 'pitch', 'wood'].includes(props.class)) continue;
-          const elevation = {landcover: 0.10, landuse: 0.17, park: 0.22, water: 0.28}[layerName];
+          const urban=layerName==='landuse'&&['residential','commercial','industrial','retail','construction','railway'].includes(props.class);
+          if (layerName === 'landuse' && !urban&&!['park', 'forest', 'grass', 'meadow', 'recreation_ground', 'village_green', 'garden', 'allotments', 'cemetery', 'pitch', 'wood'].includes(props.class)) continue;
+          const elevation = {landcover: -0.12, landuse: -0.08, park: -0.04, water: 0.04}[layerName];
           for (const rings of polygons(feature.toGeoJSON(tile.x, tile.y, tile.z).geometry)){
-            add(layerName, flatPolygon(rings, project, elevation, rect));
-            if(tile.z===14&&trees.length<4000&&['park','landuse','landcover'].includes(layerName)){
-              const pts=rings[0].map(project),holes=rings.slice(1).map(r=>r.map(project));const xs=pts.map(p=>p[0]),zs=pts.map(p=>p[1]);
-              const x0=Math.max(rect.minX,Math.min(...xs)),x1=Math.min(rect.maxX,Math.max(...xs)),z0=Math.max(rect.minZ,Math.min(...zs)),z1=Math.min(rect.maxZ,Math.max(...zs));
-              let attempts=0;for(let x=Math.ceil(x0/19)*19+8;x<x1&&trees.length<4000&&attempts<5000;x+=19)for(let z=Math.ceil(z0/19)*19+8;z<z1&&trees.length<4000&&attempts<5000;z+=19){attempts++;const jitter=Math.sin(x*13+z*7)*4,p=[x+jitter,z-jitter];if(canDecorate(p)&&inside(p,pts)&&!holes.some(h=>inside(p,h))&&!trees.some(q=>Math.hypot(p[0]-q[0],p[1]-q[1])<12))trees.push(p)}
+            add(urban?'urban':layerName, flatPolygon(rings, project, elevation, rect));
+            if(tile.z>=13){
+              const projected=rings.map(r=>r.map(project));
+              if(layerName==='water')obstacles.insert(ringBounds(projected[0]),{rings:projected});
+              const wooded=['wood','forest','park','garden','village_green'].includes(props.class)||layerName==='park';
+              if(!urban&&wooded&&['park','landuse','landcover'].includes(layerName))treeAreas.push(projected);
             }
           }
         } catch (error) {
@@ -352,20 +414,70 @@ async function buildTile(bytes, tile, context, signal) {
         }
       }
     }
+    if(tile.z<13){
+      await yieldTask();checkAbort(signal);
+      let count=0,vertices=0;
+      // z12 uses its four real z13 children. Preserve orientation, concavities
+      // and courtyards in low relief. z10/11 show landuse/roads only, no invented
+      // buildings. This cartographic layer has no place IDs or picking targets.
+      for(const source of overviewTiles){
+        const layer=new VectorTile(new Pbf(new Uint8Array(source.bytes))).layers.building;
+        if(!layer)continue;
+        for(let i=0;i<layer.length&&count<MAX_OVERVIEW&&vertices<MAX_OVERVIEW_VERTICES;i++){
+          await checkpoint();
+          try {
+            const f=layer.feature(i);if(f.type!==3||hiddenBuilding(f.properties))continue;
+            const {top,base}=buildingHeight(f.properties);
+            if(top<=base)continue;
+            for(const rings of polygons(f.toGeoJSON(source.x,source.y,source.z).geometry)){
+              if(++processed%32===0)await checkpoint();
+              if(count>=MAX_OVERVIEW||vertices>=MAX_OVERVIEW_VERTICES)break;
+              const box=ringBounds(rings[0]),lon=(box.minX+box.maxX)/2,lat=(box.minZ+box.maxZ)/2,p=project([lon,lat]);
+              if(lon<source.west||lon>=source.east||lat>source.north||lat<=source.south||!canDecorate(p))continue;
+              // A conservative preflight bounds triangulation work on malformed
+              // or extremely complex features without replacing them by boxes.
+              const points=rings.reduce((n,r)=>n+r.length,0);
+              if(points>512||vertices+points*18>MAX_OVERVIEW_VERTICES)continue;
+              const shape=makeShape(rings,project);if(!shape)continue;
+              const geometry=extrude(shape,overviewRelief(top,base),.55);
+              vertices+=geometry.getAttribute('position').count;
+              add('overview',geometry);count++;
+            }
+          } catch(error) {
+            if(signal.aborted||error.name==='AbortError')throw error;
+            root.userData.skipped++;
+          }
+        }
+      }
+      root.userData.overviewBlocks=count;
+    }
     for (const name of batches.keys()) flush(name);
-    const treeRank=p=>Math.sin(p[0]*12.9898+p[1]*78.233)*43758.5453%1;
-    const safeTrees=trees.filter(p=>!roofs.some(r=>inside(p,r.points))).sort((a,b)=>treeRank(a)-treeRank(b)).slice(0,900);
-    propsMesh('trunk',new THREE.CylinderGeometry(.28,.35,4,5),safeTrees.map(p=>({x:p[0],y:2.3,z:p[1]})));
-    propsMesh('foliage',new THREE.IcosahedronGeometry(1,0),safeTrees.map((p,i)=>({x:p[0],y:5.8+(i%4)*.45,z:p[1],sx:2.7+(i%3)*.3,sy:3.8+(i%3)*.3,sz:2.7+(i%3)*.3})));
+    const trees=[];
+    for(const candidate of treeCandidates({areas:treeAreas,rect,origin:[originX,originZ]})){
+      if(++processed%128===0)await checkpoint();
+      if(!candidate)continue;
+      const p=candidate.point;
+      if(!canDecorate(p)||inBuilding(p))continue;
+      let blocked=false;
+      for(const obstacle of obstacles.query(p)){
+        if(obstacle.rings?inPolygon(p,obstacle.rings):distanceSegment(p,obstacle.a,obstacle.b)<obstacle.pad){blocked=true;break;}
+      }
+      if(!blocked)trees.push(candidate);
+    }
+    const safeTrees=trees.sort((a,b)=>a.rank-b.rank).slice(0,MAX_TREES);
+    root.userData.trees=safeTrees.length;root.userData.architectureDetails=architectureCount;
+    propsMesh('trunk',new THREE.CylinderGeometry(.32,.42,4.8,5),safeTrees.map(({point:p})=>({x:p[0],y:2.65,z:p[1]})));
+    const foliage=propsMesh('foliage',new THREE.SphereGeometry(1,7,5),safeTrees.map(({point:p,rank})=>({x:p[0],y:6.8+rank,z:p[1],sx:4.3+rank,sy:4.0+rank,sz:4.0+rank})));
+    if(foliage){foliage.userData.cityDetail=false;foliage.userData.cityCanopy=true;}
     propsMesh('roofUnit',new THREE.BoxGeometry(1,1,1),roofUnits);
     propsMesh('car',new THREE.BoxGeometry(1,1,1),cars);
     propsMesh('carGlass',new THREE.BoxGeometry(1,1,1),cars.map(p=>({...p,y:1.85,sx:1.65,sy:.55,sz:2.2,color:undefined})));
     propsMesh('bench',new THREE.BoxGeometry(1,1,1),benches);
     if(tile.z===14){
-      const urban=createUrbanDetails({buildings:roofs,roads:roadSegments,canPlace:owns});
+      const urban=createUrbanDetails({buildings:roofs.filter(r=>r.hash%7===0).slice(0,12),roads:roadSegments,canPlace:owns,maxLamps:64});
       urban.setNight(context.night);urban.group.userData.cityDetail=true;root.add(urban.group);root.userData.urban=urban;
-      const paths=walks.filter(([a,b])=>!roofs.some(r=>inside(a,r.points)||inside(b,r.points)));
-      const crowd=createPedestrians(paths,{count:Math.min(60,paths.length*2),seed:tile.x*31+tile.y});crowd.group.userData.cityPeople=true;root.add(crowd.group);root.userData.crowd=crowd;
+      const paths=walks.filter(([a,b])=>!inBuilding(a)&&!inBuilding(b));
+      const crowd=createPedestrians(paths,{count:Math.min(12,paths.length),seed:tile.x*31+tile.y});crowd.group.userData.cityPeople=true;root.add(crowd.group);root.userData.crowd=crowd;
     }
     checkAbort(signal);
     return root;
@@ -440,7 +552,14 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     return cache.size < MAX_CACHE;
   }
   function detailVisibility(root) {
-    root.traverse(object => { if (object.userData.cityDetail) object.visible = distance < 3000;if(object.userData.cityPeople)object.visible=distance<1000; });
+    const near=distance<3000;
+    root.traverse(object => {
+      if(object.userData.cityDetail)object.visible=near;
+      if(object.userData.cityPeople)object.visible=distance<1000;
+      if(object.userData.cityCanopy)object.visible=distance<12500;
+      if(object.userData.cityBuilding){object.castShadow=near&&root.userData.zoom===14;object.receiveShadow=near;}
+      else if(object.isMesh)object.receiveShadow=near;
+    });
   }
   function show(record) {
     visible.add(record.key); record.used = ++touch;
@@ -488,11 +607,23 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
         throw error;
       }
       const bytes = await response.arrayBuffer();
+      const overviewTiles=[];
+      if(record.z===12){
+        // Still at most MAX_REQUESTS concurrent HTTP calls: children are serial
+        // within each record, cancelled with it, and share its timeout.
+        for(let dx=0;dx<2;dx++)for(let dy=0;dy<2;dy++){
+          const child=descriptor(record.x*2+dx,record.y*2+dy,13);
+          const r=await fetch(tileURL(child),{signal,mode:'cors',credentials:'omit'});
+          if(!r.ok)throw new Error(`Overview tile HTTP ${r.status}`);
+          const data=await r.arrayBuffer();if(data.byteLength>4*1024*1024)throw new Error('Overview tile too large');
+          overviewTiles.push({...child,bytes:data});
+        }
+      }
       clearTimeout(timeout);
       checkAbort(signal);
       if (!desired.has(record.key) || destroyed) throw abortError();
       // Serialize CPU mesh builds; at most four fetched buffers can wait here.
-      const build = buildTail.then(() => buildTile(bytes, record, context, signal));
+      const build = buildTail.then(() => buildTile(bytes, record, context, signal,overviewTiles));
       buildTail = build.catch(() => {});
       const root = await build;
       if (destroyed || signal.aborted || !desired.has(record.key) || cache.get(record.key) !== record) { disposeTile(root); throw abortError(); }
@@ -561,13 +692,25 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
       if(seasonTheme!=='default'&&['landcover','landuse','park'].includes(name))material.color.setHex(night?0x93a9bf:0xe2ebee);
       if(seasonTheme!=='default'&&name==='path')material.color.setHex(night?0x8298ac:0xc8d7df);
       if(seasonTheme!=='default'&&name==='foliage')material.color.setHex(night?0x9fb6c2:0xe2ecec);
-      material.emissive.setHex(night && name === 'water' ? 0x092b3b : 0x000000);
+      material.emissive.setHex(night && name==='water' ? 0x092b3b : 0x000000);
       material.emissiveIntensity = 0.15;
       material.userData.facade?.setNight(night);material.userData.facade?.setTheme(seasonTheme);
     }
     for(const record of cache.values())record.root?.userData.urban?.setNight(night);
   }
   function animate(time,reducedMotion=false){if(destroyed)return;for(const key of visible){const crowd=cache.get(key)?.root?.userData.crowd;if(crowd?.group.visible)crowd.update(time,reducedMotion)}}
+  function coverageAt(x,z){const lng=origin[0]+x/lonScale,lat=origin[1]-z/METERS;return [...visible].some(key=>{const r=cache.get(key);return r&&lng>=r.west&&lng<r.east&&lat<=r.north&&lat>r.south;});}
+  function placeAt(x,z){
+    let found=null;
+    for(const key of visible){
+      const root=cache.get(key)?.root;if(!root)continue;
+      const p=[x-root.position.x,z-root.position.z],grid=root.userData.placeGrid,candidates=new Set(grid.get('large')||[]);
+      for(let gx=Math.floor((p[0]-.35)/100);gx<=Math.floor((p[0]+.35)/100);gx++)for(let gz=Math.floor((p[1]-.35)/100);gz<=Math.floor((p[1]+.35)/100);gz++)for(const b of grid.get(`${gx}:${gz}`)||[])candidates.add(b);
+      for(const b of candidates)if((!found||b.top>found.top)&&onOrInPolygon(p,b.rings))found=b;
+    }
+    return found;
+  }
+  function stats(){return {cityTiles:visible.size,cityCache:cache.size,cityRequests:active,cityBuildings:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.buildings||0),0),cityOverviewBlocks:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.overviewBlocks||0),0),cityZoom:zoom};}
   async function initialize() {
     if (destroyed) return;
     initAttempts++;
@@ -614,5 +757,5 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   }
   update(new THREE.Vector3(), distance);
   void initialize();
-  return {group, update, animate, setNight, setTheme, destroy, ready};
+  return {group, update, animate, setNight, setTheme, destroy, ready,coverageAt,placeAt,stats};
 }

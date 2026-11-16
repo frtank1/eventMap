@@ -504,7 +504,8 @@ private fun ReelSheet(
                     fontSize = 12.sp,
                 )
                 Spacer(Modifier.height(14.dp))
-                SheetInfoRow("📍", event.location.name, "ул. Кунаева 12 · ${distanceM ?: "??"} м")
+                SheetInfoRow("📍", event.location.name, distanceM?.let { "$it м · выбранная точка встречи" } ?: "Выбранная точка встречи")
+                event.venue?.let { com.eventmap.map.city.EventVenueLocation(it) }
                 SheetInfoRow("🕗", "Сегодня ${event.startAt.ifBlank { "20:00–23:00" }}", "идёт сейчас")
                 SheetInfoRow(
                     "🎟️",

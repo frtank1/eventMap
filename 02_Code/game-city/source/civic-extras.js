@@ -22,6 +22,17 @@ function beam(a, b, r = .2, segments = 6) {
     .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, direction.normalize()))
     .translate(...start.add(end).multiplyScalar(.5).toArray());
 }
+// Broad rectangular facade members lie in the face plane. Unlike cylinders,
+// these read as a deliberate exoskeleton rather than a wire cage at map scale.
+function frame(a, b, width, depth, normal) {
+  const start=new THREE.Vector3(...a),end=new THREE.Vector3(...b),direction=end.clone().sub(start);
+  const length=direction.length();direction.normalize();
+  const across=new THREE.Vector3().crossVectors(direction,new THREE.Vector3(...normal)).normalize();
+  const outward=new THREE.Vector3().crossVectors(across,direction).normalize();
+  const matrix=new THREE.Matrix4().makeBasis(across,direction,outward);
+  matrix.setPosition(start.add(end).multiplyScalar(.5));
+  return new THREE.BoxGeometry(width,length,depth).applyMatrix4(matrix);
+}
 function surface(points) {
   const vertices = [];
   for (let i = 1; i < points.length - 1; i++) vertices.push(...points[0], ...points[i], ...points[i + 1]);
@@ -66,7 +77,8 @@ export function createCivicExtras(center) {
   function landmark(id, title, coord, height, radius, description, yaw = 0) {
     const g = new THREE.Group(), near = new THREE.Group(), position = project(coord);
     g.name = `civic-${id}`; g.userData.poi = id; g.position.set(position[0], 0, position[1]); g.rotation.y = yaw;
-    near.name = `${id}-near-detail`; near.userData.detailDistance = 1300; g.add(near); group.add(g);
+    // Shared exporter recognises this exact ancestor name as optional detail.
+    near.name = 'facade-details'; near.userData.detailDistance = 1300; g.add(near); group.add(g);
     const record = {id, g, near, yaw, position, batches: new Map(), exclusions: [], glows: []};
     landmarks.push(record);
     pois.push({id, title, coord: [...coord], p: [position[0], height * .48, position[1]],
@@ -110,15 +122,18 @@ export function createCivicExtras(center) {
     const a = corners[side], b = corners[(side + 1) % 4], upperA = lerp(a, tip, .72), upperB = lerp(b, tip, .72);
     add(palace, 'glass', surface([a, b, upperB, upperA]));
     add(palace, 'apex', surface([upperA, upperB, tip]));
-    add(palace, 'ivory', beam(a, tip, .26));
-    add(palace, 'ivory', beam(a, b, .22));
-    for (let n = 1; n < 10; n++) {
-      const t = n / 10;
-      add(palace, 'ivory', beam(lerp(a, tip, t), lerp(b, tip, t), .13));
-      add(palace, 'ivory', beam(lerp(a, b, t), lerp(a, tip, t), .13));
-      add(palace, 'ivory', beam(lerp(b, a, t), lerp(b, tip, t), .13));
+    const normal=new THREE.Vector3().subVectors(new THREE.Vector3(...b),new THREE.Vector3(...a))
+      .cross(new THREE.Vector3(...tip).sub(new THREE.Vector3(...a))).normalize().toArray();
+    add(palace, 'ivory', frame(a, tip, .95, .65, normal));
+    add(palace, 'ivory', frame(a, b, .8, .5, normal));
+    // Four structural bays per face retain the recognisable triangulation
+    // without the former ten-by-ten high-frequency mesh of pale rods.
+    for (let n = 1; n < 4; n++) {
+      const t = n / 4;
+      add(palace, 'ivory', frame(lerp(a, tip, t), lerp(b, tip, t), .48, .3, normal));
+      add(palace, 'ivory', frame(lerp(a, b, t), lerp(a, tip, t), .48, .3, normal));
+      add(palace, 'ivory', frame(lerp(b, a, t), lerp(b, tip, t), .48, .3, normal));
     }
-    add(palace, 'glow', beam(upperA, upperB, .075));
   }
   palace.g.userData.latticeFaces = 4;
   for (const x of [-35, 35]) for (const z of [-25, 0, 25]) {
@@ -130,8 +145,8 @@ export function createCivicExtras(center) {
   // A recessed-looking portal projects just through the sloping south face.
   add(palace, 'dark', box(10, 5.6, 2, 0, 5.8, 30.7));
   add(palace, 'apex', box(8.3, 4.8, .12, 0, 5.55, 31.76));
-  for (const x of [-5.2, 5.2]) add(palace, 'ivory', box(.7, 5.9, 2.7, x, 5.95, 31.0));
-  slab(palace, 12, .4, 5, 0, 8.8, 31.5);
+  for (const x of [-5.2, 5.2]) add(palace, 'ivory', box(1.1, 5.9, 2.7, x, 5.95, 31.0));
+  slab(palace, 12, .7, 5, 0, 8.8, 31.5);
   for (let i = 0; i < 6; i++) slab(palace, 13, .5, 6 - i * .7, 0, i * .5, 36 - i * .35);
   for (const x of [-2.75, 0, 2.75]) add(palace, 'ivory', box(.12, 4.8, .14, x, 5.55, 31.85), true);
   add(palace, 'gold', box(4, .45, .15, 0, 8.2, 31.85), true);
@@ -209,30 +224,29 @@ export function createCivicExtras(center) {
       const normal = [[0, 0, 1], [1, 0, 0], [0, 0, -1], [-1, 0, 0]][side];
       return p.map((value, i) => value + normal[i] * offset);
     }
-    const pitch = span / (side % 2 ? 6 : 5);
+    const normal = [[0, 0, 1], [1, 0, 0], [0, 0, -1], [-1, 0, 0]][side];
+    const pitch = span / 4;
     for (const direction of [-1, 1]) {
       for (let i = -1; i <= Math.ceil(span / pitch) + 1; i++) {
         const start = i * pitch, delta = direction * pitch;
         const t0 = Math.max(0, Math.min((0 - start) / delta, (span - start) / delta));
         const t1 = Math.min(1, Math.max((0 - start) / delta, (span - start) / delta));
-        if (t1 - t0 > .001) add(independence, 'ivory', beam(point(start + delta * t0, h * t0), point(start + delta * t1, h * t1), .48));
+        if (t1 - t0 > .001) add(independence, 'ivory', frame(point(start + delta * t0, h * t0), point(start + delta * t1, h * t1), 1.35, .7, normal));
       }
     }
-    add(independence, 'ivory', beam(point(0, 0), point(0, h), .5));
-    add(independence, 'ivory', beam(point(0, 0), point(span, 0), .3));
-    for (let u = 4.8; u < span; u += 4.8) add(independence, 'dark', beam(point(u, 0, .06), point(u, h, .06), .07, 4), true);
-    for (const v of [7.5, 15.5, 23.5]) add(independence, 'dark', beam(point(0, v, .08), point(span, v, .08), .09, 4), true);
-    add(independence, 'glow', beam(point(0, h, .65), point(span, h, .65), .075));
+    add(independence, 'ivory', frame(point(0, 0), point(0, h), 1.5, .75, normal));
+    add(independence, 'ivory', frame(point(0, 0), point(span, 0), 1.1, .6, normal));
+    for (let u = 8.2; u < span; u += 8.2) add(independence, 'dark', frame(point(u, 0, .09), point(u, h, .09), .16, .16, normal), true);
+    for (const v of [8.8, 17.6]) add(independence, 'dark', frame(point(0, v, .1), point(span, v, .1), .18, .16, normal), true);
   }
   slab(independence, 127, 1, 153, 0, 29, 0, true);
-  add(independence, 'gold', box(127.15, .12, 153.15, 0, 29.14, 0));
   // Entry steps and glazed bays sit on the south side in building-local axes.
   for (let i = 0; i < 7; i++) {
     const d = 15 - i * 1.6;
     slab(independence, 50, .36, d, 0, i * .36, 73 + d / 2);
   }
-  slab(independence, 43, .5, 8, 0, 9.2, 75.5, true);
-  for (const x of [-20, 20]) add(independence, 'ivory', cylinder(.38, .38, 6.7, x, 5.85, 78));
+  slab(independence, 43, .9, 8, 0, 9.2, 75.5, true);
+  for (const x of [-20, 20]) add(independence, 'ivory', box(1.4, 6.7, 1.4, x, 5.85, 78));
   for (let i = -3; i <= 3; i++) {
     const x = i * 5.4;
     add(independence, 'apex', box(4.8, 5.5, .2, x, 5.3, 73.2));
@@ -262,7 +276,7 @@ export function createCivicExtras(center) {
       mesh.castShadow = key !== 'glow' && key !== 'surface'; mesh.receiveShadow = key !== 'glow';
       (near ? record.near : record.g).add(mesh);
       if (key === 'surface') mesh.userData.snowSurface = true;
-      if (key === 'glow') {mesh.visible = false; record.glows.push(mesh);}
+      if (key === 'glow') {mesh.name=`${record.id}/architectural-lighting`;mesh.visible = false; record.glows.push(mesh);}
     }
     record.batches.clear();
   }

@@ -15,6 +15,26 @@ import kotlinx.coroutines.test.resetMain
 import kotlin.test.*
 
 class PublicationTest {
+    @Test fun venueIsPublishedAndSurvivesDraftButClearsOnNewAddress() = runTest {
+        val venue=com.eventmap.event.models.EventVenue("landmark:mega","l1","atrium")
+        val repo=FakeEventRepository();val vm=model(repo)
+        vm.prefillLocation(51.1,71.4,"MEGA",venue)
+        assertEquals(venue,vm.form.value.venue)
+        vm.publish();advanceUntilIdle()
+        assertEquals(venue,repo.draft?.venue)
+        val encoded=kotlinx.serialization.json.Json.encodeToString(CreateForm.serializer(),vm.form.value)
+        assertEquals(venue,kotlinx.serialization.json.Json.decodeFromString(CreateForm.serializer(),encoded).venue)
+        val moved=model(FakeEventRepository());moved.prefillLocation(51.1,71.4,"MEGA",venue)
+        moved.update { it.copy(locationName="Outside") };assertNull(moved.form.value.venue)
+        val repointed=model(FakeEventRepository());repointed.prefillLocation(51.1,71.4,"MEGA",venue)
+        repointed.update { it.copy(lat=51.2) };assertNull(repointed.form.value.venue)
+    }
+    @Test fun editPrefillsExistingVenue() = runTest {
+        val venue=com.eventmap.event.models.EventVenue("landmark:mega","l1")
+        val repo=FakeEventRepository().apply { eventResponse=KtorResponse.Success(EventDetail("e","Meet",venue=venue)) }
+        val vm=model(repo);vm.loadForEdit("e");advanceUntilIdle()
+        assertEquals(venue,vm.form.value.venue)
+    }
     @BeforeTest fun setup() { Dispatchers.setMain(StandardTestDispatcher()) }
     @AfterTest fun teardown() { Dispatchers.resetMain() }
     private fun TestScope.model(repo: FakeEventRepository, drafts: EventDraftStorage? = null) =

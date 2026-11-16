@@ -666,3 +666,147 @@ CREATE TABLE invitation_guests (
 Это не проверка на устройстве, не запуск с реальной БД и не приёмка Render/FCM/S3.
 Ключ 2GIS по-прежнему требуется. Серверная идемпотентность и оставшиеся блокеры
 выше не закрыты этим прогоном.
+
+## Игровой город: публичный контент — 12.11.2026
+
+Это отдельные публичные ресурсы в корне фактического `CoreConfig.baseUrl`, без `/v1`
+и без JWT. Источник исполняемого контракта — `WorldRoutes.kt`, `WorldRoutesTest.kt`
+и клиентский `game-city/runtime/content-store.js`.
+
+| Метод / путь | Контракт |
+|---|---|
+| GET `/world/manifest.json` | 200 JSON, `Cache-Control: no-cache`, `schemaVersion:1`, `engineVersion:2`, `release`, `models` |
+| GET `/world/assets/{sha256}.json` | 200 JSON, immutable на год, точная длина и SHA-256 из manifest |
+| Неизвестный ресурс / произвольный путь | 404, без раздачи JS/конфигурации |
+
+Manifest: 1–32 уникальные модели, сейчас 19. Запись содержит `id/title/lat/lng/height/
+radius/file/sha256/bytes`; file строго `assets/<64-hex>.json`. Координаты ограничены
+Астаной, файл ≤6 MiB, пакет ≤18 MiB. Модель schemaVersion=1: числовые материалы,
+позиции/нормали/индексы мешей, boolean detail. Нет исполняемых сценариев, текстурных
+URL или шейдерного кода. Полные ограничения — в документе игрового города.
+
+CORS `*` только у публичного `/world`, credentials не нужны; политика закрытого API
+не расширена. SHA-256 проверяет целостность, не является подписью издателя.
+Ошибка сети/хеша/формата/совместимости сохраняет текущий или встроенный пакет.
+Замена атомарная после проверки всего пакета; совместимый старый release допустим.
+Движки v1/v2 отклоняют пакеты другой версии; обновление приложения до v2 требуется
+один раз. Далее эти 19 моделей можно менять контентным выпуском без обновления APK.
+
+WorldRoutesTest выполнен локально: 19 файлов, размеры/хеши, кэш/CORS и 404.
+Это не подтверждает публикацию ресурса на Render: deploy в этом изменении не делался.
+
+### Адреса, контуры замещения и входы — 16.11.2026
+
+Совместимый **отдельный** канал данных, не JS и не смена картографического движка:
+
+| Метод / путь | Контракт |
+|---|---|
+| GET `/world/places-manifest.json` | 200 JSON, no-cache; `schemaVersion:1`, `catalogVersion:1`, `release`, `addresses`, `places` |
+| GET `/world/assets/{sha256}.json` | Существующий immutable-маршрут; адреса ≤12 MiB, места ≤1 MiB |
+
+Оба дескриптора: `{file:"assets/<sha256>.json", sha256:<64 hex>, bytes:<integer>}`.
+Пакет активируется только после проверки обоих файлов: размер, SHA-256, схема,
+координаты в области Астаны, ограниченные строки/списки и отсутствие дублей.
+Название release не заменяет проверку содержимого. Откат на ранее опубликованный
+совместимый пакет допустим. HTTPS и текущий настроенный host; нет JWT, GPS и
+запросов пользователей к публичному Overpass.
+
+Адресный файл schemaVersion=1 сохраняет `records` из существующего OSM-экстракта.
+Каталог мест schemaVersion=1 содержит `places`: стабильный ID модели, типизированные
+`sourceRefs` (`way/…`, `relation/…`), контуры `footprints`, отмеченные `entrances`
+и статус проверки `review`. Вход содержит OSM node ID, lat/lng, kind, access,
+wheelchair. Это сведения источника, не подтверждение доступности двери сейчас.
+Служебные/аварийные/закрытые входы не предлагаются как обычный вход. Отсутствие
+входов отмечается явно; центр здания никогда не становится входом автоматически.
+Сопоставление адреса требует явного исходного OSM ref, совпадающего реального
+контура из каталога или адресного node внутри контура. Сходство bbox — только
+поисковое ускорение, не подтверждение адреса; неподтверждённые записи не выводятся.
+Мост place содержит `entranceStatus` (`mapped|not_mapped|unreviewed|unavailable`)
+и не более восьми входов `{id,lat,lng,kind,wheelchair}`. Выбор входа явный;
+без него сохраняются координаты нажатия. Для `needs_review` входы не предлагаются.
+
+Клиент хранит последнюю проверенную пару в отдельном IndexedDB-кэше, сохраняет
+встроенный резерв, не заменяет рабочие данные при 404/5xx/таймауте/битом пакете.
+Проверка — при открытии карты, возвращении в приложение (не чаще 5 минут) и по
+«Обновить карту и события». Новая логика требует одной установки приложения;
+затем данные этого формата обновляются серверным выпуском без APK. Новые типы
+рендеринга/схемы за пределами этой версии по-прежнему могут требовать обновления.
+
+Публикация серверного пакета и проверка production URL — отдельный этап от
+локальной сборки. Готовность фиксируется по фактически выполненным проверкам.
+
+## Обложки событий в игровой карте — 13.11.2026
+
+`EventDetail.cover` остаётся ID медиа, не URL. `GET /events/{id}/media` дополнительно
+включает указанную обложку, даже если она загружена до создания события и имеет
+`eventId=null`. Условия: `kind=image`, `status=ready`, владелец медиа совпадает с
+организатором события, медиа не привязано к другому событию. Дубликаты исключаются.
+Чужой ID не открывает чужую обложку. Проверка доступа к событию существующая:
+публичное доступно гостю; закрытое — только разрешённому участнику/владельцу.
+Эта поправка не меняет правила `/media/{id}` и не делает все unattached-файлы публичными.
+
+Мобильный мост: JS → native `{v:1,type:"covers",ids:[eventId...]}` (≤8 уникальных ID
+из текущей публичной выдачи); native → sync `covers:[{id,ref,data}]`, где `ref` —
+актуальный cover ID, `data` — уменьшенный JPEG data URL. URL хранилища и JWT в WebView
+не передаются. Соединение к хранилищу выполняет отдельный клиент без bearer.
+Проверено тестом маршрута с H2 и клиентскими unit-тестами; не подтверждает deploy.
+# Building / floor / room — 16 November 2026
+
+`Event.venue` and POST/PATCH `/events` accept optional
+`{"buildingId":"landmark:mega","floorId":"l1","roomId":"atrium"}`.
+Only buildingId is required within venue. Room requires floor; floor/room must
+belong to that building's current server catalog. Coordinates remain geographic
+meeting coordinates, not coordinates in a floor drawing. No automatic attachment
+by radius, address text or GPS. Legacy events remain venue=null.
+
+- Building IDs: `landmark:<stable model id>` or `osm:way:<id>` /
+  `osm:relation:<id>` from an identified footprint. View-local MVT IDs and address
+  nodes are not building IDs. Unknown OSM buildings can have building-only events.
+- `GET /events?buildingId=...` returns only public events with exactly that ID,
+  independent of whether a plan exists. No private/unlisted event counts leak.
+- `GET /venues/{buildingId}` is public read-only JSON, `Cache-Control: no-cache`:
+  `{schemaVersion:1,buildingId,revision,name,floors:[{id,name,order,
+  plan:{width,height,outline:[{x,y}]}|null,
+  rooms:[{id,name,polygon:[{x,y}]}]}]}`.
+  No floors or plan=null means no published drawing, not an HTTP failure.
+  Valid uncatalogued OSM IDs return empty floors. Invalid IDs return 400;
+  unknown landmark IDs return 404. A failed request is not presented as "no plan".
+- Plans are bounded 2D geometry, never HTML, SVG scripts, remote code or arbitrary
+  URLs. IDs remain stable across revisions; new compatible plans/floors/rooms need
+  a server data release, not a new APK. A schema change needs a compatible reader.
+  First installation of the reader is required. No surveyed MEGA plan is fabricated.
+- PATCH accepts `clearVenue:true` to remove an association explicitly. Old clients
+  omitting venue preserve it only if geographic coordinates remain unchanged;
+  moving the event clears it. A supplied venue is validated for create and update.
+
+## Админка внутренних планов — 16.11.2026
+
+Планы хранятся в PostgreSQL; ресурсный каталог используется только как резерв для
+зданий, которые ещё не редактировались. Публичный `GET /venues/{buildingId}` сохраняет
+формат v1 и читает последнюю опубликованную версию из БД, без рестарта/deploy.
+Черновик не доступен публично. Первая установка этой функции требует миграции V16.
+
+Админка `/admin/venues`, авторизация всех операций — существующий `X-Admin-Key`.
+Пустой ключ всегда запрещён. Ошибки имеют существующую оболочку `error.code/message`.
+
+- `GET /admin/api/venues`: список известных зданий (ID, название, версия редактирования).
+- `GET /admin/api/venues/{id}`: `{version,draft,published,history}`; для ещё не
+  изменённого здания version=0, draft из ресурсного каталога/пустой OSM-записи.
+- `PUT /admin/api/venues/{id}/draft`: `{expectedVersion,building}`; сохраняет целиком
+  валидную схему и увеличивает version. buildingId должен совпасть с URL.
+- `POST /admin/api/venues/{id}/publications`: `{expectedVersion}`; атомарно публикует
+  сохранённый черновик, назначает новую revision, записывает неизменяемую историю и
+  увеличивает version. Несохранённые изменения формы не публикуются.
+- `GET /admin/api/venues/{id}/revisions/{revision}`: снимок опубликованной версии;
+  его можно загрузить как черновик и повторно опубликовать после проверки.
+
+Все записи используют оптимистическую блокировку: устаревшая expectedVersion → 409,
+данные не перезаписываются. Повтор POST после потерянного ответа → 409, а не вторая
+публикация. Нельзя удалять ранее опубликованные IDs этажей/помещений: это защищает
+сохранённые события. Можно менять названия/контуры и убирать рисунок, сохранив IDs.
+Ошибочная схема/ID/JSON → 400, неизвестное здание/ревизия → 404, нет доступа → 403,
+слишком большой JSON → 413, получение тела дольше 15 секунд → 408.
+Лимит тела 1 MiB, включая оболочку запроса.
+История в карточке ограничена последними 20 публикациями; снимки не удаляются.
+Каталог админки ограничен первыми 500 зданиями; любое известное OSM-здание можно
+открыть по ID. Все ответы редактора no-store; публичный план no-cache.

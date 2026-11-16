@@ -1,5 +1,6 @@
 package com.eventmap.views.video
 
+import android.view.LayoutInflater
 import androidx.compose.runtime.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -10,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -20,6 +22,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.eventmap.core.ui.R
 import kotlinx.coroutines.delay
 
 // ExoPlayer: loop, автоплей, без контроллера — кадр заполняет экран (RESIZE_MODE_ZOOM)
@@ -76,10 +79,12 @@ actual fun VideoPlayer(
         onDispose { exoPlayer.removeListener(listener); exoPlayer.release() }
     }
 
-    Box(modifier) {
+    Box(modifier.clipToBounds()) {
     AndroidView(
         factory = { ctx ->
-            PlayerView(ctx).apply {
+            // A TextureView participates in Compose clipping/scrolling. A SurfaceView
+            // in RESIZE_MODE_ZOOM can spill across the surrounding event bottom sheet.
+            (LayoutInflater.from(ctx).inflate(R.layout.eventmap_video_player, null) as PlayerView).apply {
                 useController = false
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             }

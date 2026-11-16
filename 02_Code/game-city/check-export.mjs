@@ -21,7 +21,9 @@ function coordinateChecks(manifest, center) {
     ['akorda', 51.12580, 71.44647, 86, 80],
     ['arena', center[1], center[0], 55, 155],
   ];
-  assert.deepEqual(manifest.models.map(m => [m.id, m.lat, m.lng, m.height, m.radius]), expected);
+  assert.deepEqual(manifest.models.slice(0,3).map(m => [m.id, m.lat, m.lng, m.height, m.radius]), expected);
+  assert.equal(new Set(manifest.models.map(m=>m.id)).size,19);
+  for(const id of ['adp','ansar','khan','expo','mega','museum','hazret','grandmosque','palace','kazakheli','independence'])assert.ok(manifest.models.some(m=>m.id===id),`Missing ${id}`);
 }
 
 async function checkManifest(file, release, center) {
@@ -29,9 +31,9 @@ async function checkManifest(file, release, center) {
   assert(bytes.equals(jsonBytes(manifest)), 'Manifest serialization is not canonical');
   keys(manifest, ['schemaVersion', 'engineVersion', 'release', 'models']);
   assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.engineVersion, 1);
+  assert.equal(manifest.engineVersion, 2);
   assert.equal(manifest.release, release);
-  assert(Array.isArray(manifest.models) && manifest.models.length === 3);
+  assert(Array.isArray(manifest.models) && manifest.models.length === 19);
   coordinateChecks(manifest, center);
   const models = {}, summaries = {};
   for (const entry of manifest.models) {
@@ -54,7 +56,7 @@ async function checkManifest(file, release, center) {
     const summary = validateModel(model);
     assert(summary.min[1] >= -1 && summary.max[1] <= entry.height + 1);
     assert(summary.radialExtent <= entry.radius + 0.01);
-    assert(model.meshes.some(mesh => mesh.detail), 'Expected detail geometry');
+    if(['baiterek','akorda','arena'].includes(entry.id))assert(model.meshes.some(mesh => mesh.detail), 'Expected detail geometry');
     assert(model.meshes.some(mesh => !mesh.detail), 'Expected main geometry');
     assert(summary.triangles * 3 > summary.vertices, 'Expected effective indexed deduplication');
     models[entry.id] = model;
@@ -64,7 +66,7 @@ async function checkManifest(file, release, center) {
 }
 
 function checkTestRelease(active, test) {
-  for (const id of ['baiterek', 'arena']) {
+  for (const id of active.manifest.models.map(m=>m.id).filter(id=>id!=='akorda')) {
     assert.deepEqual(test.manifest.models.find(m => m.id === id), active.manifest.models.find(m => m.id === id));
     assert.deepEqual(test.models[id], active.models[id]);
   }
@@ -95,7 +97,7 @@ async function checkSeed(active) {
     '../content/manifest.json',
     ...active.manifest.models.map(model => `../content/${model.file}`),
   ];
-  assert.deepEqual([...module.dependencySpecifiers], expected, 'Seed must have exactly four literal JSON imports');
+  assert.deepEqual([...module.dependencySpecifiers], expected, 'Seed must have one manifest and literal JSON model imports');
   await module.link(async specifier => {
     assert(expected.includes(specifier), 'Unexpected seed import');
     const data = await parse(specifier.slice(3));
@@ -105,7 +107,7 @@ async function checkSeed(active) {
   assert.deepEqual(Object.keys(module.namespace), ['seed']);
   const seed = module.namespace.seed;
   assert.deepEqual(Object.keys(seed), ['manifest', 'models']);
-  assert.deepEqual(Object.keys(seed.models), ['baiterek', 'akorda', 'arena']);
+  assert.deepEqual(Object.keys(seed.models), active.manifest.models.map(m=>m.id));
   assert.deepEqual(seed.manifest, active.manifest);
   for (const id of Object.keys(active.models)) assert.deepEqual(seed.models[id], active.models[id]);
 }

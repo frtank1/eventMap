@@ -1,0 +1,8 @@
+version: 1
+name: venues
+description: Synthetic indoor-plan revisions and failure modes; never an actual MEGA plan.
+origin: eventmap-guo1.onrender.com
+interceptRequests: true
+scenarios:
+  - name: default
+    path: default.js

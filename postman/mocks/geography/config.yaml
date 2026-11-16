@@ -1,0 +1,8 @@
+version: 1
+name: geography
+description: Local geography read-contract and fault simulator; synthetic data only.
+origin: eventmap-guo1.onrender.com
+interceptRequests: true
+scenarios:
+  - name: default
+    path: default.js

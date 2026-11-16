@@ -50,3 +50,10 @@ tasks.test { useJUnitPlatform() }
 
 application { mainClass.set("com.eventmap.server.ApplicationKt") }
 kotlin { jvmToolchain(17) }
+
+// Isolated editor QA: loopback + test-only H2; never starts production Application.module.
+tasks.register<JavaExec>("venueAdminPreview") {
+    dependsOn(tasks.testClasses)
+    classpath = sourceSets.test.get().runtimeClasspath
+    mainClass.set("com.eventmap.server.VenueAdminPreviewKt")
+}

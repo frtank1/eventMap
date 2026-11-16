@@ -43,6 +43,7 @@ data class EventQuery(
     val bbox: Bbox? = null,
     val categories: List<String> = emptyList(),
     val priceType: String? = null, // free | paid
+    val buildingId: String? = null,
 )
 
 data class Event(
@@ -78,6 +79,7 @@ data class Event(
     val proofMediaId: String? = null,
     val confirmationCount: Int = 0,
     val interestCount: Int = 0,
+    val venue: EventVenue? = null,
 )
 
 data class Organizer(

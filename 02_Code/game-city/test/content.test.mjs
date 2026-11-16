@@ -16,7 +16,10 @@ function harness({cache=new Memory(),fetcher,activate}={}) {
   return {store,cache,status,activated,release:value=>{release=value}};
 }
 test('exported models fit runtime schema, dimensions and integrity',async()=>{
-  validateManifest(v1);for(const e of v1.models){validateModel(models[e.id],e.id);assert.equal(await hash(await read(e.file)),e.sha256)}
+  validateManifest(v1);assert.equal(v1.models.length,19);for(const e of v1.models){validateModel(models[e.id],e.id);assert.equal(await hash(await read(e.file)),e.sha256)}
+});
+test('legacy engine pack cannot silently remove the city-wide catalogue',async()=>{
+  const h=harness();h.release({...v1,engineVersion:1,models:v1.models.slice(0,3)});await h.store.start(url);assert.equal(h.store.current,seed);assert.equal(h.status.at(-1).state,'kept-working');
 });
 test('v1 -> v2 activates atomically, survives fresh offline launch, rolls back to v1',async()=>{
   const h=harness();await h.store.start(url);assert.equal(h.store.current.manifest.release,'pilot-2');assert.equal(h.cache.pack.manifest.release,'pilot-2');

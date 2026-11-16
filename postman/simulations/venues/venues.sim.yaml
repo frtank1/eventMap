@@ -1,0 +1,7 @@
+simulation: eventmap-venues
+routing: path
+mocks:
+  - name: venues
+    routeKey: venues-api
+    origin: eventmap-guo1.onrender.com
+    path: postman/mocks/venues

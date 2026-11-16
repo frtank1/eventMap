@@ -1,0 +1,7 @@
+simulation: eventmap-geography
+routing: path
+mocks:
+  - name: geography
+    routeKey: geography
+    origin: eventmap-guo1.onrender.com
+    path: postman/mocks/geography

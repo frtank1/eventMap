@@ -1,0 +1,30 @@
+purpose:
+  stands_in_for: EventMap public read-only geography manifest and immutable JSON assets.
+  unblocks: Client update, rollback and failure-path verification without changing production or requiring account credentials.
+assumptions:
+  - id: compatible-geography-read-contract
+    status: supported
+    claim: Local WorldRoutes serves the geography manifest and hash-addressed assets with public CORS and their intended cache policies.
+    reason: The repository contract, route implementation and database-free Ktor classpath tests agree; scope is the local backend build, not Render deployment.
+    verification: On 2026-11-16, WorldRoutesTest passed both tests, checking exact asset bytes, SHA-256, sizes, schema fields, cache headers, CORS and unknown paths. Fingerprint local-geography-2026-11-16.
+    source: 05_Docs/API_CONTRACT.md; 04_Backend/server/src/main/kotlin/com/eventmap/server/presentation/routes/WorldRoutes.kt; 04_Backend/server/src/test/kotlin/com/eventmap/server/WorldRoutesTest.kt
+    updated_at: "2026-11-16"
+  - id: caller-failure-retention
+    status: supported
+    claim: The real JS geography client retains its working pair during the modeled bad hash, incompatible schema, HTTP 503 and timeout responses, and accepts a valid upgrade and rollback.
+    reason: The real GeoCatalogStore used actual fetch over loopback HTTP; the Postman log contains manifest and asset requests, not a substituted HTTP client. Cache storage was an in-memory implementation, so this does not establish mobile IndexedDB durability.
+    verification: On 2026-11-16, node 02_Code/game-city/test/geo-http.mjs passed v1, four failure modes, v2, fresh-store offline cached restart and rollback against Postman simulation port 4016. Timeout injection delayed the manifest 1800 ms against a 1000 ms test deadline. Fingerprint local-geography-2026-11-16.
+    source: 02_Code/game-city/runtime/geo-catalog-store.js; 02_Code/game-city/test/geo-http.mjs; postman/mocks/geography/default.js
+    updated_at: "2026-11-16"
+  - id: production-and-device-persistence
+    status: unknown
+    claim: Render has the new geography route and compatible payload, and the installed app retains it through a real offline process restart.
+    reason: No production deployment or real mobile offline restart was performed in this slice. The simulation cannot establish either property.
+    verification: Pending deployment check plus actual Android/iOS process-restart test. Owner mock discovery was skipped because Postman is signed out; this locally owned mock derives from the repository contract, uses synthetic public coordinates and is not published.
+    source: 02_Code/game-city/README.md; postman/simulations/geography/geography.sim.yaml
+    updated_at: "2026-11-16"
+fingerprints:
+  - id: local-geography-2026-11-16
+    date: "2026-11-16"
+    commit: "446a3aee4dd5a8d19073cf23690e6d62ee35a2e8 (dirty working tree; geography changes uncommitted)"
+    cli: "1.85.0"
