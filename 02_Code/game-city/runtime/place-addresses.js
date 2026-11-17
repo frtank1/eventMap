@@ -88,8 +88,10 @@ export function createAddressIndex(data,catalog){
   return {lookup,count:byRef.size};
 }
 
-export async function readBundledJSON(url,limit=12*1024*1024,{timeoutMs=6000}={}){
-    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000)throw new Error('Invalid bundled read timeout');
+// Bundled files are several MB: on a phone (slow Wi-Fi, mobile data, parallel downloads)
+// 6–30 s aborted them on 17.11 (iPhone: "Fetch is aborted", no city silhouette).
+export async function readBundledJSON(url,limit=12*1024*1024,{timeoutMs=90000}={}){
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>180000)throw new Error('Invalid bundled read timeout');
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       // WKWebView's file-backed bundled resource is read locally, without

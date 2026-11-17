@@ -2,6 +2,15 @@
 
 > **17.11 вечер:** мобильный концепт (PWA) и задачи по важности — `05_Docs/ROADMAP_MOBILE_CONCEPT_2026-11-17.md`. Люди теперь из Quaternius Ultimate Modular Men/Women (`build-people.mjs`, `runtime/people-kit.js`); Universal Base Characters убраны в `game-city/data/universal-kit/`.
 
+> **17.11, проверено на iPhone (Safari, Wi-Fi с Mac) — всё работает.** Исправлено по ходу:
+> старт веб-версии с вида на весь город (`focusId:'city'`, как у фестиваля, ~4× легче кадр);
+> на телефонах (pointer: coarse) без мягких теней; большие JSON — таймаут 90–150 с, силуэт города
+> грузится даже без адресов и перезапрашивается; `web/serve.mjs` отдаёт gzip; `?debug=1` в веб-версии
+> показывает GPU, highp, float-таргеты, FPS и ошибки; PMREM-окружение выключается без float-таргетов;
+> `city-geometry.emc` (prepared city) выключен до починки — `node build.mjs --bake`.
+> Android-эмулятор Chrome всё ещё может показывать пустой серый экран (GLES Translator) — на
+> реальном iPhone и в Chrome на Mac город рисуется; эмулятор не считать эталоном.
+
 Короткий актуальный вход. Читается за пять минут. История и подробности — в
 `05_Docs/HANDOFF_FABLE_5.2_2026-11-16.md` и в датированных разделах `02_Code/game-city/README.md`
 (новейший сверху). Правила проекта — `CLAUDE.md`.

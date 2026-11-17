@@ -47,15 +47,17 @@ const info = document.querySelector('#status');
 let renderer, controls, city, store, frame, active = true, night = false, theme = 'default';
 let current = seed, modelRoot, models = [], markers = [], lastEvents = [], nightMaterials = [],landmarkGround;
 let scene, camera, sunlight, ambient, terrain, social, preview=false, labelRoot = document.querySelector('#labels');
+const coarsePointer=typeof matchMedia==='function'&&matchMedia('(pointer: coarse)').matches;
 let quarter,effects,sky,quarterMode=true,quality='balanced',blocked=false,lastNativeAppearance='';
 const districts=new Map();let districtId='baiterek';
 let cityStatus={};
 let backdrop,overviewData,overviewRead,backdropBuild,backdropStopped=false,backdropBooted=false,backdropKey='';
-const ensureOverview=()=>overviewRead??=(readBundledJSON('overview.json',16*1024*1024,{timeoutMs:30000}).then(d=>overviewData=d).catch(e=>{overviewRead=null;throw e;}));
+const ensureOverview=()=>overviewRead??=(readBundledJSON('overview.json',16*1024*1024,{timeoutMs:150000}).then(d=>overviewData=d).catch(e=>{overviewRead=null;throw e;}));
 let quarterReplacement=null,trialBackdrop=null,trialSnapshot=null,trialRevision=0,trialBusy=false,trialRequested='current',geometryRevision=0,trialBuild=null;
 const trialVariant=()=>quarterReplacement?'nsdi':'current';
 function makeQuarter(id='baiterek',catalog=geoCatalog,replacement=quarterReplacement){return createBaiterekQuarter({district:id,entries:models.map(p=>p.entry),catalog,replacement});}
 const pacer=createFramePacer(30);
+let backdropRetries=0;
 async function refreshBackdrop(){
   if(!backdropBooted||backdropStopped)return;
   const key=cityGeometryKey(models.filter(p=>!withheldModels.has(p.entry.id)).map(p=>p.entry),geoCatalog);
@@ -72,7 +74,9 @@ async function refreshBackdrop(){
     if(job.signal.aborted){next.destroy();nextOverlay?.destroy();return;}
     const previous=backdrop,previousOverlay=trialBackdrop;backdrop=next;trialBackdrop=nextOverlay||null;scene.add(next.group);if(trialBackdrop)scene.add(trialBackdrop.group);next=nextOverlay=null;previous?.destroy();previousOverlay?.destroy();city?.setBackdropReady(true);appearance();setQuarterMode();
     backdropKey=key;native({type:'status',state:'overview-ready'});
-  }catch(e){next?.destroy();nextOverlay?.destroy();if(e.name!=='AbortError'){console.warn('City overview unavailable; keeping streamed map.',e.message);if(!backdrop){city?.setBackdropReady(false);native({type:'status',state:'overview-unavailable'});}}}
+  }catch(e){next?.destroy();nextOverlay?.destroy();if(e.name!=='AbortError'){console.warn('City overview unavailable; keeping streamed map.',e.message);if(!backdrop){city?.setBackdropReady(false);native({type:'status',state:'overview-unavailable'});
+    // A slow first load is retried, not given up for the session.
+    if(backdropRetries<3){backdropRetries++;setTimeout(()=>void refreshBackdrop(),15000*backdropRetries);}}}}
 }
 const allPlaces=()=>models;
 const styledPlaces=new Set(CITY_PLACES.map(p=>p.id));
@@ -204,7 +208,12 @@ function appearance() {
   scene.fog = new THREE.Fog(scene.background,11000,45000);
   sky?.setMood({top:mood.zenith,horizon:mood.sky,cloud:mood.cloud,glow:night?0x5f7fb5:0xfff0c8,night,sun:SUN_OFFSET});
   const key=`${night}:${theme}`;
-  if(key!==environmentKey){
+  // PMREM renders into half-float targets. Without a renderable float format (the Android
+  // emulator's GLES translator, some phones) it yields garbage and every PBR surface goes
+  // black or fog-grey, so the sky environment is skipped there; the hemisphere light stays.
+  const floatTargets=renderer.extensions.has('EXT_color_buffer_float')||renderer.extensions.has('EXT_color_buffer_half_float');
+  if(!floatTargets&&scene.environment){scene.environment=null;environment?.dispose();environment=null;}
+  if(floatTargets&&key!==environmentKey){
     // One small prefiltered sky per day/night change; no per-frame cost.
     environmentKey=key;pmrem||=new THREE.PMREMGenerator(renderer);
     const source=createEnvironmentScene({top:mood.zenith,horizon:mood.sky,ground:mood.groundLight,glow:night?0x6f8fc5:0xffe2b0,sun:SUN_OFFSET});
@@ -455,7 +464,9 @@ function render(t) {
   if(quarterMode)quarter?.update(distance,sceneTime,reducedMotion.matches||blocked,quality);
   else city?.animate(sceneTime,reducedMotion.matches||blocked);
   effects.update(dt,{camera,target:controls.target,distance:camera.position.length(),quality,visible:camera.position.length()<1800,reduced:reducedMotion.matches,blocked,dpr:renderer.getPixelRatio()});
-  const shadows=quality==='balanced'&&distance<1200;
+  // Phones: a soft shadow map re-renders the whole quarter every update, which the
+  // 17.11 iPhone test felt as lag; the contact-shadow textures stay.
+  const shadows=quality==='balanced'&&distance<1200&&!coarsePointer;
   if(shadows!==shadowsEnabled){shadowsEnabled=shadows;renderer.shadowMap.enabled=shadows;shadowDirty=true;}
   if(shadows&&shadowDirty){renderer.shadowMap.needsUpdate=true;shadowDirty=false;}
   // Event covers take priority over place captions; never print both on top of
@@ -516,7 +527,13 @@ function setupSceneControls(){
 }
 function resize() { if(!renderer || innerWidth<1 || innerHeight<1)return; renderer.setSize(innerWidth,innerHeight,false); camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix(); }
 try {
-  renderer = new THREE.WebGLRenderer({canvas:document.querySelector('canvas'),antialias:true,alpha:false,powerPreference:'default'});
+  // GLSL ES 3.00 guarantees highp in fragment shaders, but some GPU translators (the
+  // Android emulator's) report precision 0: three then drops to mediump everywhere and
+  // city-scale vertex positions collapse into an empty, fog-coloured screen.
+  const canvasEl=document.querySelector('canvas'),gl2=canvasEl.getContext('webgl2',{antialias:true,alpha:false,powerPreference:'default'});
+  if(gl2){const precisionOf=gl2.getShaderPrecisionFormat.bind(gl2);
+    gl2.getShaderPrecisionFormat=(shader,type)=>{const f=precisionOf(shader,type);return type===gl2.HIGH_FLOAT&&f&&f.precision===0?{rangeMin:127,rangeMax:127,precision:23}:f;};}
+  renderer = new THREE.WebGLRenderer({canvas:canvasEl,context:gl2||undefined,antialias:true,alpha:false,powerPreference:'default'});
   const gl=renderer.getContext();depthBits=gl.getParameter(gl.DEPTH_BITS);
   renderer.setPixelRatio(governor.pixelRatio); renderer.outputColorSpace=THREE.SRGBColorSpace;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;
@@ -556,7 +573,8 @@ try {
   frame=requestAnimationFrame(render);native({type:'ready'});
   // Resolve replacement footprints once, then upload baked district buffers.
   // Source polygons are read only for a changed catalog / explicit A-B trial.
-  void addresses.ensureFallback().then(()=>{backdropBooted=true;return refreshBackdrop();}).catch(e=>{console.warn('City overview unavailable:',e.message);native({type:'status',state:'overview-unavailable'});});
+  // The silhouette must not depend on the address file: boot it either way.
+  void addresses.ensureFallback().catch(e=>console.warn('Bundled addresses unavailable:',e.message)).then(()=>{backdropBooted=true;return refreshBackdrop();}).catch(e=>{console.warn('City overview unavailable:',e.message);native({type:'status',state:'overview-unavailable'});});
   // Browser-only local QA. Native supplies the URL through the typed bridge.
   if (['localhost','127.0.0.1'].includes(location.hostname)) receive({v:1,type:'init',manifestUrl:new URL('/world/manifest.json',location.href).href});
 } catch (e) { info.textContent='3D недоступна. Можно вернуться к обычной карте.';native({type:'error',state:'graphics-unavailable'});console.error(e); }

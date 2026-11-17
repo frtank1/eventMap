@@ -8,7 +8,7 @@ import {clone as cloneSkinned} from '../source/vendor/SkeletonUtils.js';
 import {palettes} from './social-state.js';
 
 const KIT_MAX_BYTES=4*1024*1024;
-export function readBundledBinary(url,limit=KIT_MAX_BYTES,timeoutMs=20000){
+export function readBundledBinary(url,limit=KIT_MAX_BYTES,timeoutMs=120000){
   // XHR also works for WKWebView file:// bundles, where fetch() is refused.
   return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('GET',url);x.responseType='arraybuffer';x.timeout=timeoutMs;
     x.onload=()=>{const b=x.response;if((x.status===0||x.status===200)&&b instanceof ArrayBuffer&&b.byteLength>12&&b.byteLength<=limit)resolve(b);else reject(new Error(`Character file unavailable: ${url}`));};

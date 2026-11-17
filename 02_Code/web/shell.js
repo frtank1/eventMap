@@ -16,7 +16,7 @@ function push(){
   const t=now(),night=state.night??isNight(t);
   engine().receive({v:1,type:'sync',manifestUrl:new URL('world/manifest.json',location.href).href,
     events:visible().slice(0,150).map(e=>toCityEvent(e,t,state.coverFiles)),covers:[...state.covers.values()].slice(-8),
-    night,theme:state.config.theme&&state.config.theme!=='auto'?state.config.theme:themeFor(t),active:true,focusId:'baiterek',focusRevision:0,updateRevision:0,interactionBlocked:false});
+    night,theme:state.config.theme&&state.config.theme!=='auto'?state.config.theme:themeFor(t),active:true,focusId:'city',focusRevision:0,updateRevision:0,interactionBlocked:false});
   document.body.classList.toggle('em-night',night);
 }
 
@@ -128,3 +128,23 @@ async function start(){
   setInterval(load,10*60000);
 }
 start();
+
+// ?debug=1: on-screen diagnostics for phones/emulators without devtools
+// (WebGL support, GPU, lost context, engine FPS and the last errors).
+if(params.get('debug')==='1'){
+  const box=el('pre','em-debug');document.body.append(box);const errors=[];
+  const note=m=>{errors.push(String(m).slice(0,160));if(errors.length>6)errors.shift();};
+  addEventListener('error',e=>note(`error: ${e.message||e.target?.src||e.type}`),true);
+  addEventListener('unhandledrejection',e=>note(`promise: ${e.reason?.message||e.reason}`));
+  const warn=console.warn,error=console.error;console.warn=(...a)=>{note(`warn: ${a.join(' ')}`);warn(...a);};console.error=(...a)=>{note(`error: ${a.join(' ')}`);error(...a);};
+  const probe=document.createElement('canvas').getContext('webgl2'),info=probe?.getExtension('WEBGL_debug_renderer_info');
+  const gpu=probe?(info?probe.getParameter(info.UNMASKED_RENDERER_WEBGL):probe.getParameter(probe.RENDERER)):'WebGL2 недоступен';
+  const floats=probe?['EXT_color_buffer_float','EXT_color_buffer_half_float'].map(e=>`${e.replace('EXT_color_buffer_','')}:${probe.getSupportedExtensions().includes(e)?'да':'нет'}`).join(' '):'?';
+  const highp=probe?['VERTEX_SHADER','FRAGMENT_SHADER'].map(k=>probe.getShaderPrecisionFormat(probe[k],probe.HIGH_FLOAT)?.precision).join('/'):'?';
+  let lost=false;setTimeout(()=>document.querySelector('canvas')?.addEventListener('webglcontextlost',()=>{lost=true;},false),0);
+  setInterval(()=>{let s={};try{s=engine()?.stats?.()||{};}catch(e){note(`stats: ${e.message}`);}
+    const c=document.querySelector('canvas'),gl=c?.getContext('webgl2');
+    box.textContent=[`GPU: ${gpu}`,`highp (вершины/пиксели): ${highp} · ${floats}`,`canvas: ${c?`${c.width}×${c.height}`:'нет'} · context ${gl?(gl.isContextLost()?'LOST':'ok'):'нет'}${lost?' (был потерян)':''}`,
+      `fps ${s.fps??'?'} · draws ${s.drawCalls??'?'} · tris ${s.triangles??'?'} · ${s.quarterMode?'квартал':'город'} · backdrop ${s.backdropReady?'да':'нет'}`,
+      `память JS: ${performance.memory?Math.round(performance.memory.usedJSHeapSize/1048576)+' MB':'?'}`,...errors].join('\n');},1000);
+}
