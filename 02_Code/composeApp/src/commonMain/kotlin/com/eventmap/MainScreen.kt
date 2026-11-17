@@ -98,7 +98,8 @@ class MainScreen : Screen {
     override fun Content() {
         val nav = LocalNavigator.currentOrThrow
         var selected by rememberSaveable { mutableStateOf(0) }
-        var gameCity by rememberSaveable { mutableStateOf(false) }
+        // The 3D city is the main map; the provider map stays reachable from its header.
+        var gameCity by rememberSaveable { mutableStateOf(true) }
 
         // Дошли до главного экрана после входа — один раз предложим настроить PIN.
         val appLock = remember { getKoin().get<AppLockController>() }
@@ -124,7 +125,7 @@ class MainScreen : Screen {
                         androidx.compose.material3.FilledTonalButton(
                             onClick={gameCity=true},
                             modifier=Modifier.align(Alignment.BottomEnd).padding(end=12.dp,bottom=100.dp),
-                        ) { Text("3D-город · пилот") }
+                        ) { Text("3D-город") }
                     }
                     // «Сейчас»: ролики участников + колокольчик (лента/уведомления)
                     1 -> VideoFeedContent(onNotifications = { nav.push(FeedScreen()) })

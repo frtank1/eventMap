@@ -164,6 +164,8 @@ internal data class CitySnapshot(
     val focusId: String = "baiterek", val focusRevision: Int = 0, val updateRevision: Int = 0,
     val interactionBlocked: Boolean = false,
     val covers: List<CityCover> = emptyList(),
+    /** "auto" follows the Astana clock/calendar; otherwise sunrise|day|sunset|night, spring|summer|autumn|winter. */
+    val phase: String = "auto", val season: String = "auto", val weather: String = "clear",
 )
 
 /** Only serialized public scene state crosses this boundary. Never tokens or API credentials. */
