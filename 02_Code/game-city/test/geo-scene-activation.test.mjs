@@ -10,9 +10,9 @@ assert.ok(begin>=0&&end>begin);const activation=source.slice(begin,end);
 function fixture(fail){
   const calls=[],resource=name=>({name,group:{name},destroy(){calls.push(`destroy:${name}`);}});
   const oldCity=resource('old-city'),oldQuarter=resource('old-quarter'),newCity=resource('new-city'),newQuarter=resource('new-quarter');
-  const context=vm.createContext({calls,geoCatalog:{old:true},geoGeometry:'old-signature',city:oldCity,quarter:oldQuarter,districtId:'baiterek',quarterMode:true,
-    districts:new Map([['baiterek',oldQuarter]]),models:[{entry:{id:'baiterek'}}],
-    scene:{add(group){calls.push(`add:${group.name}`);}},createWorldStream(){return newCity;},createBaiterekQuarter(){return newQuarter;},
+  const context=vm.createContext({calls,geometryRevision:0,geoCatalog:{old:true},geoGeometry:'old-signature',city:oldCity,quarter:oldQuarter,districtId:'baiterek',quarterMode:true,
+    districts:new Map([['baiterek',oldQuarter]]),models:[{entry:{id:'baiterek'}}],refreshBackdrop(){calls.push('backdrop');},
+    scene:{add(group){calls.push(`add:${group.name}`);}},createWorldStream(){return newCity;},makeQuarter(){return newQuarter;},
     setQuarterMode(){calls.push('mode');if(fail==='mode')throw Error('mode failure');},appearance(){calls.push('appearance');if(fail==='appearance')throw Error('appearance failure');}});
   vm.runInContext(activation,context);
   return {context,calls,oldCity,oldQuarter,newCity,newQuarter};

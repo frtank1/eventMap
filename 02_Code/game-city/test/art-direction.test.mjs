@@ -1,19 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ART_VERSION,CITY_PALETTE,eventDisplayLevel,sceneMood} from '../runtime/art-direction.js';
+import {ART_VERSION,CITY_PALETTE,eventDisplayLevel,sceneMood,landmarkColor} from '../runtime/art-direction.js';
 import {bubbleRect,eventTimeLabel} from '../runtime/event-bubbles.js';
 import {groupEvents} from '../runtime/social-state.js';
 import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 
 test('city palette is bounded shared day/night data',()=>{
-  assert.equal(ART_VERSION,'nurjol-garden-2');
+  assert.equal(ART_VERSION,'city-day-diorama-2');
   for(const colors of Object.values(CITY_PALETTE)){
     assert.equal(colors.length,2);for(const c of colors)assert.ok(Number.isInteger(c)&&c>=0&&c<=0xffffff);
   }
   assert.notEqual(sceneMood(false).land,sceneMood(true).land);
   assert.notEqual(sceneMood(false).land,sceneMood(false,'winter').land);
   assert.deepEqual(sceneMood(true,'winter'),sceneMood(true,'newyear'));
+});
+test('day revision preserves night mood and remaps only known landmark materials',()=>{
+  assert.deepEqual(sceneMood(true),{sky:0x1a3157,zenith:0x07122a,cloud:0x2a3f63,land:0x20394a,
+    skyLight:0x91b7e7,groundLight:0x25334b,sun:0x9fbeec,ambient:1.08,direct:.8,exposure:1.08});
+  assert.equal(landmarkColor(0xe6cba5),CITY_PALETTE.ivory[0]);
+  assert.equal(landmarkColor(0x4d9190),CITY_PALETTE.glass[0]);
+  assert.equal(landmarkColor(0x8da89d),CITY_PALETTE.rooftop[0]);
+  assert.equal(landmarkColor(0xe1b956),0xe1b956); // Baiterek gold survives.
+  assert.equal(landmarkColor(0xf2dfbf,true),0x91a4b6);
+  assert.equal(landmarkColor(0x618d91,true),0x415c75);
+  assert.equal(landmarkColor(0x86bd5a,true),0x29534f);
 });
 test('event visual hierarchy uses hysteresis and preserves tappable anchors',()=>{
   assert.equal(eventDisplayLevel(3300),'city');assert.equal(eventDisplayLevel(2700,'city'),'city');

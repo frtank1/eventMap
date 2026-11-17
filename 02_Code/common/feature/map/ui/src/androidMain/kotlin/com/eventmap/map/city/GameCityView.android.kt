@@ -1,6 +1,7 @@
 package com.eventmap.map.city
 
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -16,6 +17,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import eventmap.common.feature.map.ui.generated.resources.Res
 import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.json.JSONObject
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalResourceApi::class)
@@ -51,7 +53,15 @@ actual fun GameCityView(payload:String, modifier:Modifier, onMessage:(String)->U
             } else post { callback("{\"v\":1,\"type\":\"error\",\"state\":\"unsupported-webview\"}") }
         }
     }
-    LaunchedEffect(web,ready,payload) { if(ready) web.evaluateJavascript("window.EventMapMobile?.receive($payload);",null) }
+    LaunchedEffect(web,ready,payload) {
+        if(ready) {
+            // This opt-in is computed by the host, never trusted from API data.
+            // Release APKs cannot enable the fixture/benchmark presentation.
+            val debugPreview=(context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE)!=0 &&
+                runCatching { JSONObject(payload).optBoolean("preview",false) }.getOrDefault(false)
+            web.evaluateJavascript("window.EventMapDebugPreview=$debugPreview;window.EventMapMobile?.receive($payload);",null)
+        }
+    }
     DisposableEffect(web) { onDispose { ready=false;web.stopLoading();web.loadUrl("about:blank");web.removeAllViews();web.destroy() } }
     AndroidView(factory={web},modifier=modifier)
 }

@@ -15,6 +15,8 @@ export const PERFORMANCE_SCENARIOS = Object.freeze([
   Object.freeze({id:'baiterek-night', title:'Байтерек · ночь', focus:'baiterek', night:true}),
   Object.freeze({id:'arena-day', title:'Арена · день', focus:'arena', night:false}),
   Object.freeze({id:'city-day', title:'Обзор города · день', focus:'city', night:false}),
+  Object.freeze({id:'city-night', title:'Обзор города · ночь', focus:'city', night:true}),
+  Object.freeze({id:'bridges-night', title:'Мосты у Ак Орды · ночь', focus:'akorda', night:true}),
 ]);
 
 const counter = value => Number.isSafeInteger(value) && value>=0 ? value : null;

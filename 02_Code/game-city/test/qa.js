@@ -3,7 +3,7 @@ const style=document.createElement('link');style.rel='stylesheet';style.href='mo
 const line=document.createElement('output');panel.append(line);
 function button(text,click){const b=document.createElement('button');b.textContent=text;b.onclick=click;panel.append(b);}
 const send=m=>window.EventMapMobile.receive({v:1,...m});
-if(new URLSearchParams(location.search).has('stage1')){
+if(new URLSearchParams(location.search).has('stage1')||new URLSearchParams(location.search).get('festival')==='1'){
   // The isolated stage-one fixtures are loaded by the loopback server only.
 }else if(new URLSearchParams(location.search).has('journey')){
   panel.classList.add('journey-qa');line.textContent='ДЕМО · без GPS и записи в API';
@@ -22,6 +22,7 @@ if(new URLSearchParams(location.search).has('stage1')){
   show();
 }else{
 button('Байтерек',()=>send({type:'focus',id:'baiterek'}));button('Ак Орда',()=>send({type:'focus',id:'akorda'}));button('Арена',()=>send({type:'focus',id:'arena'}));
+button('Фестиваль · 150 событий',()=>{location.href='/?festival=1';});
 button('День / ночь',()=>{night=!night;send({type:'appearance',night,theme:'default'})});
 for(const r of ['pilot-1','pilot-2','offline','incompatible'])button(r,async()=>{await fetch('/__qa/release?value='+r,{method:'POST'});send({type:'update'});});
 addEventListener('eventmap-message',e=>{line.textContent=JSON.stringify(e.detail);});

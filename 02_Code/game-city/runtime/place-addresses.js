@@ -88,13 +88,14 @@ export function createAddressIndex(data,catalog){
   return {lookup,count:byRef.size};
 }
 
-export async function readBundledJSON(url,limit=12*1024*1024){
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),6000);
+export async function readBundledJSON(url,limit=12*1024*1024,{timeoutMs=6000}={}){
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000)throw new Error('Invalid bundled read timeout');
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       // WKWebView's file-backed bundled resource is read locally, without
       // enabling universal file access or adding a remote geocoding service.
       const text=globalThis.location?.protocol==='file:'?await new Promise((resolve,reject)=>{
-        const xhr=new XMLHttpRequest();xhr.open('GET',url);xhr.timeout=6000;
+        const xhr=new XMLHttpRequest();xhr.open('GET',url);xhr.timeout=timeoutMs;
         xhr.onload=()=>xhr.status===0||xhr.status===200?resolve(xhr.responseText):reject(new Error('Address file unavailable'));
         xhr.onerror=xhr.ontimeout=()=>reject(new Error('Address file unavailable'));xhr.send();
       }):await (async()=>{const response=await fetch(url,{credentials:'omit',signal:controller.signal});if(!response.ok)throw new Error('Address file unavailable');return response.text();})();

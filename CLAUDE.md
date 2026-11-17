@@ -7,6 +7,8 @@ Ktor-бэкенд и 3D «игровой город» (Three.js в WebView). В�
 
 ## С чего начать
 
+0. **`05_Docs/STATE_FOR_NEXT_AGENT_2026-11-17.md` — короткое актуальное состояние, очередь задач и ловушки.
+   Начинать с него.** Пункты ниже — подробности и история.
 1. `05_Docs/HANDOFF_FABLE_5.2_2026-11-16.md` — состояние на 16.11.2026 и очередь задач.
    Текущий фокус — **игровой город 3D**.
 2. `02_Code/game-city/README.md` — датированные срезы, новейший сверху. Более поздний
@@ -28,6 +30,7 @@ Ktor-бэкенд и 3D «игровой город» (Three.js в WebView). В�
 | `02_Code/common/feature/*` | Фичи клиента: `domain` / `data` / `ui` (см. `02_Code/FEATURE.md`) |
 | `02_Code/composeApp`, `02_Code/androidApp` | Общий app shell (`MainScreen`) и Android entry point (после миграции AGP 9) |
 | `02_Code/androidApp/src/debug` | Debug-only `CityPreviewActivity` / `VenuePreview` — не попадают в release |
+| `02_Code/web/` | Публичная веб-версия карты под запуск: оболочка вокруг собранного движка, `events.json`, статическая сборка |
 | `02_Code/game-city-unity/` | Изолированный Unity-пилот (6000.3.26f1). Не встроен в мобилку |
 | `04_Backend/server/` | Ktor + Exposed + PostgreSQL + Flyway (V1–V16), JWT. `/world/*`, `/venues`, `/admin/venues` |
 | `postman/` | Локальные симуляции (Mux, geography, venues) — не production |

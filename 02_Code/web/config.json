@@ -1,0 +1,10 @@
+{
+  "title": "EventMap",
+  "city": "Астана",
+  "description": "Живая 3D-карта Астаны: что происходит в городе сегодня и на выходных.",
+  "siteUrl": "",
+  "suggestUrl": "",
+  "apiEvents": "",
+  "theme": "auto",
+  "demoEvents": true
+}

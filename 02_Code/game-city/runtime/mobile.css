@@ -29,7 +29,7 @@ html,body{position:fixed;inset:0;min-height:100vh}canvas{position:fixed;inset:0}
 @media(max-width:360px){#city-hud{left:8px;right:8px}.hud-actions{gap:5px}.hud-actions button{padding:0 10px;font-size:11px}.city-sheet{padding:16px}.sheet-heading h2{font-size:22px}}
 /* Photo balloons: native event covers, projected onto the actual event location. */
 .event-balloon{position:absolute;top:0;left:0;width:120px;height:150px;padding:0;border:0;background:none;color:#fff;pointer-events:none;font:500 11px system-ui;isolation:isolate}
-.balloon-head{position:absolute;top:0;left:0;width:120px;display:flex;align-items:center;flex-direction:column;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 4px 8px #0b172c35)}
+.balloon-head{position:absolute;top:0;left:0;width:120px;display:flex;align-items:center;flex-direction:column;pointer-events:auto;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;filter:drop-shadow(0 4px 8px #0b172c35)}
 .balloon-face{position:relative;display:block;flex-shrink:0;width:76px;height:80px;border:3px solid #fff8e9;border-radius:50% 50% 47% 47%;background:#314551;box-shadow:0 0 0 2px var(--event-color),inset 0 0 12px #fff4;overflow:hidden}
 .balloon-face:after{content:'';position:absolute;inset:0;border-radius:inherit;background:radial-gradient(ellipse at 26% 15%,#fff6,transparent 40%),linear-gradient(120deg,transparent 45%,#05112644);pointer-events:none}
 .balloon-image{position:absolute;width:100%;height:100%;inset:0;object-fit:cover}
@@ -70,3 +70,37 @@ body.night{--ink:#eff2ec;--muted:#adbfcc;--surface:#20364bf2;--accent:#b9d5cf;co
 .balloon-fallback{background:linear-gradient(145deg,#3e6471,#25444f)}.balloon-count{background:var(--surface);color:var(--ink);border-color:#fff9ec}
 .event-balloon[data-level=city]{width:56px;height:64px}.event-balloon[data-level=city] .balloon-head{width:56px;min-height:44px}.event-balloon[data-level=city] .balloon-face{width:40px;height:40px;border:2px solid #fff9ec;border-radius:15px}.event-balloon[data-level=city] .balloon-fallback{display:grid}.event-balloon[data-level=city] .balloon-fallback svg{width:23px;height:23px}.event-balloon[data-level=city] .balloon-image,.event-balloon[data-level=city] .balloon-title,.event-balloon[data-level=city] .balloon-status,.event-balloon[data-level=city] .balloon-category{display:none}.event-balloon[data-level=city] .balloon-count{top:-6px;right:-1px;width:24px;height:24px;font-size:11px}.event-balloon[data-level=city] .balloon-tether{top:40px;bottom:5px}.event-balloon[data-level=city] .balloon-anchor{width:8px;height:5px;left:calc(50% - 4px)}
 .event-balloon.is-selected .balloon-face{box-shadow:0 0 0 2px var(--event-color),0 0 0 6px #fff6}
+/* Explicit local festival load test. Default/native balloon sizing is unchanged. */
+.festival-density .event-balloon[data-level=city]{height:76px}
+.festival-density .event-balloon[data-level=city] .balloon-face{width:46px;height:48px;border-radius:50% 50% 45% 45%;box-shadow:0 0 0 2px var(--event-color),0 0 14px color-mix(in srgb,var(--event-color) 38%,transparent)}
+.festival-density .event-balloon[data-level=city] .balloon-image{display:block}
+.festival-density .event-balloon[data-level=city] .has-cover .balloon-fallback{display:none}
+.festival-density .event-balloon[data-level=city] .balloon-tether{top:48px}
+.festival-density .event-balloon[data-level=district]{width:80px;height:104px}
+.festival-density .event-balloon[data-level=district] .balloon-head{width:80px}
+.festival-density .event-balloon[data-level=district] .balloon-face{width:50px;height:54px}
+.festival-density .event-balloon[data-level=district] .balloon-title{max-width:80px;font-size:9px;line-height:12px;padding:3px 5px}
+.festival-density .event-balloon[data-level=district] .balloon-status{font-size:8px;line-height:12px}
+.festival-density .event-balloon[data-level=district] .balloon-category{top:35px;right:9px;width:20px;height:20px}
+.festival-density .event-balloon[data-level=district] .balloon-tether{top:54px}
+#qa.festival-toolbar{left:16px;right:auto;top:16px;width:min(650px,calc(100vw - 32px));padding:13px 16px;border:1px solid #c4b4f13d;border-radius:18px;background:#102234f2;box-shadow:0 10px 40px #0003;color:#fff;font:11px/1.5 system-ui;word-break:normal}
+.festival-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}.festival-heading strong{font-size:14px;letter-spacing:1.5px}.festival-heading span{color:#c2b1f0;font-size:8px;letter-spacing:1px}
+#qa.festival-toolbar output{display:block;color:#b9cbdb;font-size:10px;margin-bottom:8px}
+.festival-actions{display:flex;flex-wrap:wrap;gap:5px}
+#qa.festival-toolbar button,.festival-actions select{margin:0;border:1px solid #72869c55;border-radius:9px;padding:8px 10px;background:#24364b;color:#fff;font:11px system-ui}
+#qa.festival-toolbar button[aria-pressed=true]{background:#7356a1;border-color:#bd9ce9}
+.festival-cover{display:block;width:100%;height:170px;object-fit:cover;border-radius:14px}
+@media(max-width:699px){#qa.festival-toolbar{top:8px;left:8px;width:calc(100vw - 16px);padding:10px}.festival-heading{display:block}.festival-heading span{display:block;margin-top:3px}#qa.festival-toolbar button,.festival-actions select{font-size:10px;padding:7px 9px}}
+
+/* Soft lens falloff: pure CSS, no render pass. */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 46%,transparent 58%,#16243a2e 100%)}
+body.night::after{background:radial-gradient(ellipse at 50% 46%,transparent 52%,#050b1670 100%)}
+
+/* Day markers use ink/contact shadows, not neon halos on pale terrain. */
+body:not(.night) .balloon-status{color:#284b57;text-shadow:0 1px 2px #fff,0 0 5px #fff}
+body:not(.night) .balloon-tether{background:linear-gradient(#fff,#345864);box-shadow:1px 0 #fff9}
+body:not(.night) .balloon-head{filter:drop-shadow(0 4px 5px #233e4d45)}
+body:not(.night) .festival-density .event-balloon[data-level=city] .balloon-face{box-shadow:0 0 0 2px var(--event-color),0 3px 8px #253f4930}
+body:not(.night) #scene-note{color:#294d58;text-shadow:0 1px 3px #fff,0 0 8px #fff}
+body:not(.night) #caption{color:#294750;text-shadow:0 1px 2px #fffc}
+body:not(.night) #tiles{color:#425c61}

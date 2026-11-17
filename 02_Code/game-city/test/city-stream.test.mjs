@@ -77,6 +77,33 @@ async function withCity(run){
 }
 const worldPoint=(tile,p)=>({x:tile.position.x+p[0],z:tile.position.z+p[1]});
 
+test('city detail channels and overview handover reuse geometry across six zoom bands',async()=>withCity(async city=>{
+  city.setBackdropReady(true);city.update(new THREE.Vector3(),5500);await settle(city);
+  const roots=[...city.group.children],geometries=[];for(const r of roots)r.traverse(o=>{if(o.geometry)geometries.push(o.geometry);});
+  for(const d of [5,180,700,1800,5100,6100,5100,1800,180]){
+    city.setLod(d);assert.ok(city.detailWeight()>=0&&city.detailWeight()<=1);
+    if(d===5100)assert.ok(city.detailWeight()>0&&city.detailWeight()<1);
+    if(d===6100)assert.ok(roots.every(r=>!r.visible));
+    const current=[];for(const r of roots)r.traverse(o=>{if(o.geometry)current.push(o.geometry);});assert.deepEqual(current,geometries);
+    for(const r of roots)r.traverse(o=>{if(o.material?.userData.lod)assert.ok(o.material.userData.lod.value<=city.detailWeight());});
+  }
+  city.setBackdropReady(false);city.setLod(6000);assert.equal(city.detailWeight(),1,'failure fallback cannot fade into a missing backdrop');
+}));
+
+test('persistent backdrop removes far network churn; nearby detail keeps z14 source heights',async()=>withCity(async city=>{
+  city.setBackdropReady(true);city.update(new THREE.Vector3(),22000);
+  assert.equal(city.stats().cityTiles,0);assert.deepEqual(city.coverageBounds(),[]);
+  city.update(new THREE.Vector3(),5500);await settle(city);assert.equal(city.stats().cityZoom,14);
+  assert.ok(city.coverageBounds().length>0);assert.ok(city.coverageBounds().length<=9);
+  const meshes=[...city.group.children],cached=city.stats().cityCache;
+  city.update(new THREE.Vector3(),22000);assert.equal(city.stats().cityTiles,0);
+  assert.equal(city.stats().cityCache,cached,'zooming out keeps bounded warm detail');
+  city.update(new THREE.Vector3(),5500);
+  assert.equal(city.stats().cityRequests,0,'zooming back does not refetch warm tiles');
+  assert.deepEqual(new Set(city.group.children),new Set(meshes),'same geometry, not a rebuild');
+  city.setBackdropReady(false);city.update(new THREE.Vector3(),18000);await settle(city);assert.equal(city.stats().cityZoom,12);
+}));
+
 test('near real footprints keep heights/holes/picking and share the material palette',async()=>withCity(async city=>{
   assert.ok(city.stats().cityBuildings>0);
   for(const tile of city.group.children){
@@ -97,14 +124,14 @@ test('near real footprints keep heights/holes/picking and share the material pal
     tile.traverse(o=>{
       if(!o.userData.cityBuilding)return;
       assert.equal(o.castShadow,true);assert.equal(o.receiveShadow,true);
-      const palette={cream:'ivory',cyan:'glass',sand:'sand',mint:'sage',roof:'roof',plinth:'trim'};
+      const palette={cream:'ivory',cyan:'glass',sand:'sand',mint:'sage',roof:'rooftop',plinth:'trim'};
       assert.equal(o.material.color.getHex(),CITY_PALETTE[palette[o.name.slice(5)]][0]);
       for(let i=0;i<o.geometry.attributes.position.count;i++)assert.ok(o.geometry.attributes.position.getY(i)<44);
     });
   }
   city.setNight(true);
   for(const tile of city.group.children)for(const mesh of tile.children.filter(m=>m.name==='city-roof')){
-    assert.equal(mesh.material.color.getHex(),CITY_PALETTE.roof[1]);assert.equal(mesh.material.emissive.getHex(),0);
+    assert.equal(mesh.material.color.getHex(),CITY_PALETTE.rooftop[1]);assert.equal(mesh.material.emissive.getHex(),0);
   }
   city.update(new THREE.Vector3(),3500);await settle(city);
   city.group.traverse(o=>{if(o.userData.cityBuilding){assert.equal(o.castShadow,false);assert.equal(o.receiveShadow,false);}});

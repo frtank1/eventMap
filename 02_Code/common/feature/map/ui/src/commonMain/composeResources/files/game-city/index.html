@@ -16,10 +16,11 @@
   </div>
   <div class="scene-views"><button id="quarter-overview">Обзор</button><button id="quarter-close">Площадь</button><button id="quarter-walk" aria-pressed="false">Прогулка · демо</button></div>
   <div class="scene-views"><button id="whole-city">Вся Астана</button><button id="quarter-baiterek">Байтерек</button><button id="quarter-arena">Астана Арена</button></div>
+  <button id="quarter-source" hidden>Текущая → НИПД · тест</button><p id="quarter-source-note" class="muted" hidden></p>
   <label class="quality-label">Перейти к зданию<select id="city-place-select"><option value="">Выбрать место</option></select></label>
   <label class="quality-label">Качество<select id="scene-quality"><option value="auto">Авто · по плавности</option><option value="balanced">Сбалансированное</option><option value="low">Экономное</option></select></label>
   <label class="stats-label"><input id="show-metrics" type="checkbox">Показать показатели</label>
-  <p class="muted">Весь город подгружается кварталами по сети. Вблизи Байтерека включается детальный встроенный квартал, у Арены есть встроенный резерв. Модели стилизованы; полнота застройки зависит от OSM. FPS здесь — текущий замер, не гарантия для телефона.</p>
+  <p class="muted">Объёмный силуэт города встроен и доступен без сети. При приближении подгружаются подробные кварталы; у Байтерека и Арены есть встроенные участки. Модели стилизованы; полнота и высоты зависят от источника OSM. FPS здесь — текущий замер, не гарантия для телефона.</p>
 </section>
 <output id="scene-metrics" aria-live="off" hidden></output>
 <section id="avatar-editor" class="city-sheet" role="dialog" aria-modal="true" aria-labelledby="avatar-title" hidden>

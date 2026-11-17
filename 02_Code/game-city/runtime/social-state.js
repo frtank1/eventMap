@@ -1,4 +1,5 @@
 // Pure bounded presentation rules; no network, accounts or location collection.
+import {eventGroupCell} from './event-density.js';
 export const palettes = Object.freeze({
   skin:[0xf0c9a8,0xd8a078,0xb87d59,0x764d39],
   hair:[0x292833,0x674632,0xb98a55,0xd7d4cb],
@@ -31,8 +32,8 @@ export function visibleEvents(input, now=Date.now()) {
     coverRef:typeof e.coverRef==='string'&&e.coverRef.length<=512?e.coverRef:null,
   }));
 }
-export function groupEvents(events,distance) {
-  const cell=distance>12000?1500:distance>3000?700:distance>1600?500:distance>650?140:35;
+export function groupEvents(events,distance,festival=false) {
+  const cell=eventGroupCell(distance,festival);
   const buckets=new Map();
   for(const e of events){
     const x=(e.lng-71.43056)*111320*Math.cos(51.12822*Math.PI/180),z=-(e.lat-51.12822)*111320;

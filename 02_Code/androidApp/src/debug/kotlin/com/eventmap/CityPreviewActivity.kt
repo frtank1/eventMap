@@ -1,6 +1,7 @@
 package com.eventmap
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -28,16 +29,25 @@ import org.json.JSONArray
 private data class PreviewCityEvent(
     val id:String,val title:String,val category:String,val lat:Double,val lng:Double,
     val kind:String="planned",val status:String="soon",val count:Int=0,val capacity:Int?=null,val confirmations:Int=0,
-    val locationLabel:String="",
+    val locationLabel:String="",val coverImage:String="",
 ) {
     fun json(joined:Boolean)=JSONObject().put("id",id).put("title",title).put("category",category).put("lat",lat).put("lng",lng)
         .put("kind",kind).put("status",status).put("goingCount",count+if(joined&&kind!="live_signal")1 else 0)
-        .put("capacity",capacity?:JSONObject.NULL).put("confirmationCount",confirmations+if(joined&&kind=="live_signal")1 else 0).put("visibility","public")
+        .put("capacity",capacity?:JSONObject.NULL).put("confirmationCount",confirmations+if(joined&&kind=="live_signal")1 else 0).put("visibility","public").put("coverImage",coverImage)
 }
 
 /** Isolated debug journey. No login, repositories, permission request or network writes. */
 class CityPreviewActivity : ComponentActivity() {
     private var previewActive by mutableStateOf(false)
+    private fun festivalEvents():List<PreviewCityEvent> {
+        val data=JSONArray(assets.open("eventmap-festival/events.json").bufferedReader().use { it.readText() })
+        require(data.length()==150) { "Rebuild the debug festival assets with game-city/build.mjs" }
+        return (0 until data.length()).map { index -> val e=data.getJSONObject(index)
+            PreviewCityEvent(e.getString("id"),e.getString("title"),e.getString("category"),e.getDouble("lat"),e.getDouble("lng"),
+                e.getString("kind"),e.getString("status"),e.getInt("goingCount"),
+                if(e.isNull("capacity"))null else e.getInt("capacity"),e.getInt("confirmationCount"),coverImage=e.getString("coverImage"))
+        }
+    }
     override fun onResume(){super.onResume();previewActive=true}
     override fun onPause(){previewActive=false;super.onPause()}
     @OptIn(ExperimentalMaterial3Api::class)
@@ -48,39 +58,43 @@ class CityPreviewActivity : ComponentActivity() {
                 var sheet by remember { mutableStateOf(false) }
                 var venueTest by remember { mutableStateOf(false) }
                 var joinedIds by remember { mutableStateOf(setOf<String>()) }
-                var events by remember { mutableStateOf(listOf(
-                    PreviewCityEvent("preview-football","Футбол · нужны двое","Спорт",51.12755,71.42972,"gathering",count=4,capacity=6),
-                    PreviewCityEvent("preview-concert","Открытая сцена","Музыка",51.12764,71.43135,status="live",count=28),
-                    PreviewCityEvent("preview-market","Фермерский маркет","Маркет",51.12840,71.42934,status="live"),
-                    PreviewCityEvent("preview-telescope","Смотрим на звёзды","Находки",51.12862,71.43156,"live_signal","live",confirmations=3),
-                    PreviewCityEvent("preview-route","Утренняя прогулка","Маршруты",51.12910,71.43020,"gathering",count=5,capacity=12),
-                    PreviewCityEvent("preview-quest","Найди детали города","Квесты",51.12746,71.43220),
-                    PreviewCityEvent("preview-arena","Астана — Тобол · пример","Спорт",51.10806,71.4025,status="live",count=120),
-                    PreviewCityEvent("preview-expo","Музыка у EXPO · пример","Музыка",51.08865,71.41690,status="live",count=18),
-                    PreviewCityEvent("preview-khan","Маркет у Хан Шатыра · пример","Маркет",51.13100,71.40420,status="live"),
-                    PreviewCityEvent("preview-north","Пробежка · север города","Маршруты",51.205,71.43,"gathering",count=5,capacity=12),
-                )) }
-                var selectedId by remember { mutableStateOf("preview-football") }
+                var events by remember { mutableStateOf(festivalEvents()) }
+                var selectedId by remember { mutableStateOf("") }
                 val selected=events.firstOrNull { it.id==selectedId }
                 val joined=selectedId in joinedIds
                 var place by remember { mutableStateOf<CityMessage?>(null) }
                 var selectedEntranceId by remember { mutableStateOf<String?>(null) }
                 var createDemo by remember { mutableStateOf(false) }
                 var draftTitle by remember { mutableStateOf("") }
-                var focusId by remember { mutableStateOf("baiterek") }
+                var focusId by remember { mutableStateOf("city") }
                 var focusRevision by remember { mutableIntStateOf(0) }
                 var playing by remember { mutableStateOf(false) }
-                var night by remember { mutableStateOf(false) }
+                var night by remember { mutableStateOf(true) }
+                var dense by remember { mutableStateOf(true) }
+                var nsdiQuarter by remember { mutableStateOf(false) }
+                var trialBusy by remember { mutableStateOf(false) }
+                var trialNote by remember { mutableStateOf("Текущая карта · сравнение квартала НИПД") }
+                var benchmarkRevision by remember { mutableIntStateOf(0) }
+                var benchmarkCommand by remember { mutableStateOf("") }
+                var benchmarkRunning by remember { mutableStateOf(false) }
+                var benchmarkArea by remember { mutableIntStateOf(0) }
+                val benchmarkAreas=listOf("center" to "Центр","north-city" to "Север","east-city" to "Восток","west-city" to "Запад")
+                var overviewReady by remember { mutableStateOf(false) }
+                var benchmarkNote by remember { mutableStateOf("Подготавливаем объёмную карту для прогона…") }
+                var eventTaps by remember { mutableIntStateOf(0) }
                 var note by remember { mutableStateOf<String?>(null) }
                 val payload=JSONObject().put("v",1).put("type","sync").put("manifestUrl","").put("preview",true)
+                    .put("density",if(dense)"festival" else "normal").put("benchmarkRevision",benchmarkRevision).put("benchmarkCommand",benchmarkCommand)
+                    .put("benchmarkArea",benchmarkAreas[benchmarkArea].first)
                     .put("interactionBlocked",sheet||place!=null||venueTest).put("active",previewActive).put("night",night).put("theme","default")
                     .put("focusId",focusId).put("focusRevision",focusRevision)
+                    .put("quarterVariant",if(nsdiQuarter)"nsdi" else "current")
                     .put("events",JSONArray(events.map { it.json(it.id in joinedIds) })).toString()
                 Column(Modifier.fillMaxSize().background(NightBackground).statusBarsPadding().navigationBarsPadding()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
                         Column(Modifier.padding(vertical=10.dp)) {
-                            Text("Астана · карта / этап 1",color=Color.White,fontSize=16.sp)
-                            Text("ДЕМО · БЕЗ GPS И ЗАПИСИ В API",color=NightTextSecondary,fontSize=9.sp)
+                            Text("Астана · ${events.size} событий",color=Color.White,fontSize=16.sp)
+                            Text("ВЫМЫШЛЕННЫЕ · БЕЗ GPS И ЗАПИСИ В API",color=NightTextSecondary,fontSize=9.sp)
                         }
                         TextButton(onClick={night=!night}) { Text(if(night) "День" else "Ночь") }
                     }
@@ -90,9 +104,43 @@ class CityPreviewActivity : ComponentActivity() {
                         TextButton(onClick={focusId="arena";focusRevision++}){Text("Арена")}
                         TextButton(onClick={venueTest=true}){Text("Этажи · тест")}
                     }
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center) {
+                        TextButton(onClick={dense=!dense}){Text(if(dense)"Плотно" else "Спокойно")}
+                        TextButton(enabled=overviewReady&&!trialBusy,onClick={benchmarkCommand=if(benchmarkRunning)"stop" else "start";benchmarkRevision++}) { Text(if(benchmarkRunning)"Стоп" else "Прогон зума") }
+                        TextButton(enabled=!benchmarkRunning&&!trialBusy,onClick={benchmarkArea=(benchmarkArea+1)%benchmarkAreas.size;focusId=if(benchmarkArea==0)"baiterek" else benchmarkAreas[benchmarkArea].first;focusRevision++}) { Text(benchmarkAreas[benchmarkArea].second) }
+                        Text("Тапы: $eventTaps",fontSize=11.sp,modifier=Modifier.padding(12.dp),color=NightTextSecondary)
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        TextButton(enabled=overviewReady&&!trialBusy&&!benchmarkRunning,onClick={nsdiQuarter=!nsdiQuarter}) {Text(if(trialBusy)"Подготовка…" else if(nsdiQuarter)"НИПД → текущая" else "Текущая → НИПД")}
+                        Text(trialNote,fontSize=9.sp,color=NightTextSecondary,modifier=Modifier.weight(1f))
+                    }
+                    Text(benchmarkNote,fontSize=10.sp,color=NightTextSecondary,modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp))
                     GameCityView(payload,Modifier.weight(1f).fillMaxWidth()) { raw ->
                         val message=parseCityMessage(raw)
-                        if(message?.type=="event" && events.any { it.id==message.id }) {selectedId=message.id;sheet=true}
+                        if(message?.type=="event" && events.any { it.id==message.id }) {
+                            selectedId=message.id;sheet=true;eventTaps++
+                            Log.i("EventMapCityQA","EVENT_TAP ${message.id}")
+                        }
+                        if(message?.type=="status"&&message.state=="benchmark-progress") {benchmarkRunning=true;benchmarkNote=message.title}
+                        if(message?.type=="status"&&message.state=="overview-ready") {
+                            overviewReady=true
+                            if(benchmarkRevision==0) benchmarkNote="Готово: город → здание → город · 150 событий"
+                        }
+                        if(message?.type=="status"&&message.state=="overview-unavailable") benchmarkNote="Общий вид не загрузился. Перезапусти debug-превью."
+                        if(message?.type=="status"&&message.state.startsWith("quarter-trial-")) {
+                            trialBusy=message.state=="quarter-trial-loading";trialNote=message.title
+                            if(!trialBusy)nsdiQuarter=JSONObject(raw).optString("variant")=="nsdi"
+                            Log.i("EventMapCityQA","QUARTER_TRIAL $raw")
+                        }
+                        if(message?.type=="status"&&message.state=="benchmark-result") {
+                            benchmarkRunning=false
+                            val result=JSONObject(raw).optJSONObject("benchmark")
+                            val frames=result?.optJSONObject("frameTiming")
+                            benchmarkNote=if(frames!=null&&!frames.isNull("fps"))
+                                "${result.optString("status")} · %.1f FPS · p95 %.1f мс · >50 мс: %d".format(java.util.Locale.US,frames.optDouble("fps"),frames.optDouble("p95Ms"),frames.optInt("slowFrames"))
+                            else "Прогон остановлен: ${result?.optString("reason") ?: "нет данных"}"
+                            Log.i("EventMapCityQA","ZOOM_RESULT $result")
+                        }
                         if(message?.type=="place") {place=message;selectedEntranceId=null;createDemo=false;draftTitle=""}
                         if(message?.type=="error") note="3D недоступна: ${message.state}."
                     }
@@ -125,7 +173,8 @@ class CityPreviewActivity : ComponentActivity() {
                         else {
                             Text(p.creationPoint(selectedEntranceId).locationLabel,color=NightTextSecondary,fontSize=12.sp)
                             OutlinedTextField(value=draftTitle,onValueChange={draftTitle=it.take(120)},label={Text("Название тестовой встречи")},modifier=Modifier.fillMaxWidth())
-                            Button(enabled=draftTitle.isNotBlank(),onClick={
+                            if(events.size>=150) Text("В нагрузочном сценарии лимит 150 событий. Заверши одно демо-событие, чтобы добавить новое.",fontSize=11.sp,color=NightTextSecondary)
+                            Button(enabled=draftTitle.isNotBlank()&&events.size<150,onClick={
                                 val point=p.creationPoint(selectedEntranceId)
                                 events=events+PreviewCityEvent("preview-created-${System.nanoTime()}",draftTitle.trim(),"Встречи",point.lat,point.lng,"gathering",capacity=6,locationLabel=point.locationLabel)
                                 place=null;createDemo=false

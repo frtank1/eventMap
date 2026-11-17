@@ -4,8 +4,10 @@ import {defaultLook,palettes,validateLook,visibleEvents,groupEvents,labelsOverla
 import {eventStyle,eventSummary,EVENT_STYLES} from './event-style.js';
 import {eventIcon} from './event-icons.js';
 import {createEventModels} from './event-models.js';
-import {createBubble,bubbleRect,safeBubbleCover,updateBubbleCover,nativeBubbleCovers,eventTimeLabel} from './event-bubbles.js';
+import {createBubble,bubbleRect,safeBubbleCover,updateBubbleCover,nativeBubbleCovers,eventTimeLabel,setLabelVisible,positionLabel,setLabelClass,setLabelLevel} from './event-bubbles.js';
 import {eventDisplayLevel} from './art-direction.js';
+import {eventLabelBudget,eventGroupBucket,groupDistanceForBucket} from './event-density.js';
+import {createEventBeacons} from './event-beacons.js';
 
 const storageKey='eventmap.avatar-look.v1';
 const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text)e.textContent=text;return e;};
@@ -20,7 +22,7 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
   const pointGroup=new THREE.Group();scene.add(pointGroup);
   let events=[],rawEvents=[],preview=false,court=null,editing=false,savedCamera=null,transition=null,groups=[],lastGroup='',lastPrune=0,paused=false;
   let walking=false,walkPhase=1.97,lastWalkTime=null,follow=false,lastBucket=-1,previewStep=false,night=false,quality='balanced',savedAvatarPosition=null;
-  let displayLevel='district',selectedEvent=null,occupiedLabels=[];
+  let displayLevel='district',selectedEvent=null,occupiedLabels=[],festival=false,beacons=null;
   // A portrait fill follows only the editor; no moving shadow map or city lights.
   const portraitLight=new THREE.DirectionalLight(0xffeddb,1.7);portraitLight.visible=false;
   scene.add(portraitLight,portraitLight.target);
@@ -75,7 +77,7 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
     if(!editing)return;editing=false;previewStep=false;portraitLight.visible=false;editor.hidden=true;document.body.classList.remove('editing-avatar');avatar.root.visible=preview;
     if(savedAvatarPosition){avatar.root.position.copy(savedAvatarPosition);savedAvatarPosition=null;}
     if(savedCamera){go(savedCamera.target,1);transition.position.copy(savedCamera.position);}
-    savedCamera=null;document.querySelector('#scene-note').textContent=preview?'Демо · события и движение тестовые':'Город · события от участников';selfButton.focus();
+    savedCamera=null;document.querySelector('#scene-note').textContent=festival?`Фестиваль · ${events.length} вымышленных событий`:preview?'Демо · события и движение тестовые':'Город · события от участников';selfButton.focus();
   }
   document.querySelector('#avatar-done').onclick=closeEditor;
   function frameAvatar(){
@@ -101,14 +103,21 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
   function keydown(e){if(e.key==='Escape'){closeEditor();closeList();}if(editing&&e.key==='Tab'){const focusable=[...editor.querySelectorAll('button')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){last.focus();e.preventDefault();}else if(!e.shiftKey&&document.activeElement===last){first.focus();e.preventDefault();}}}
   document.addEventListener('keydown',keydown);
   function rebuild(distance){
-    const bucket=distance>12000?4:distance>3000?3:distance>1600?2:distance>650?1:0;
+    const bucket=eventGroupBucket(distance,lastBucket);
     if(lastGroup&&bucket===lastBucket)return;lastBucket=bucket;
-    const next=groupEvents(events,distance),signature=JSON.stringify(next.map(g=>g.events.map(e=>e.id)));
-    if(signature===lastGroup)return;lastGroup=signature;markerRoot.replaceChildren();groups.forEach(g=>{g.visual?.destroy();g.activity?.destroy();});pointGroup.clear();groups=[];
+    const next=groupEvents(events,groupDistanceForBucket(bucket),festival),signature=JSON.stringify(next.map(g=>g.events.map(e=>e.id)));
+    if(signature===lastGroup)return;lastGroup=signature;
+    // Most events do not change membership at a grouping boundary. Retain their
+    // decoded covers, DOM and nearby meshes instead of rebuilding all 150.
+    const reusable=new Map(groups.map(g=>[g.reuseKey,g]));groups=[];
+    if(festival){if(!beacons){beacons=createEventBeacons();scene.add(beacons.group);}beacons.setEvents(next,surfaceHeight);}
     for(const g of next){
+      const reuseKey=`${presentation}:${JSON.stringify(g.events)}`;
+      const old=reusable.get(reuseKey);
+      if(old){reusable.delete(reuseKey);groups.push(old);continue;}
       if(presentation==='bubbles'){
         const b=createBubble(g,covers);b.onclick=()=>g.events.length===1?choose(g.events[0]):listing(g.events);
-        markerRoot.append(b);groups.push({...g,point:new THREE.Vector3(g.x,surfaceHeight(g.x,g.z)+.07,g.z),label:b,visual:null});continue;
+        markerRoot.append(b);groups.push({...g,reuseKey,point:new THREE.Vector3(g.x,surfaceHeight(g.x,g.z)+.07,g.z),label:b,visual:null});continue;
       }
       eventModels ||= createEventModels();const visual=eventModels.create(g,surfaceHeight(g.x,g.z));pointGroup.add(visual.root);
       const point=visual.labelPoint();
@@ -117,8 +126,9 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
       const symbol=node('span','event-symbol');symbol.innerHTML=eventIcon(style.key);const copy=node('span','event-copy');
       copy.append(node('strong','',single?g.events[0].title:`Событий рядом: ${g.events.length}`),node('small','',single?summary.label:'Открыть список'));
       b.style.setProperty('--event-color',style.color);b.dataset.state=summary?.state||'cluster';b.append(symbol,copy);
-      b.onclick=()=>single?choose(g.events[0]):listing(g.events);markerRoot.append(b);groups.push({...g,point,visual,label:b});
+      b.onclick=()=>single?choose(g.events[0]):listing(g.events);markerRoot.append(b);groups.push({...g,reuseKey,point,visual,label:b});
     }
+    for(const g of reusable.values()){g.label.remove();g.visual?.destroy();g.activity?.destroy();}
   }
   function setCovers(values){
     nativeCovers=Array.isArray(values)?values.slice(0,8):[];
@@ -126,8 +136,11 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
     covers=nativeBubbleCovers(nativeCovers,events);
     for(const g of groups)if(!g.visual)updateBubbleCover(g.label,g,covers);
   }
-  function setEvents(values,isPreview=false,requestedPresentation='bubbles'){
+  function setEvents(values,isPreview=false,requestedPresentation='bubbles',dense=false){
     rawEvents=Array.isArray(values)?values.slice(0,150):[];preview=isPreview===true;events=visibleEvents(rawEvents);lastGroup='';
+    festival=preview&&dense===true&&requestedPresentation==='bubbles';
+    markerRoot.classList.toggle('festival-density',festival);
+    if(!festival&&beacons){beacons.destroy();beacons=null;}
     presentation=preview&&requestedPresentation==='models'?'models':'bubbles';
     covers=new Map(preview&&presentation==='bubbles'?rawEvents.filter(e=>e&&safeBubbleCover(e.coverImage)).map(e=>[e.id,e.coverImage]):[]);
     if(!preview)setCovers(nativeCovers);
@@ -139,7 +152,7 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
     }
     if(!demo&&court){court.destroy();court=null;}
     avatar.root.visible=editing||preview||walking;
-    document.querySelector('#scene-note').textContent=walking?'Прогулка персонажа · демо, не GPS':preview?'Демо · события и движение тестовые':'Город · события от участников';
+    document.querySelector('#scene-note').textContent=festival?`Фестиваль · ${events.length} вымышленных событий`:walking?'Прогулка персонажа · демо, не GPS':preview?'Демо · события и движение тестовые':'Город · события от участников';
     closeList();rebuild(camera.position.distanceTo(controls.target));
   }
   let chromeBounds=null,chromeMeasuredAt=-Infinity;
@@ -147,7 +160,9 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
     if(t-lastPrune>5){lastPrune=t;const next=visibleEvents(rawEvents);if(JSON.stringify(next)!==JSON.stringify(events)){events=next;lastGroup='';}}
     if(transition&&!paused){camera.position.lerp(transition.position,.12);controls.target.lerp(transition.target,.12);if(camera.position.distanceTo(transition.position)<.03&&controls.target.distanceTo(transition.target)<.03)transition=null;}
     const distance=camera.position.distanceTo(controls.target);rebuild(distance);displayLevel=eventDisplayLevel(distance,displayLevel);
+    beacons?.update(distance,night,!editing);
     const boxes=[],wantedCovers=[];let count=0,modelCount=0;
+    const labelBudget=eventLabelBudget({festival,small:innerWidth<700,quality});
     const nativeTop=document.documentElement.style.getPropertyValue('--native-top'),chromeKey=`${innerWidth}:${innerHeight}:${nativeTop}`;
     // Avoid forcing browser layout after balloon style writes on every frame.
     // Resize/native chrome changes invalidate immediately; QA-only text is
@@ -157,15 +172,16 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
     for(const g of [...groups].sort((a,b)=>a.point.distanceToSquared(controls.target)-b.point.distanceToSquared(controls.target))){
       if(presentation==='bubbles'){
         const p=g.point.clone().project(camera),x=(p.x*.5+.5)*innerWidth,y=(-p.y*.5+.5)*innerHeight;
-        g.label.dataset.level=displayLevel;g.label.classList.toggle('is-selected',g.events.some(e=>e.id===selectedEvent));
-        const rect=bubbleRect(x,y,{width:innerWidth,height:innerHeight,top,small:innerWidth<700,level:displayLevel});
-        const show=!editing&&count<(quality==='low'?5:8)&&p.z>-1&&p.z<1&&rect&&!labelsOverlap(rect,{x:zoomRect.x,y:zoomRect.y,w:zoomRect.width,h:zoomRect.height},8)&&!boxes.some(b=>labelsOverlap(b,rect,4));
-        g.label.hidden=!show;g.label.classList.toggle('balloon-moving',!!show&&displayLevel==='street'&&!paused&&!reduced&&g.events.length===1&&eventSummary(g.events[0]).animate&&count<3);
+        setLabelLevel(g.label,displayLevel);
+        setLabelClass(g.label,'is-selected',g.events.some(e=>e.id===selectedEvent));
+        const rect=bubbleRect(x,y,{width:innerWidth,height:innerHeight,top,small:innerWidth<700,level:displayLevel,festival});
+        const show=!editing&&count<labelBudget&&p.z>-1&&p.z<1&&rect&&!labelsOverlap(rect,{x:zoomRect.x,y:zoomRect.y,w:zoomRect.width,h:zoomRect.height},8)&&!boxes.some(b=>labelsOverlap(b,rect,festival?1:4));
+        setLabelVisible(g.label,show);setLabelClass(g.label,'balloon-moving',!!show&&displayLevel==='street'&&!paused&&!reduced&&g.events.length===1&&eventSummary(g.events[0]).animate&&count<3);
         const activityVisible=!!show&&displayLevel==='street'&&g.events.length===1&&eventSummary(g.events[0]).animate&&modelCount<(quality==='low'?2:4);
         if(activityVisible&&!g.activity){eventModels||=createEventModels();g.activity=eventModels.create(g,surfaceHeight(g.x,g.z));pointGroup.add(g.activity.root);}
         if(g.activity)g.activity.update(t,{camera,distance:camera.position.distanceTo(g.point),reduced,blocked:paused,visible:activityVisible,index:modelCount,quality,night});
         if(activityVisible)modelCount++;
-        if(show){g.label.style.transform=`translate(${x}px,${y}px) translate(-50%,-100%)`;boxes.push(rect);count++;const e=g.events.find(e=>e.coverRef);if(e&&displayLevel!=='city')wantedCovers.push(e.id);}continue;
+        if(show){positionLabel(g.label,x,y);boxes.push(rect);count++;const e=g.events.find(e=>e.coverRef);if(e&&displayLevel!=='city')wantedCovers.push(e.id);}continue;
       }
       const view=g.visual.root.position.clone().project(camera),inFrame=view.z>-1&&view.z<1&&Math.abs(view.x)<1.1&&Math.abs(view.y)<1.1;
       const visible=!editing&&inFrame&&modelCount<(quality==='low'?8:12);
@@ -175,8 +191,8 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
       const labelX=THREE.MathUtils.clamp(x,119,Math.max(119,innerWidth-119));
       const rect={x:labelX-110,y:y-48,w:220,h:52};
       const show=visible&&count<5&&p.z>-1&&p.z<1&&x>8&&x<innerWidth-8&&rect.y>top&&rect.y+rect.h<innerHeight-150&&!boxes.some(b=>labelsOverlap(b,rect));
-      g.label.hidden=!show;
-      if(show){g.label.style.transform=`translate(${labelX}px,${y}px) translate(-50%,-100%)`;boxes.push(rect);count++;}
+      setLabelVisible(g.label,show);
+      if(show){positionLabel(g.label,labelX,y);boxes.push(rect);count++;}
     }
     occupiedLabels=boxes;
     if(!preview&&!paused&&t-lastCoverRequest>.5){const ids=wantedCovers.slice(0,8).sort(),key=JSON.stringify(ids);if(key!==coverRequest){coverRequest=key;native({type:'covers',ids});}lastCoverRequest=t;}
@@ -192,11 +208,11 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
   function setWalking(value){
     closeEditor();closeList();walking=value===true;follow=walking;transition=null;lastWalkTime=null;
     avatar.root.visible=walking||preview;
-    document.querySelector('#scene-note').textContent=walking?'Прогулка персонажа · демо, не GPS':preview?'Демо · события и движение тестовые':'Город · события от участников';
+    document.querySelector('#scene-note').textContent=walking?'Прогулка персонажа · демо, не GPS':festival?`Фестиваль · ${events.length} вымышленных событий`:preview?'Демо · события и движение тестовые':'Город · события от участников';
   }
   function pickObject(object){let o=object;while(o){if(o.userData.eventGroupKey){const g=groups.find(g=>g.key===o.userData.eventGroupKey);if(!g)return false;g.events.length===1?choose(g.events[0]):listing(g.events);return true;}o=o.parent;}return false;}
-  function refreshAnchors(){for(const g of groups){if(g.visual){g.visual.root.position.y=surfaceHeight(g.x,g.z)+.07;g.point.copy(g.visual.labelPoint());}else g.point.y=surfaceHeight(g.x,g.z)+.07;if(g.activity)g.activity.root.position.y=surfaceHeight(g.x,g.z)+.07;}}
+  function refreshAnchors(){beacons?.refreshHeights(surfaceHeight);for(const g of groups){if(g.visual){g.visual.root.position.y=surfaceHeight(g.x,g.z)+.07;g.point.copy(g.visual.labelPoint());}else g.point.y=surfaceHeight(g.x,g.z)+.07;if(g.activity)g.activity.root.position.y=surfaceHeight(g.x,g.z)+.07;}}
   return {setEvents,setCovers,update,setPaused,closeEditor,setWalking,pickObject,refreshAnchors,labelBounds:()=>occupiedLabels.map(r=>({...r})),pickables:pointGroup,setAppearance:(value,q)=>{night=!!value;quality=q||'balanced';},get walking(){return walking;},get editing(){return editing;},get look(){return {...look};},
-    stats:()=>({events:events.length,labels:groups.filter(g=>!g.label.hidden).length,eventModels:groups.filter(g=>g.visual?.root.visible||g.activity?.root.visible).length,animatedEvents:groups.filter(g=>g.visual?.animated||g.activity?.animated||g.label.classList.contains('balloon-moving')).length,eventPresentation:presentation,eventDisplayLevel:displayLevel,preview,avatarEditor:editing,walking,avatar:avatar.stats()}),
-    destroy(){controls.removeEventListener('start',cancelTransition);document.removeEventListener('keydown',keydown);removeEventListener('resize',frameAvatar);avatar.destroy();court?.destroy();portraitLight.removeFromParent();portraitLight.target.removeFromParent();groups.forEach(g=>{g.visual?.destroy();g.activity?.destroy();});eventModels?.destroy();pointGroup.removeFromParent();markerRoot.replaceChildren();}};
+    stats:()=>({events:events.length,labels:groups.filter(g=>!g.label.hidden).length,eventModels:groups.filter(g=>g.visual?.root.visible||g.activity?.root.visible).length,animatedEvents:groups.filter(g=>g.visual?.animated||g.activity?.animated||g.label.classList.contains('balloon-moving')).length,eventPresentation:presentation,eventDisplayLevel:displayLevel,festivalDensity:festival,...beacons?.stats(),preview,avatarEditor:editing,walking,avatar:avatar.stats()}),
+    destroy(){controls.removeEventListener('start',cancelTransition);document.removeEventListener('keydown',keydown);removeEventListener('resize',frameAvatar);avatar.destroy();court?.destroy();beacons?.destroy();portraitLight.removeFromParent();portraitLight.target.removeFromParent();groups.forEach(g=>{g.visual?.destroy();g.activity?.destroy();});eventModels?.destroy();pointGroup.removeFromParent();markerRoot.replaceChildren();}};
 }

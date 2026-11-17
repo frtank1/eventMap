@@ -43,7 +43,7 @@ const {createBaiterekQuarter,createQuarterEffects,THREE}=await import('data:text
 test('bundled quarter builds finite geometry with bounded batches and no PointLights',()=>{
   const q=createBaiterekQuarter();let meshes=0,points=0;
   q.group.traverse(o=>{if(o.isMesh){meshes++;for(const n of o.geometry.attributes.position.array)assert.ok(Number.isFinite(n));}if(o.isPointLight)points++;});
-  assert.ok(q.stats().quarterBuildings>100);assert.equal(q.stats().styledBuildings.length,7);assert.ok(meshes<45,`mesh batches: ${meshes}`);assert.equal(points,0);
+  assert.ok(q.stats().quarterBuildings>100);assert.equal(q.stats().styledBuildings.length,7);assert.ok(meshes<48,`mesh batches: ${meshes}`);assert.equal(points,0);
   assert.equal(q.groundHeight(0,0),GROUND.plaza);
   for(let i=0;i<120;i++){const a=i/120*Math.PI*2,h=q.groundHeight(Math.cos(a)*62,Math.sin(a)*62);assert.ok(h>=GROUND.plaza&&h<=GROUND.road);}
   let offsetParts=0;q.group.traverse(o=>{if(o.isMesh&&o.material.polygonOffset){assert.ok(o.material.polygonOffsetFactor<0);offsetParts++;}});assert.ok(offsetParts>0);

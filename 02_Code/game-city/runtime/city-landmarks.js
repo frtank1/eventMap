@@ -22,6 +22,21 @@ export const CITY_PLACES=Object.freeze([
   {id:'mega',title:'MEGA Silk Way',lng:71.40733,lat:51.08909,height:32,radius:265},
   {id:'museum',title:'Национальный музей',lng:71.467,lat:51.1184,height:45,radius:155},
 ]);
+// Oriented bounding rectangle of a part outline in local metres (x east, y north).
+// Roof embellishments are placed on this rectangle: they used to be axis-aligned
+// at the model origin and sat across, or skewed on, the building below them.
+export function orientedRect(points){
+  let best=null;
+  for(let i=0;i<points.length;i++){
+    const a=points[i],b=points[(i+1)%points.length],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.5)continue;
+    const c=(b[0]-a[0])/len,s=(b[1]-a[1])/len;let u0=Infinity,u1=-Infinity,v0=Infinity,v1=-Infinity;
+    for(const [x,y]of points){const u=x*c+y*s,v=-x*s+y*c;u0=Math.min(u0,u);u1=Math.max(u1,u);v0=Math.min(v0,v);v1=Math.max(v1,v);}
+    const w=u1-u0,d=v1-v0;if(best&&w*d>=best.area)continue;
+    const u=(u0+u1)/2,v=(v0+v1)/2;
+    best={area:w*d,angle:Math.atan2(s,c)+(w>=d?0:Math.PI/2),x:u*c-v*s,north:u*s+v*c,length:Math.max(w,d),width:Math.min(w,d)};
+  }
+  return best;
+}
 export function createCityLandmarks(){
   const group=new THREE.Group(),entries=[],materials={},geometries=new Set(),specs={ivory:CITY_PALETTE.ivory,glass:CITY_PALETTE.glass,roof:CITY_PALETTE.roof,gold:CITY_PALETTE.gold,green:CITY_PALETTE.leaf,dark:CITY_PALETTE.dark};
   group.name='Astana · authored landmarks';const byId=new Map(data.buildings.map(b=>[String(b.id),b]));
@@ -36,14 +51,18 @@ export function createCityLandmarks(){
     const box=(key,w,h,d,x=0,y=h/2,z=0)=>add(key,new THREE.BoxGeometry(w,h,d).translate(x,y,z));
     const cyl=(key,r,h,y=0)=>add(key,new THREE.CylinderGeometry(r,r,h,32).translate(0,y+h/2,0));
     const bar=(key,a,b,r=.4)=>{const v=new THREE.Vector3(...a),d=new THREE.Vector3(...b).sub(v);add(key,new THREE.CylinderGeometry(r,r,d.length(),5).applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.clone().normalize())).translate(...v.addScaledVector(d,.5).toArray()));};
-    let partCount=0;
+    let partCount=0,crown=null; // tallest source part: what a roof embellishment stands on
+    // Local +x is east and -z is north, so a positive Y rotation turns east toward north.
+    const onCrown=(key,geometry,y)=>add(key,geometry.rotateY(crown?.angle||0).translate(crown?.x||0,y,crown?-crown.north:0));
     for(const [id,h]of spec.parts||[]){const b=byId.get(id);if(!b)continue;const s=new THREE.Shape();b.points.forEach(([lng,lat],i)=>{const x=(lng-spec.lng)*LON_SCALE,y=(lat-spec.lat)*METERS;i?s.lineTo(x,y):s.moveTo(x,y);});s.closePath();
+      if(!crown||h>crown.h){const rect=orientedRect(b.points.map(([lng,lat])=>[(lng-spec.lng)*LON_SCALE,(lat-spec.lat)*METERS]));if(rect)crown={h,...rect};}
       add(h>30&&spec.id!=='beijing'?'glass':'ivory',new THREE.ExtrudeGeometry(s,{depth:h,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,.5,0));
       add('roof',new THREE.ExtrudeGeometry(s,{depth:.65,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,h+.6,0));partCount++;
     }
     if(spec.parts&&!partCount)box('ivory',35,spec.height-5,35); // recognisable scale, explicitly approximate fallback.
-    if(spec.id==='beijing')for(const [y,w]of [[103,46],[111,36],[118,24]]){box('green',w,2,w,0,y);add('green',new THREE.ConeGeometry(w*.65,6,4).rotateY(Math.PI/4).translate(0,y+3,0));}
-    if(spec.id==='moscow'){box('ivory',26,4,58,0,98);box('gold',17,2,42,0,102);}
+    if(spec.id==='beijing')for(const [y,w]of [[103,46],[111,36],[118,24]]){onCrown('green',new THREE.BoxGeometry(w,2,w),y);onCrown('green',new THREE.ConeGeometry(w*.65,6,4).rotateY(Math.PI/4),y+3);}
+    // Long side along the tower: the cap is 58 x 26 m on a 97 x 28 m tower top.
+    if(spec.id==='moscow'){onCrown('ivory',new THREE.BoxGeometry(58,4,26),98);onCrown('gold',new THREE.BoxGeometry(42,2,17),102);}
     if(spec.id==='petersburg')cyl('gold',20,1.4,81);
     if(spec.id==='library'){for(let i=0;i<5;i++)box('ivory',22,.4,8-i,0,.3+i*.4,30-i);}
     if(spec.id==='talan'){box('ivory',100,13,64);for(const [x,z,h]of [[-27,-8,146],[29,10,120]]){box('glass',29,h,33,x,h/2,z);box('roof',30,2,34,x,h,z);for(const dx of [-15,15])box('ivory',1.4,h,34,x+dx,h/2,z);}}

@@ -1,6 +1,19 @@
 import {eventStyle,eventSummary} from './event-style.js';
 import {eventIcon} from './event-icons.js';
 
+// WebView forwards DOM mutations to layout/accessibility. In a dense city,
+// rewriting `hidden` on every offscreen balloon every frame is expensive even
+// when its value is unchanged. Keep idle and hidden labels mutation-free.
+const labelFrames=new WeakMap();
+const labelFrame=label=>{let frame=labelFrames.get(label);if(!frame){frame={classes:{}};labelFrames.set(label,frame);}return frame;};
+export function setLabelVisible(label,visible){const hidden=!visible,frame=labelFrame(label);if(frame.hidden!==hidden){frame.hidden=hidden;if(label.hidden!==hidden)label.hidden=hidden;}}
+export function setLabelClass(label,name,enabled){const frame=labelFrame(label),value=!!enabled;if(frame.classes[name]!==value){frame.classes[name]=value;label.classList.toggle(name,value);}}
+export function setLabelLevel(label,level){const frame=labelFrame(label);if(frame.level!==level){frame.level=level;label.dataset.level=level;}}
+export function positionLabel(label,x,y){
+  const transform=`translate(${Math.round(x*10)/10}px,${Math.round(y*10)/10}px) translate(-50%,-100%)`;
+  const frame=labelFrame(label);if(frame.transform!==transform){frame.transform=transform;label.style.transform=transform;}
+}
+
 // Native passes downsampled raster data, never signed URLs or account tokens.
 // Local fixture paths are accepted only by the QA caller. CSP stays unchanged.
 export function safeBubbleCover(value){
@@ -14,8 +27,8 @@ export function nativeBubbleCovers(values,events){
     .filter(c=>c&&typeof c.data==='string'&&c.data.startsWith('data:image/jpeg;')&&c.data.length<44000&&safeBubbleCover(c.data)&&events.some(e=>e.id===c.id&&e.coverRef===c.ref))
     .map(c=>[c.id,c.data]));
 }
-export function bubbleRect(x,y,{width,height,top=12,small=false,level}={}){
-  const [w,h]=level==='city'?[56,64]:level==='district'?[104,126]:level==='street'?[124,154]:[small?104:120,small?138:150];
+export function bubbleRect(x,y,{width,height,top=12,small=false,level,festival=false}={}){
+  const [w,h]=festival&&level==='city'?[56,76]:festival&&level==='district'?[80,104]:level==='city'?[56,64]:level==='district'?[104,126]:level==='street'?[124,154]:[small?104:120,small?138:150];
   const rect={x:x-w/2,y:y-h,w,h};
   // Never slide a marker sideways to fit: its tether must keep the actual point.
   return Number.isFinite(x)&&Number.isFinite(y)&&rect.x>=8&&rect.x+w<=width-8&&rect.y>=top&&y<height-120?rect:null;

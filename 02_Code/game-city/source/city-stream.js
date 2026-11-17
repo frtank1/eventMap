@@ -4,6 +4,7 @@ import {VectorTile} from './vendor/vector-tile.js';
 import Pbf from './vendor/pbf.js';
 import {decorateQuarterMaterial} from '../runtime/quarter-materials.js';
 import {CITY_PALETTE} from '../runtime/art-direction.js';
+import {cityLodBand,cityLodWeights,decorateLodFade} from '../runtime/city-lod.js';
 import {WORLD_BOUNDS} from '../runtime/world-state.js';
 import {createUrbanDetails} from './urban-details.js';
 import {createPedestrians} from './people.js';
@@ -88,8 +89,8 @@ function makeMaterials() {
     roadEdge: CITY_PALETTE.kerb, road: CITY_PALETTE.road,
     path: CITY_PALETTE.pavement, minorPath: CITY_PALETTE.pavement,
     urban: CITY_PALETTE.urban, rail: CITY_PALETTE.dark, overview: CITY_PALETTE.sand,
-    trunk: CITY_PALETTE.trunk, foliage: CITY_PALETTE.leaf,
-    roof: CITY_PALETTE.roof, plinth: CITY_PALETTE.trim, roofUnit: CITY_PALETTE.roof,
+    trunk: CITY_PALETTE.trunk, foliage: CITY_PALETTE.canopy,
+    roof: CITY_PALETTE.rooftop, plinth: CITY_PALETTE.trim, roofUnit: CITY_PALETTE.rooftop,
     marking: CITY_PALETTE.trim, car: [0xffffff,0xb3b9bd], carGlass: CITY_PALETTE.dark, bench: CITY_PALETTE.wood,
   };
   const materials = {};
@@ -102,6 +103,8 @@ function makeMaterials() {
     if(name==='minorPath'){material.transparent=true;material.depthWrite=false;material.userData.facade=decorateQuarterMaterial(material,{paving:true,minorPath:true});}
     // Separated layers and offsets keep overlapping GIS footprints stable while panning.
     if(['cream','cyan','sand','mint'].includes(name)){material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;}
+    material.userData.lod=decorateLodFade(material);
+    material.userData.lodChannel=({trunk:'trees',foliage:'trees',roofUnit:'roofs',car:'vehicles',carGlass:'vehicles',bench:'furniture',marking:'furniture'})[name]||'base';
     materials[name] = material;
   }
   return materials;
@@ -177,7 +180,7 @@ function clipSurface(geometry, rect) {
   return positionsGeometry(output);
 }
 
-function flatPolygon(rings, project, elevation, rect) {
+export function flatPolygon(rings, project, elevation, rect) {
   const shape = makeShape(rings, project);
   if (!shape) return null;
   const geometry = new THREE.ShapeGeometry(shape);
@@ -186,7 +189,7 @@ function flatPolygon(rings, project, elevation, rect) {
   return clipSurface(geometry, rect);
 }
 
-function roadStrip(coordinates, project, width, elevation, rect) {
+export function roadStrip(coordinates, project, width, elevation, rect) {
   const points = coordinates.map(project), offsets = [], positions = [];
   // Shared, clamped miter joins avoid cracks at bends without extreme spikes.
   for (let i = 0; i < points.length; i++) {
@@ -362,6 +365,7 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
             if (tile.z <= 12 && (pedestrian || kind === 'service')) continue;
             const width = Math.max(clamp(firstNumber(props.width) ?? widths[kind], 1.5, 36),tile.z<14&&!pedestrian&&!rail?(tile.z<=11?40:tile.z===12?26:16):0);
             const bridge = props.brunnel === 'bridge';
+            if(bridge&&context.bridgesReady)continue;
             const y = (bridge ? 5 + Math.max(0, Number(props.layer) || 0) * 3 : 0) + (pedestrian ? 0.36 : rail ? 0.49 : 0.60);
             const geometry = feature.toGeoJSON(tile.x, tile.y, tile.z).geometry;
             const lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.type === 'MultiLineString' ? geometry.coordinates : [];
@@ -510,9 +514,10 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   group.name = 'astana-city-stream';
   group.userData.attribution = 'OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors';
   group.userData.bounds = {...URBAN};
-  const context = {center: origin, lonScale, materials, excludeBuilding,night:false};
+  const context = {center: origin, lonScale, materials, excludeBuilding,night:false,bridgesReady:false};
   const cache = new Map(), visible = new Set();
-  let desired = new Map(), zoom = 14, distance = 1500, destroyed = false;
+  let desired = new Map(), zoom = 14, distance = 1500, destroyed = false, backdropReady = false;
+  let lodQuality='balanced',lodBand=cityLodBand(distance),weights=cityLodWeights(distance),tileWeight=1;
   let template = null, scheme = 'xyz', active = 0, touch = 0, signature = '';
   let retryTimer = null, initTimer = null, metadataController = null, initAttempts = 0, metadataFailed = false;
   let buildTail = Promise.resolve(), statusSignature = '', readyDone = false;
@@ -553,10 +558,11 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   }
   function detailVisibility(root) {
     const near=distance<3000;
+    root.visible=tileWeight>0;
     root.traverse(object => {
-      if(object.userData.cityDetail)object.visible=near;
-      if(object.userData.cityPeople)object.visible=distance<1000;
-      if(object.userData.cityCanopy)object.visible=distance<12500;
+      if(object.userData.cityDetail)object.visible=weights[object.material?.userData.lodChannel||'furniture']>0;
+      if(object.userData.cityPeople)object.visible=weights.people>0;
+      if(object.userData.cityCanopy)object.visible=weights.trees>0;
       if(object.userData.cityBuilding){object.castShadow=near&&root.userData.zoom===14;object.receiveShadow=near;}
       else if(object.isMesh)object.receiveShadow=near;
     });
@@ -564,9 +570,21 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   function show(record) {
     visible.add(record.key); record.used = ++touch;
     if (record.root.parent !== group) group.add(record.root);
+    // Local crowd/urban materials are owned by this tile, unlike shared city
+    // facade materials. Decorate once, then change only scalar uniforms.
+    if(!record.root.userData.localLods){
+      const local=new Map();
+      for(const [owner,channel]of [[record.root.userData.crowd?.group,'people'],[record.root.userData.urban?.group,'furniture']])owner?.traverse(o=>{
+        for(const mat of o.material?(Array.isArray(o.material)?o.material:[o.material]):[])if(!mat.userData.lod&&!local.has(mat))local.set(mat,{fade:decorateLodFade(mat),channel});
+      });
+      record.root.userData.localLods=[...local.values()];
+    }
+    for(const {fade,channel}of record.root.userData.localLods)fade.set(tileWeight*weights[channel]);
     detailVisibility(record.root);
   }
-  function hide(key) { visible.delete(key);const record=cache.get(key);record?.root?.removeFromParent();if(record?.z===14&&!desired.has(key))removeRecord(record); }
+  // Hiding is not eviction. A pinch out/back must reuse already-built z14
+  // meshes; makeRoom still bounds the LRU to MAX_CACHE (16) records.
+  function hide(key) { visible.delete(key);cache.get(key)?.root?.removeFromParent(); }
   function reconcile() {
     // Retain old coverage only where the requested footprint still intersects it.
     for (const key of [...visible]) {
@@ -668,10 +686,12 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     distance = Number.isFinite(cameraDistance) ? Math.max(1, cameraDistance) : distance;
     const lon = clamp(origin[0] + target.x / lonScale, URBAN.west, URBAN.east);
     const lat = clamp(origin[1] - target.z / METERS, URBAN.south, URBAN.north);
-    const nextZoom = chooseZoom(distance, zoom);
-    const tiles = desiredTiles(lon, lat, distance, nextZoom, lonScale);
+    // The persistent city silhouette handles far views. Only z14 contains
+    // provider heights; z13 omits them and would shrink buildings at the seam.
+    const nextZoom = backdropReady ? 14 : chooseZoom(distance, zoom);
+    const tiles = backdropReady && distance > 6200 ? [] : desiredTiles(lon, lat, distance, nextZoom, lonScale);
     const nextSignature = tiles.map(tile => tile.key).join('|');
-    for (const key of visible) detailVisibility(cache.get(key).root);
+    setLod(distance,lodQuality);
     zoom = nextZoom;
     if (signature === nextSignature) return;
     signature = nextSignature;
@@ -694,11 +714,18 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
       if(seasonTheme!=='default'&&name==='foliage')material.color.setHex(night?0x9fb6c2:0xe2ecec);
       material.emissive.setHex(night && name==='water' ? 0x092b3b : 0x000000);
       material.emissiveIntensity = 0.15;
+      if(night&&name==='road'){material.emissive.setHex(0x80522d);material.emissiveIntensity=.13;}
       material.userData.facade?.setNight(night);material.userData.facade?.setTheme(seasonTheme);
     }
     for(const record of cache.values())record.root?.userData.urban?.setNight(night);
   }
-  function animate(time,reducedMotion=false){if(destroyed)return;for(const key of visible){const crowd=cache.get(key)?.root?.userData.crowd;if(crowd?.group.visible)crowd.update(time,reducedMotion)}}
+  function setLod(value,quality=lodQuality){
+    distance=Number.isFinite(value)?Math.max(1,value):distance;lodQuality=quality;
+    lodBand=cityLodBand(distance,lodBand.id);weights=cityLodWeights(distance,quality);tileWeight=backdropReady?weights.tiles:1;
+    for(const mat of Object.values(materials)){const channel=mat.userData.lodChannel;mat.userData.lod.set(tileWeight*(channel==='base'?1:weights[channel]));}
+    for(const key of visible){const root=cache.get(key)?.root;if(!root)continue;detailVisibility(root);for(const {fade,channel}of root.userData.localLods||[])fade.set(tileWeight*weights[channel]);}
+  }
+  function animate(time,reducedMotion=false){if(destroyed)return;for(const key of visible){const crowd=cache.get(key)?.root?.userData.crowd;if(crowd?.group.visible&&tileWeight>0)crowd.update(time,reducedMotion)}}
   function coverageAt(x,z){const lng=origin[0]+x/lonScale,lat=origin[1]-z/METERS;return [...visible].some(key=>{const r=cache.get(key);return r&&lng>=r.west&&lng<r.east&&lat<=r.north&&lat>r.south;});}
   function placeAt(x,z){
     let found=null;
@@ -710,7 +737,7 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     }
     return found;
   }
-  function stats(){return {cityTiles:visible.size,cityCache:cache.size,cityRequests:active,cityBuildings:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.buildings||0),0),cityOverviewBlocks:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.overviewBlocks||0),0),cityZoom:zoom};}
+  function stats(){return {cityTiles:visible.size,cityCache:cache.size,cityRequests:active,cityBuildings:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.buildings||0),0),cityOverviewBlocks:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.overviewBlocks||0),0),cityZoom:zoom,cityLod:lodBand.id,cityLayerWeights:{...weights,tiles:tileWeight}};}
   async function initialize() {
     if (destroyed) return;
     initAttempts++;
@@ -757,5 +784,18 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   }
   update(new THREE.Vector3(), distance);
   void initialize();
-  return {group, update, animate, setNight, setTheme, destroy, ready,coverageAt,placeAt,stats};
+  // Distance from the focus point to the edge of the requested tile ring.
+  function reach(){const tileWidth=360/2**zoom*lonScale;return clamp(distance*0.82,tileWidth*0.60,tileWidth*2.15);}
+  function coverageBounds(){return [...visible].map(key=>{const r=cache.get(key);return [(r.west-origin[0])*lonScale,-(r.north-origin[1])*METERS,(r.east-origin[0])*lonScale,-(r.south-origin[1])*METERS];});}
+  function setBackdropReady(value){
+    const next=!!value;
+    if(context.bridgesReady!==next){
+      // Already-built flat bridge ribbons must not survive beside the newly
+      // activated persistent bridge meshes. The backdrop covers this reload.
+      context.bridgesReady=next;desired.clear();
+      for(const record of [...cache.values()])removeRecord(record);
+    }
+    backdropReady=next;signature=null;
+  }
+  return {group, update, animate, setLod, setNight, setTheme, destroy, ready,coverageAt,placeAt,stats,reach,coverageBounds,setBackdropReady,detailWeight:()=>tileWeight};
 }

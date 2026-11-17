@@ -5,8 +5,8 @@ import model1 from '../content/assets/63778554e8417f2bd8eda828bb782e475709c9a733
 import model2 from '../content/assets/1fbfb478f09059bcb5aa835023847f325e692a63c6c1ab8a95f534725ae9c58f.json';
 import model3 from '../content/assets/2e368a21704ae31aa3ad34cbdc170303c6c7234a6ef92e02e4df7ab6af997fb3.json';
 import model4 from '../content/assets/a6771b50f991e6bdc7b872801c3c960052a014bac68530fffdb894700a08bb37.json';
-import model5 from '../content/assets/3de36291d03beb1302b7cb55f3f13fbea22957683fb3212f84d3dc8116787b74.json';
-import model6 from '../content/assets/ec0db14c67c54ce46c10fb021a29d28e0e661c03e89a73f0aaf248397e650ec0.json';
+import model5 from '../content/assets/87b80c8a954e9809248aa8495e8842410818a3c17c6a841e2e43c17d250a8e98.json';
+import model6 from '../content/assets/bb4b1e84d53365dd27f4a943cfa056b2743470f045f7ce62060b237e14b1c186.json';
 import model7 from '../content/assets/ecdd14c7452c5a43dc88a525ca6e842368b3c5a172c6857f2e453d0576d58769.json';
 import model8 from '../content/assets/55881170004fdcf4a85b77e0bac892c2b6019e1e2b99f8d5590eaf185fa1d936.json';
 import model9 from '../content/assets/6d086c944bb5b0672b8a16d4f06d099b96604ac4ee2671124f51cb15a62fca23.json';

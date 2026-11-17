@@ -2,9 +2,9 @@
 export const QUARTER_CENTER = Object.freeze([71.43056, 51.12822]);
 // Distinct ground layers prevent coplanar roads, paths and green polygons.
 export const GROUND = Object.freeze({grass:-.1,water:.04,contact:.02,plaza:.12,kerb:.22,path:.36,road:.6,lamp:.66});
-export function cameraDepth(distance,quarter=true){
+export function cameraDepth(distance,quarter=true,continuousCity=false){
   const d=Number.isFinite(distance)?Math.max(0,distance):500;
-  return {near:Math.max(.12,Math.min(quarter?4:32,d/90)),far:quarter?6500:40000};
+  return {near:Math.max(.12,Math.min(quarter?4:continuousCity?512:32,d/90)),far:continuousCity?80000:quarter?6500:40000};
 }
 export const QUALITY = Object.freeze({
   low: {dpr:1, snow:320, sparks:160, trees:180},

@@ -22,16 +22,17 @@ return createServer(async(req,res)=>{
       if(release==='incompatible'){res.end(JSON.stringify({schemaVersion:1,catalogVersion:99}));return;}
       file=path.join(root,'content/places-manifest.json');
     } else if(/^\/world\/assets\/[a-f0-9]{64}\.json$/.test(url.pathname)) file=path.join(root,'content',url.pathname.replace('/world/',''));
+    else if(url.pathname==='/test/nsdi-quarter.json')file=path.join(root,'test/nsdi-local/quarter.json');
     else if(url.pathname==='/demo.mp4'){file=path.join(root,'../androidApp/src/debug/res/raw/preview_reel.mp4');type='video/mp4';}
     else if(url.pathname==='/qa.js'){file=path.join(root,'test/qa.js');type='text/javascript';}
     else if(url.pathname==='/stage-one-qa.js'){file=path.join(root,'test/stage-one-qa.js');type='text/javascript';}
-    else if(['/test/visual-performance-qa.js','/runtime/frame-governor.js'].includes(url.pathname)){file=path.join(root,url.pathname.slice(1));type='text/javascript';}
-    else if(/^\/event-covers\/(sport|music|market)\.svg$/.test(url.pathname)){file=path.join(root,'test',url.pathname.slice(1));type='image/svg+xml';}
-    else if(['/','/index.html','/mobile.js','/mobile.css','/addresses.json','/places.json'].includes(url.pathname)) {
+    else if(['/test/visual-performance-qa.js','/runtime/frame-governor.js','/test/festival-qa.js','/test/festival-fixtures.js'].includes(url.pathname)){file=path.join(root,url.pathname.slice(1));type='text/javascript';}
+    else if(/^\/event-covers\/(sport|music|market|discovery|route|quest|community)\.svg$/.test(url.pathname)){file=path.join(root,'test',url.pathname.slice(1));type='image/svg+xml';}
+    else if(['/','/index.html','/mobile.js','/mobile.css','/addresses.json','/places.json','/overview.json'].includes(url.pathname)) {
       file=path.join(root,'preview-dist',url.pathname==='/'?'index.html':url.pathname.slice(1));
       type=file.endsWith('.html')?'text/html':file.endsWith('.js')?'text/javascript':file.endsWith('.json')?'application/json':'text/css';
     } else {res.writeHead(404).end();return;}
-    let bytes=await readFile(file);if(type==='text/html')bytes=Buffer.from(bytes.toString().replace('</body>',`<script src="qa.js"></script><script src="stage-one-qa.js"></script>${url.searchParams.get('visualperf')==='1'?'<script type="module" src="/test/visual-performance-qa.js"></script>':''}</body>`));
+    let bytes=await readFile(file);if(type==='text/html')bytes=Buffer.from(bytes.toString().replace('</body>',`<script src="qa.js"></script>${url.searchParams.get('festival')==='1'?'<script type="module" src="/test/festival-qa.js"></script>':'<script src="stage-one-qa.js"></script>'}${url.searchParams.get('visualperf')==='1'?'<script type="module" src="/test/visual-performance-qa.js"></script>':''}</body>`));
     res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store','Access-Control-Allow-Origin':'*'});res.end(bytes);
   } catch {res.writeHead(404).end();}
 });

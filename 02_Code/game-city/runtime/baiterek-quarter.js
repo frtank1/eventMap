@@ -9,6 +9,8 @@ import {CITY_PALETTE} from './art-direction.js';
 import {createLandmarkExclusion} from './landmark-footprints.js';
 import {onOrInPolygon,createSpatialIndex,ringBounds} from '../source/city-overview.js';
 import {createQuaterniusProps} from './quaternius-props.js';
+import {createTraffic} from './traffic.js';
+import {cityLodWeights,decorateLodFade} from './city-lod.js';
 
 // Bundled OSM snapshot, not a live map/survey. Architectural details are original styling.
 // This authored reference quarter is deliberately an alternative to network tiles, never an overlay
@@ -17,7 +19,7 @@ const lonScale=111320*Math.cos(QUARTER_CENTER[1]*Math.PI/180);
 const seed=id=>[...String(id)].reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7);
 const centerOf=p=>p.reduce((a,b)=>[a[0]+b[0]/p.length,a[1]+b[1]/p.length],[0,0]);
 const number=(v,fallback)=>Number.isFinite(Number(v))&&Number(v)>0?Number(v):fallback;
-export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
+export function createBaiterekQuarter({district='baiterek',entries,catalog,replacement=null}={}){
   const arena=district==='arena',data=arena?arenaData:baiterekData,origin=arena?arenaData.center:QUARTER_CENTER;
   const project=p=>[(p[0]-origin[0])*lonScale,-(p[1]-origin[1])*111320];
   const originX=(origin[0]-QUARTER_CENTER[0])*lonScale,originZ=-(origin[1]-QUARTER_CENTER[1])*111320;
@@ -25,12 +27,12 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
   const excludeBuilding=createLandmarkExclusion(entries||[{id:district,lng:origin[0],lat:origin[1]}],catalog);
   const group=new THREE.Group(),details=new THREE.Group(),street=new THREE.Group();
   group.name=`${district} · bundled styled OSM quarter`;group.position.set(originX,0,originZ);group.add(details,street);
-  const specs=Object.fromEntries(['ivory','sand','sage','glass','roof','trim','grass','water','pavement','road','kerb','trunk','leaf','gold','dark','wood'].map(k=>[k,CITY_PALETTE[k]]));
+  const specs=Object.fromEntries(['ivory','sand','sage','glass','amber','rooftop','trim','grass','water','pavement','road','kerb','trunk','leaf','gold','dark','wood'].map(k=>[k,CITY_PALETTE[k]]));
   const materials={},partMaterials={},batches=new Map(),resources=new Set();let buildingPart=false;
   for(const [key,[day,night]]of Object.entries(specs)){
     const mat=new THREE.MeshStandardMaterial({color:day,roughness:.88,metalness:0});
     mat.userData={day,night};
-    if(['ivory','sand','sage','glass','pavement'].includes(key))mat.userData.facade=decorateQuarterMaterial(mat,{glass:key==='glass',paving:key==='pavement'});
+    if(['ivory','sand','sage','glass','amber','pavement'].includes(key))mat.userData.facade=decorateQuarterMaterial(mat,{glass:key==='glass'||key==='amber',amber:key==='amber',paving:key==='pavement'});
     if(key==='water'){mat.roughness=.4;mat.metalness=.15;}
     materials[key]=mat;
   }
@@ -49,8 +51,9 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
     add(key,new THREE.BoxGeometry(w,h,d).rotateY(angle).translate(x,y,z),detail,nightOnly);
   }
   function shape(points){const s=new THREE.Shape();points.forEach(([x,z],i)=>i?s.lineTo(x,-z):s.moveTo(x,-z));s.closePath();return s;}
-  function slab(key,p,h,y,bevel=0,detail=false){
-    const geo=h<.1?new THREE.ShapeGeometry(shape(p),2):new THREE.ExtrudeGeometry(shape(p),{depth:h,steps:1,bevelEnabled:bevel>0,bevelSize:bevel,bevelThickness:bevel,bevelSegments:1,curveSegments:2});
+  function slab(key,p,h,y,bevel=0,detail=false,holes=[]){
+    const outline=shape(p);for(const hole of holes)outline.holes.push(shape(hole));
+    const geo=h<.1?new THREE.ShapeGeometry(outline,2):new THREE.ExtrudeGeometry(outline,{depth:h,steps:1,bevelEnabled:bevel>0,bevelSize:bevel,bevelThickness:bevel,bevelSegments:1,curveSegments:2});
     add(key,geo.rotateX(-Math.PI/2).translate(0,y,0),detail);
   }
   function edge(key,a,b,y,w,h,detail=false,nightOnly=false){
@@ -65,21 +68,25 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
   // Existing OSM objects, not invented high-rises or shifted POIs. These seven
   // receive an authored facade/roof treatment while retaining their footprints.
   const heroIds=new Set(['230358855','230358856','230361902','230361900','258306586','258306587','230403274']);
-  for(const b of data.buildings){
+  const selectedBuildings=!arena&&replacement?[...data.buildings.filter(b=>!replacement.ownsGeo([b.points])),...replacement.buildings]:data.buildings;
+  for(const b of selectedBuildings){
     buildingPart=b.part===true;
-    const p=b.points.map(project),c=centerOf(p);if(excludeBuilding(0,0,[b.points]))continue;
+    const p=b.points.map(project),holes=(b.holes||[]).map(r=>r.map(project)),c=centerOf(p);if(excludeBuilding(0,0,[b.points,...(b.holes||[])]))continue;
     if(p.length<4||Math.hypot(...c)>contextRadius)continue;
     const h=Math.min(315,number(b.height,number(b.levels,b.kind==='apartments'?8:4)*3.3));
     const base=Number.isFinite(b.minHeight)?Math.max(0,b.minHeight):0;
-    const hero=heroIds.has(b.id),color=h>70?'glass':!buildingPart&&seed(b.id)%5===0?'sand':seed(b.id)%7===0?'sage':'ivory';
+    const hero=heroIds.has(b.id),color=b.facadeColor||(h>70?(seed(b.id)%3===0?'amber':'glass'):!buildingPart&&seed(b.id)%5===0?'sand':seed(b.id)%7===0?'sage':'ivory');
     const inset=(k)=>p.map(v=>[c[0]+(v[0]-c[0])*k,c[1]+(v[1]-c[1])*k]);
-    if(hero){
+    if(b.source==='nsdi'){
+      // Same palette/windows as the current quarter; no invented setbacks.
+      slab(color,p,h,base+.5,0,false,holes);slab('rooftop',p,.65,base+h+.5,0,false,holes);
+    }else if(hero){
       styledBuildings.push(b.id);
       const podium=Math.min(5,h*.3),shoulder=h*.78;
       slab('glass',p,podium,base+.5,.3);slab(color,inset(.985),shoulder-podium,base+podium+.5,.35);
       slab(color,inset(.88),h-shoulder,base+shoulder+.5,.4);
       slab('trim',p,.5,base+podium+.5,.15);slab('trim',inset(.995),.5,base+shoulder+.5,.15);
-      slab('roof',inset(.84),.4,base+h+.7);
+      slab('rooftop',inset(.84),.4,base+h+.7);
       for(let i=1;i<p.length;i++){
         const a=p[i-1],v=p[i],len=Math.hypot(v[0]-a[0],v[1]-a[1]);
         edge('trim',a,v,base+h+.4,1.1,.6,true);
@@ -92,15 +99,15 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
       const podium=near&&h>18&&base<1?4.6:0;
       if(podium){slab('glass',inset(.99),podium,base+.5,.25);slab('trim',p,.65,base+podium+.2,.25);}
       slab(color,p,h-podium,base+podium+.5,near?.45:0);
-      slab('roof',inset(.94),.65,base+h+.6);
+      slab('rooftop',inset(.94),.65,base+h+.6);
       // A small roof terrace and a broad cornice read at phone scale; unlike
       // tiny ledges they do not need hundreds of extra draw calls or textures.
-      if(near&&h>24){slab('roof',inset(.64),Math.min(2,h*.03),base+h+1,.2,true);}
+      if(near&&h>24){slab('rooftop',inset(.64),Math.min(2,h*.03),base+h+1,.2,true);}
       // Distant context keeps quiet roofs, not thousands of bright edge strips.
       if(h>12&&near)for(let i=1;i<p.length;i++)edge('trim',p[i-1],p[i],base+h+.9,1.15,1.2,true);
     }
-    if(base<1)slab('contact',inset(1.035),.01,GROUND.contact);
-    buildings++;footprints.push(p);buildingPlaces.push({p,top:base+h+1.2,id:`osm-${b.id}`,sourceRef:`osm:way/${b.id}`,geoRings:[b.points],geometryKind:'footprint',title:(b.name||'Здание').slice(0,120),lat:origin[1]-c[1]/111320,lng:origin[0]+c[0]/lonScale});
+    if(base<1&&b.source!=='nsdi')slab('contact',inset(1.035),.01,GROUND.contact);
+    buildings++;footprints.push(p);buildingPlaces.push({p,holes,top:base+h+1.2,id:b.source==='nsdi'?b.id:`osm-${b.id}`,sourceRef:b.sourceRef||`osm:way/${b.id}`,geoRings:[b.points,...(b.holes||[])],geometryKind:'footprint',title:(b.name||'Здание').slice(0,120),lat:origin[1]-c[1]/111320,lng:origin[0]+c[0]/lonScale});
   }
   buildingPart=false;
   const buildingIndex=createSpatialIndex(80);
@@ -110,13 +117,15 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
   // Two broad inlays make the meeting square legible at district scale. These
   // are art treatment, not a survey of paving or a new real-world installation.
   for(const radius of arena?[148,154]:[42,58])add('trim',new THREE.RingGeometry(radius,radius+1.3,64).rotateX(-Math.PI/2).scale(1,1,arena?.83:1).translate(0,GROUND.plaza+.055,0));
-  const paths=[],lampSites=[],roadSegments=[];
+  const paths=[],lampSites=[],roadSegments=[],driveRoutes=[];
   for(const r of data.roads){
     const pedestrian=['footway','pedestrian','path','steps','cycleway','corridor'].includes(r.kind);
     const w=number(r.width,pedestrian?(r.kind==='pedestrian'?8:3.4):r.kind.includes('secondary')?14:r.kind==='tertiary'?10:5);
     const p=r.points.map(project);
     const routeLength=p.slice(1).reduce((n,v,i)=>n+Math.hypot(v[0]-p[i][0],v[1]-p[i][1]),0);
     const promenade=pedestrian&&routeLength>130&&p.some(v=>Math.hypot(...v)<220);
+    // Through streets only: no parking aisles, and never across the square itself.
+    if(['secondary','tertiary','residential','unclassified'].includes(r.kind)&&p.every(v=>Math.hypot(...v)>plazaRadius+14))driveRoutes.push({points:p,width:w});
     for(let i=1;i<p.length;i++){
       const a=p[i-1],b=p[i],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.3)continue;
       // Roads are flat ribbons, not thousands of closed 12-triangle boxes.
@@ -150,7 +159,7 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
     }
     return y;
   }
-  function placeAt(x,z){const point=[x-originX,z-originZ];let highest=null;for(const b of buildingIndex.query(point))if((!highest||b.top>highest.top)&&onOrInPolygon(point,[b.p]))highest=b;return highest;}
+  function placeAt(x,z){const point=[x-originX,z-originZ];let highest=null;for(const b of buildingIndex.query(point))if((!highest||b.top>highest.top)&&onOrInPolygon(point,[b.p,...b.holes]))highest=b;return highest;}
   function surfaceHeight(x,z){return placeAt(x,z)?.top??groundHeight(x,z);}
   for(const area of data.areas){
     const p=area.points.map(project);if(p.length<4)continue;
@@ -172,11 +181,21 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
     items.forEach((p,i)=>{dummy.position.set(0,0,0);dummy.rotation.set(0,0,0);dummy.scale.set(1,1,1);transform(dummy,p,i);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);});
     mesh.computeBoundingSphere();mesh.instanceMatrix.needsUpdate=true;parent.add(mesh);return mesh;
   }
-  const trunks=instances(new THREE.CylinderGeometry(.32,.65,4.4,7),materials.trunk,treeSites,(o,[x,z,s])=>{o.position.set(x,2.3*s,z);o.scale.setScalar(s);});
-  const lobes=[new THREE.IcosahedronGeometry(2.8,1).scale(1,1.05,.9).translate(-1.5,0,0),new THREE.IcosahedronGeometry(2.5,1).translate(1.7,.5,.3),new THREE.IcosahedronGeometry(2.8,1).scale(.95,1.15,1).translate(0,1.9,-.3)];
-  const canopy=mergeGeometries(lobes);lobes.forEach(g=>g.dispose());
-  const crowns=instances(canopy,materials.leaf,treeSites,(o,[x,z,s],i)=>{o.position.set(x,5.1*s,z);o.scale.setScalar(s);o.rotation.y=i*1.7;});crowns.castShadow=true;crowns.receiveShadow=true;
-  const leafTone=new THREE.Color();treeSites.forEach((p,i)=>crowns.setColorAt(i,leafTone.setHex([0xffffff,0xd2e49b,0xa3d9bd,0xe0e7ae,0xb5d4c1][i%5])));crowns.instanceColor.needsUpdate=true;
+  // Round clustered crowns with a baked dark-to-light gradient: reads as soft
+  // foliage under one directional light without textures or extra passes.
+  const trunks=instances(new THREE.CylinderGeometry(.34,.7,4.6,7),materials.trunk,treeSites,(o,[x,z,s])=>{o.position.set(x,2.3*s,z);o.scale.setScalar(s);});
+  const lobes=[new THREE.IcosahedronGeometry(3,1).scale(1.05,.95,1).translate(-1.9,0,.3),new THREE.IcosahedronGeometry(2.8,1).translate(1.9,.3,.5),new THREE.IcosahedronGeometry(3.1,1).scale(1,1.02,1).translate(0,2.1,-.4),
+    new THREE.IcosahedronGeometry(2.1,0).translate(.3,.2,-2.3),new THREE.IcosahedronGeometry(1.9,0).translate(-.4,-.2,2.5)];
+  for(const g of lobes){
+    const pos=g.attributes.position,values=new Float32Array(pos.count*3);
+    for(let i=0;i<pos.count;i++){const t=THREE.MathUtils.clamp((pos.getY(i)+3)/8.2,0,1),k=.72+.46*t*t*(3-2*t);values[i*3]=k*(.94+.1*t);values[i*3+1]=k;values[i*3+2]=k*(.9-.12*t);}
+    g.setAttribute('color',new THREE.BufferAttribute(values,3));
+  }
+  const canopy=mergeGeometries(lobes.map(g=>g.index?g.toNonIndexed():g));lobes.forEach(g=>g.dispose());
+  materials.canopy=new THREE.MeshStandardMaterial({color:CITY_PALETTE.canopy[0],roughness:.95,metalness:0,vertexColors:true});
+  materials.canopy.userData={day:CITY_PALETTE.canopy[0],night:0x3a7d72};
+  const crowns=instances(canopy,materials.canopy,treeSites,(o,[x,z,s],i)=>{o.position.set(x,5.4*s,z);o.scale.setScalar(s*1.12);o.rotation.y=i*1.7;});crowns.castShadow=true;crowns.receiveShadow=true;
+  const leafTone=new THREE.Color();treeSites.forEach((p,i)=>crowns.setColorAt(i,leafTone.setHex([0xffffff,0xe6f08f,0xbfe6a8,0xf2e9a0,0xcfe7b4,0xa9d98f][i%6])));crowns.instanceColor.needsUpdate=true;
   // Soft ground contact survives economical mode without an expensive SSAO
   // fullscreen pass. One instanced draw for every tree, no transparent stacks.
   const shadowPixels=new Uint8Array(32*32*4);
@@ -210,7 +229,7 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
   }
   const importedProps=createQuaterniusProps({sites:propSites});street.add(importedProps.group);
   const plantingParts=[new THREE.IcosahedronGeometry(1.4,1).scale(1,.6,1),new THREE.IcosahedronGeometry(.65,1).scale(1,.7,1).translate(.6,.65,0)];
-  plantingParts.forEach((g,i)=>{const color=new THREE.Color(i?0xc9a7cd:CITY_PALETTE.leaf[0]),values=new Float32Array(g.attributes.position.count*3);for(let k=0;k<values.length;k+=3)color.toArray(values,k);g.setAttribute('color',new THREE.BufferAttribute(values,3));});
+  plantingParts.forEach((g,i)=>{const color=new THREE.Color(i?0xc9a7cd:CITY_PALETTE.canopy[0]),values=new Float32Array(g.attributes.position.count*3);for(let k=0;k<values.length;k+=3)color.toArray(values,k);g.setAttribute('color',new THREE.BufferAttribute(values,3));});
   const planting=mergeGeometries(plantingParts);plantingParts.forEach(g=>g.dispose());
   materials.planting=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,vertexColors:true});materials.planting.userData={day:0xffffff,night:0x748aa7};
   const shrubs=instances(planting,materials.planting,plantSites,(o,[x,z,y,a])=>{o.position.set(x,y,z);o.rotation.y=a;});shrubs.receiveShadow=true;
@@ -228,36 +247,42 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog}={}){
       if(!partMaterials[batch.key]){
         const part=mat.clone();part.polygonOffset=true;part.polygonOffsetFactor=-1;part.polygonOffsetUnits=-2;
         part.userData={day:mat.userData.day,night:mat.userData.night};
-        if(mat.userData.facade)part.userData.facade=decorateQuarterMaterial(part,{glass:batch.key==='glass'});
+        if(mat.userData.facade)part.userData.facade=decorateQuarterMaterial(part,{glass:batch.key==='glass'||batch.key==='amber',amber:batch.key==='amber'});
         partMaterials[batch.key]=part;
       }mat=partMaterials[batch.key];
     }
     const mesh=new THREE.Mesh(geo,mat);mesh.receiveShadow=true;
-    mesh.castShadow=!batch.detail&&['ivory','sage','sand','glass'].includes(batch.key);
+    mesh.castShadow=!batch.detail&&['ivory','sage','sand','glass','amber'].includes(batch.key);
     (batch.nightOnly?nightGroup:batch.detail?details:group).add(mesh);
   }
-  const crowd=createPedestrians(paths.filter(([a,b])=>Math.hypot(...centerOf([a,b]))<360),{count:32,seed:2718});
+  const crowd=createPedestrians(paths.filter(([a,b])=>Math.hypot(...centerOf([a,b]))<360),{count:44,seed:2718,scale:1.9});
   crowd.group.name='Decorative pedestrians · not real users';street.add(crowd.group);
+  const traffic=createTraffic(driveRoutes,{height:GROUND.road+.03,seed:arena?5309:9157});street.add(traffic.group);
+  const crowdLods=[];const crowdMaterials=new Set();crowd.group.traverse(o=>{if(o.material)crowdMaterials.add(o.material);});
+  for(const mat of crowdMaterials)crowdLods.push(decorateLodFade(mat));
   let night=false,winter=false,level='near';
   function setAppearance(isNight,theme){night=!!isNight;winter=theme!=='default';
     for(const [key,m]of [...Object.entries(materials),...Object.entries(partMaterials)]){
       if(m.userData.day!==undefined)m.color.setHex(night?m.userData.night:m.userData.day);
       m.userData.facade?.setNight(night);m.userData.facade?.setTheme(theme);
-      if(winter&&['grass','leaf','roof'].includes(key))m.color.setHex(night?0x8094a8:0xe1e8e5);
-    }nightGroup.visible=night;importedProps.setAppearance(night,theme);
+      if(winter&&['grass','leaf','canopy','rooftop'].includes(key))m.color.setHex(night?0x8094a8:0xe1e8e5);
+    }nightGroup.visible=night;importedProps.setAppearance(night,theme);traffic.setNight(night);
   }
   function update(distance,time,reduced=false,quality='balanced'){
     const next=detailLevel(distance,level);if(next!==level){level=next;details.visible=next!=='far';street.visible=next!=='far';}
-    crowd.group.visible=level==='near';if(crowd.group.visible)crowd.update(time,reduced);
+    const layers=cityLodWeights(distance,quality);
+    crowd.group.visible=layers.people>0;for(const fade of crowdLods)fade.set(layers.people);
+    if(crowd.group.visible)crowd.update(time,reduced);
+    if(level!=='far')traffic.update(time,reduced,quality);
     importedProps.update(distance,quality);
     trunks.count=crowns.count=treeContacts.count=Math.min(treeSites.length,(QUALITY[quality]||QUALITY.balanced).trees);
   }
-  function destroy(){group.removeFromParent();importedProps.destroy();group.traverse(o=>{if(o.isInstancedMesh)o.dispose();});
+  function destroy(){group.removeFromParent();importedProps.destroy();traffic.destroy();group.traverse(o=>{if(o.isInstancedMesh)o.dispose();});
     crowd.group.traverse(o=>{if(o.geometry)o.geometry.dispose();});
     const crowdMats=new Set();crowd.group.traverse(o=>{if(o.material)crowdMats.add(o.material);});crowdMats.forEach(m=>m.dispose());
     resources.forEach(g=>g.dispose());for(const m of [...Object.values(materials),...Object.values(partMaterials)]){m.userData.facade?.dispose();m.dispose();}tex.dispose();shadowTex.dispose();
   }
   setAppearance(false,'default');
   return {group,update,setAppearance,groundHeight,surfaceHeight,placeAt,destroy,center:new THREE.Vector3(originX,0,originZ),district,
-    stats:()=>({district,quarterBuildings:buildings,styledBuildings:[...styledBuildings],quarterTrees:street.visible?trunks.count:0,quarterPedestrians:street.visible&&crowd.group.visible?crowd.count:0,quaternius:importedProps.stats(),lod:level})};
+    stats:()=>({district,quarterBuildings:buildings,styledBuildings:[...styledBuildings],quarterTrees:street.visible?trunks.count:0,quarterPedestrians:street.visible&&crowd.group.visible?crowd.count:0,quaternius:importedProps.stats(),...traffic.stats(),lod:level})};
 }

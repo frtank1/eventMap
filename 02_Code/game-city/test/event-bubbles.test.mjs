@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {safeBubbleCover,bubbleRect,nativeBubbleCovers} from '../runtime/event-bubbles.js';
+import {safeBubbleCover,bubbleRect,nativeBubbleCovers,setLabelVisible,positionLabel,setLabelClass,setLabelLevel} from '../runtime/event-bubbles.js';
 import {visibleEvents} from '../runtime/social-state.js';
 test('native covers require current event ID and cover revision, never demo or remote URLs',()=>{
   const data='data:image/jpeg;base64,/9j/',events=visibleEvents([{id:'e',lat:51.13,lng:71.43,coverRef:'new'}]);
@@ -19,4 +19,16 @@ test('balloon tether stays at geographic anchor and avoids viewport chrome',()=>
   assert.deepEqual(bubbleRect(195,400,viewport),{x:143,y:262,w:104,h:138});
   for(const [x,y]of [[20,400],[380,400],[195,100],[195,800],[NaN,400]])assert.equal(bubbleRect(x,y,viewport),null);
   assert.equal(bubbleRect(200,400,viewport).x+52,200);
+});
+test('idle labels do not rewrite visibility or position every render frame',()=>{
+  let hidden=false,transform='',visibilityWrites=0,positionWrites=0,classWrites=0,levelWrites=0,domReads=0;
+  const label={get hidden(){domReads++;return hidden;},set hidden(v){hidden=v;visibilityWrites++;},style:{get transform(){domReads++;return transform;},set transform(v){transform=v;positionWrites++;}},classList:{toggle(){classWrites++;}},dataset:{set level(v){levelWrites++;}}};
+  for(let i=0;i<300;i++){setLabelVisible(label,false);positionLabel(label,195.001,400.001);setLabelClass(label,'balloon-moving',false);setLabelLevel(label,'city');}
+  assert.equal(visibilityWrites,1);assert.equal(positionWrites,1);
+  assert.equal(classWrites,1);assert.equal(levelWrites,1);assert.equal(domReads,1,'unchanged labels do not read DOM state every frame either');
+  setLabelVisible(label,true);positionLabel(label,195.026,400.026);
+  assert.equal(visibilityWrites,2);assert.equal(positionWrites,1);
+  positionLabel(label,196,401);assert.equal(positionWrites,2);
+  assert.equal(transform,'translate(196px,401px) translate(-50%,-100%)');
+  setLabelClass(label,'balloon-moving',true);setLabelLevel(label,'street');assert.equal(classWrites,2);assert.equal(levelWrites,2);
 });

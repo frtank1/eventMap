@@ -1,3 +1,4 @@
 node_modules/
 preview-dist/
 test-results/
+test/nsdi-local/

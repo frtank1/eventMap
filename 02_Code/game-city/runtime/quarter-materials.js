@@ -1,6 +1,6 @@
 // Shared miniature-city material: broad facade bays, quiet roofs and local
 // night windows. No texture downloads or per-building dynamic lights.
-export function decorateQuarterMaterial(material,{glass=false,paving=false,minorPath=false}={}){
+export function decorateQuarterMaterial(material,{glass=false,paving=false,minorPath=false,amber=false}={}){
   const night={value:0},snow={value:0};
   const previous=material.onBeforeCompile,previousKey=material.customProgramCacheKey;
   material.onBeforeCompile=function(shader,renderer){
@@ -38,11 +38,11 @@ export function decorateQuarterMaterial(material,{glass=false,paving=false,minor
         vec2 shop=vec2(u/6.8,y/5.0);vec2 shopAA=max(fwidth(shop),vec2(.001));
         float shopPane=quarterRect(vec2(fract(shop.x),shop.y),vec2(.4,.34),shopAA)*(1.0-step(5.0,y));
         float glazing=clamp(pane+shopPane,0.0,1.0)*facade;
-        vec3 glassTint=mix(vec3(.075,.23,.29),vec3(.025,.065,.12),uQuarterNight);
+        vec3 glassTint=mix(${amber?'vec3(.62,.40,.10)':glass?'vec3(.09,.36,.42)':'vec3(.07,.25,.31)'},vec3(.025,.065,.12),uQuarterNight);
         // Large, stable sky-reflection bands. Derivative filtering below keeps
         // mullions from becoming a shimmering grid as the camera moves.
         float reflection=smoothstep(.18,.65,fract(u/93.0+y/110.0));
-        glassTint=mix(glassTint,vec3(.31,.58,.62),reflection*.42*(1.0-uQuarterNight));
+        glassTint=mix(glassTint,${amber?'vec3(1.0,.86,.52)':'vec3(.56,.84,.9)'},reflection*${glass?'.5':'.26'}*(1.0-uQuarterNight));
         ${glass?'glassTint=mix(diffuseColor.rgb*.7,glassTint,.75);':''}
         diffuseColor.rgb=mix(diffuseColor.rgb,glassTint,glazing);
         diffuseColor.rgb*=mix(.67,1.0,smoothstep(0.0,7.0,y));
@@ -68,6 +68,6 @@ export function decorateQuarterMaterial(material,{glass=false,paving=false,minor
       diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.86,.9,.91),uQuarterSnow*roof);
       `);
   };
-  material.customProgramCacheKey=()=>`quarter-art-6:${glass}:${paving}:${minorPath}`;
+  material.customProgramCacheKey=()=>`quarter-art-8:${glass}:${paving}:${minorPath}:${amber}`;
   return {setNight:value=>{night.value=value?1:0;},setTheme:value=>{snow.value=value==='default'?0:1;},dispose(){material.onBeforeCompile=previous;material.customProgramCacheKey=previousKey;material.needsUpdate=true;}};
 }
