@@ -1,7 +1,7 @@
 import {estimatedTop,nearLandmark} from './height-estimate.js';
 import * as THREE from 'three';
 import {flatPolygon,roadStrip} from '../source/city-stream.js';
-import {CITY_PALETTE} from './art-direction.js';
+import {CITY_PALETTE,ROOF_COLORS,roofKeyAt} from './art-direction.js';
 import {WORLD_CENTER,LON_SCALE,METERS} from './world-state.js';
 import {createLandmarkExclusion} from './landmark-footprints.js';
 import {onOrInPolygon} from '../source/city-overview.js';
@@ -14,7 +14,7 @@ import {preparedMesh,cityGeometryKey,encodePreparedCity} from './prepared-city.j
 // extra geometry. No trees or animated people in this whole-city layer.
 export const BACKDROP_LIMITS=Object.freeze({buildings:100000,vertices:1800000,cell:3000,minorDistance:8500,rectangles:9});
 const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
-const palette={cream:CITY_PALETTE.ivory,cyan:CITY_PALETTE.glass,sand:CITY_PALETTE.sand,mint:CITY_PALETTE.sage,roof:CITY_PALETTE.rooftop,...CITY_PALETTE};
+const palette={cream:CITY_PALETTE.ivory,cyan:CITY_PALETTE.glass,sand:CITY_PALETTE.sand,mint:CITY_PALETTE.sage,roof:CITY_PALETTE.rooftop,...CITY_PALETTE,...ROOF_COLORS};
 const colors=Object.fromEntries(Object.entries(palette).map(([k,p])=>[k,p.map(c=>new THREE.Color(c).toArray().map(x=>Math.round(x*255)))]));
 export const polygonArea=r=>Math.abs(r.reduce((a,p,i)=>{const q=r[(i+1)%r.length];return a+p[0]*q[1]-q[0]*p[1];},0)/2);
 export function validateOverview(d){
@@ -32,7 +32,7 @@ export function validateOverview(d){
   if(vertices>BACKDROP_LIMITS.vertices)throw Error('City vertex budget');return d;
 }
 function batch(){return {p:[],n:[],c:[],night:[],snow:[],light:[],minor:[],anchor:[],i:[]};}
-function vertex(b,p,n,color,anchor,lighting=0,minor=0){const index=b.p.length/3;b.p.push(...p);b.n.push(...n);b.c.push(...colors[color][0]);b.night.push(...colors[color][1]);b.snow.push(color==='roof'||color==='grass'?1:0);b.light.push(lighting);b.minor.push(minor);b.anchor.push(...anchor);return index;}
+function vertex(b,p,n,color,anchor,lighting=0,minor=0){const index=b.p.length/3;b.p.push(...p);b.n.push(...n);b.c.push(...colors[color][0]);b.night.push(...colors[color][1]);b.snow.push(color.startsWith('roof')||color==='grass'?1:0);b.light.push(lighting);b.minor.push(minor);b.anchor.push(...anchor);return index;}
 // Indexed roof + four vertices per wall. No hidden bottom faces or per-building
 // objects/materials; holes stay holes, and source heights are never flattened.
 export function appendBuilding(b,[top,base,style,rings]){
@@ -40,7 +40,8 @@ export function appendBuilding(b,[top,base,style,rings]){
   const minor=Number(top-base<15&&polygonArea(outer)<250);
   const paths=rings.map(r=>r.map(([x,z])=>new THREE.Vector2(x,-z)));
   const triangles=THREE.ShapeUtils.triangulateShape(paths[0],paths.slice(1)),points=rings.flat(),offset=b.p.length/3;
-  for(const [x,z]of points)vertex(b,[x,top,z],[0,1,0],'roof',anchor,0,minor);
+  const roofKey=roofKeyAt(anchor[0],anchor[1]);
+  for(const [x,z]of points)vertex(b,[x,top,z],[0,1,0],roofKey,anchor,0,minor);
   for(const tri of triangles)b.i.push(...tri.map(i=>offset+i));
   for(let ri=0;ri<rings.length;ri++){
     const ring=rings[ri],signed=ring.reduce((a,p,i)=>{const q=ring[(i+1)%ring.length];return a+p[0]*q[1]-q[0]*p[1];},0);
@@ -61,12 +62,12 @@ export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgr
   if(prepared){if(excludeBuilding||prepared.key!==cityGeometryKey(entries,catalog))throw Error('Prepared city incompatible');}else validateOverview(data);
   const started=performance.now(),group=new THREE.Group();group.name='persistent-astana';
   const masks=Array.from({length:9},()=>new THREE.Vector4());
-  const uniforms={coverage:{value:masks},coverageCount:{value:0},coverageWeight:{value:1},quarterMask:{value:new THREE.Vector3(0,0,0)},cityNight:{value:0},cityWinter:{value:0}};
+  const uniforms={coverage:{value:masks},coverageCount:{value:0},coverageWeight:{value:1},quarterMask:{value:new THREE.Vector3(0,0,0)},cityNight:{value:0},cityWinter:{value:0},cityGrassDay:{value:new THREE.Color(CITY_PALETTE.grass[0])},citySeasonGrass:{value:new THREE.Color(CITY_PALETTE.grass[0])}};
   const material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.9});
   material.onBeforeCompile=s=>{
     Object.assign(s.uniforms,uniforms);
-    s.vertexShader='attribute vec3 nightColor; attribute float snowSurface; attribute float nightLighting; attribute float minorBuilding; attribute vec2 coverageAnchor; varying vec2 cityAnchor; varying vec2 cityFacade; varying float cityLighting; varying float cityMinor; uniform float cityNight; uniform float cityWinter;\n'+s.vertexShader;
-    s.vertexShader=s.vertexShader.replace('#include <color_vertex>','#include <color_vertex>\n vColor=mix(color,nightColor,cityNight); vColor=mix(vColor,mix(vec3(.77,.84,.85),vec3(.28,.40,.52),cityNight),cityWinter*snowSurface*.86); cityAnchor=coverageAnchor; cityLighting=nightLighting; cityMinor=minorBuilding; cityFacade=vec2(abs(normal.x)>.5?position.z:position.x,position.y);');
+    s.vertexShader='attribute vec3 nightColor; attribute float snowSurface; attribute float nightLighting; attribute float minorBuilding; attribute vec2 coverageAnchor; varying vec2 cityAnchor; varying vec2 cityFacade; varying float cityLighting; varying float cityMinor; uniform float cityNight; uniform float cityWinter; uniform vec3 cityGrassDay; uniform vec3 citySeasonGrass;\n'+s.vertexShader;
+    s.vertexShader=s.vertexShader.replace('#include <color_vertex>','#include <color_vertex>\n vColor=mix(mix(color,citySeasonGrass,step(distance(color,cityGrassDay),.035)),nightColor,cityNight); vColor=mix(vColor,mix(vec3(.77,.84,.85),vec3(.28,.40,.52),cityNight),cityWinter*snowSurface*.86); cityAnchor=coverageAnchor; cityLighting=nightLighting; cityMinor=minorBuilding; cityFacade=vec2(abs(normal.x)>.5?position.z:position.x,position.y);');
     s.fragmentShader='varying vec2 cityAnchor; varying vec2 cityFacade; varying float cityLighting; varying float cityMinor; uniform float cityNight; uniform vec4 coverage[9]; uniform int coverageCount; uniform float coverageWeight; uniform vec3 quarterMask;\n'+LOD_COVERAGE_GLSL+s.fragmentShader;
     s.fragmentShader=s.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>
       float cityKeep=cityCoverageSample();
@@ -172,7 +173,7 @@ export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgr
     triangles+=bridgeTriangles;
     }
     const readyAt=performance.now(),loadMs=readyAt-started;
-    return {group,setAppearance(night,theme){uniforms.cityNight.value=night?1:0;uniforms.cityWinter.value=theme!=='default'?1:0;},
+    return {group,setAppearance(night,theme,foliage=null){uniforms.cityNight.value=night?1:0;uniforms.cityWinter.value=theme!=='default'?1:0;uniforms.citySeasonGrass.value.setHex(foliage?.grass??CITY_PALETTE.grass[0]);},
       update(camera,rectangles=[],quarter=null,coverageWeight=1){
         uniforms.coverageWeight.value=Math.max(0,Math.min(1,Number.isFinite(coverageWeight)?coverageWeight:1));
         uniforms.coverageCount.value=Math.min(9,rectangles.length);rectangles.slice(0,9).forEach((r,i)=>masks[i].set(...r));uniforms.quarterMask.value.set(quarter?.x||0,quarter?.z||0,quarter?.radius||0);

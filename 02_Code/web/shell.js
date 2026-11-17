@@ -1,10 +1,26 @@
 // Public web shell around the 3D city engine. It plays the part the native app
 // plays on phones: it feeds the engine public events and reacts to taps.
 // The engine bundle itself is used unchanged, through its existing bridge.
-import {normalizeEvents,filterEvents,formatWhen,toCityEvent,isNight,themeFor,mapUrl,shareUrl,nearby,isLive,CATEGORIES} from './lib.js';
+import {normalizeEvents,filterEvents,formatWhen,toCityEvent,isNight,themeFor,mapUrl,shareUrl,nearby,isLive,CATEGORIES,parseWeather,formatTemp} from './lib.js';
 
 const params=new URLSearchParams(location.search);
-const state={config:{},events:[],filter:'all',night:null,selected:null,covers:new Map(),coverFiles:{},demo:false};
+const state={config:{},events:[],filter:'all',selected:null,covers:new Map(),coverFiles:{},demo:false,look:{phase:'auto',season:'auto',weather:'auto'},live:null};
+// Time of day, season and weather: 'auto' follows the Astana clock and calendar.
+const LOOK={phase:[['auto','Авто'],['sunrise','Рассвет'],['day','День'],['sunset','Закат'],['night','Ночь']],
+  season:[['auto','Авто'],['spring','Весна'],['summer','Лето'],['autumn','Осень'],['winter','Зима']],
+  weather:[['auto','Авто'],['clear','Ясно'],['cloudy','Облачно'],['rain','Дождь'],['snow','Снег']]};
+const LOOK_TITLES={phase:'Время суток',season:'Сезон',weather:'Погода'};
+const label=(group,key)=>(LOOK[group].find(([k])=>k===key)||[,''])[1];
+try{Object.assign(state.look,JSON.parse(localStorage.getItem('em-look-2')||'{}'));}catch{/* private mode */}
+for(const group of Object.keys(LOOK)){const v=params.get(group);if(v)state.look[group]=v;if(!LOOK[group].some(([k])=>k===state.look[group]))state.look[group]=LOOK[group][0][0];}
+const saveLook=()=>{try{localStorage.setItem('em-look-2',JSON.stringify(state.look));}catch{/* not kept */}};
+// Real Astana weather for «Авто». A failed request keeps the last known state (or clear sky).
+async function refreshWeather(){
+  if(!state.config.weatherUrl)return;
+  try{const live=parseWeather(await json(state.config.weatherUrl));if(live){state.live={...live,at:now()};push();}}catch{/* offline: keep the last state */}
+}
+const sceneWeather=()=>state.look.weather==='auto'?(state.live&&now()-state.live.at<3*3600000?state.live.kind:'clear'):state.look.weather;
+const resolved=()=>{try{const s=engine()?.stats?.();if(s?.phase)return s;}catch{/* engine still booting */}return null;};
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const json=async(url)=>{const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw new Error(`${url}: ${r.status}`);return r.json();};
 const engine=()=>window.EventMapMobile;
@@ -13,11 +29,15 @@ const now=()=>Date.now();
 function visible(){return filterEvents(state.events,state.filter,now());}
 function push(){
   if(!engine())return;
-  const t=now(),night=state.night??isNight(t);
+  const t=now(),{phase,season}=state.look,weather=sceneWeather(),night=phase==='auto'?isNight(t):phase==='night';
+  // Holiday lights and snow follow the calendar unless a season is pinned.
+  const calendar=state.config.theme&&state.config.theme!=='auto'?state.config.theme:themeFor(t);
+  const theme=season==='auto'?calendar:season==='winter'?(calendar==='default'?'winter':calendar):'default';
   engine().receive({v:1,type:'sync',manifestUrl:new URL('world/manifest.json',location.href).href,
     events:visible().slice(0,150).map(e=>toCityEvent(e,t,state.coverFiles)),covers:[...state.covers.values()].slice(-8),
-    night,theme:state.config.theme&&state.config.theme!=='auto'?state.config.theme:themeFor(t),active:true,focusId:'city',focusRevision:0,updateRevision:0,interactionBlocked:false});
-  document.body.classList.toggle('em-night',night);
+    night,theme,phase,season,weather,active:true,focusId:'city',focusRevision:0,updateRevision:0,interactionBlocked:false});
+  document.body.classList.toggle('em-night',(resolved()?.phase??(night?'night':'day'))==='night');
+  paintLook?.();
 }
 
 // The engine asks for small cover thumbnails only for bubbles in view.
@@ -81,6 +101,38 @@ function openPlace(place){
   });
 }
 
+// ---------- demo event scene (fictional, clearly labelled) ----------
+async function toggleDemoScene(){
+  if(!engine())return;
+  if(state.demoScene){state.demoScene=null;engine().receive({v:1,type:'eventScene',scene:null});if(state.lookBeforeDemo)state.look=state.lookBeforeDemo;state.lookBeforeDemo=null;push();return;}
+  try{state.demoScene=await json('scenes/demo-concert.json');}catch{return;}
+  // Shown at night, where its lights carry the scene; the saved look is not changed.
+  state.lookBeforeDemo={...state.look};state.look={...state.look,phase:'night'};push();
+  engine().receive({v:1,type:'eventScene',scene:state.demoScene});
+}
+
+// ---------- look: time of day, season, weather ----------
+let paintLook=null;
+function openLook(){
+  openSheet('Вид города',box=>{
+    box.append(el('h2','em-look-title','Вид города'));
+    for(const group of Object.keys(LOOK)){
+      const row=el('div','em-seg');row.setAttribute('role','group');row.setAttribute('aria-label',LOOK_TITLES[group]);
+      for(const [key,text] of LOOK[group]){
+        const b=el('button','em-chipbtn',text);b.setAttribute('aria-pressed',String(state.look[group]===key));
+        b.onclick=()=>{state.look[group]=key;saveLook();push();for(const x of row.children)x.setAttribute('aria-pressed',String(x===b));};
+        row.append(b);
+      }
+      box.append(el('p','em-look-label',LOOK_TITLES[group]),row);
+    }
+    const demo=el('button','em-chipbtn',state.demoScene?'Скрыть демо-сцену':'★ Демо: 3D-сцена мероприятия');demo.setAttribute('aria-pressed',String(!!state.demoScene));
+    demo.onclick=async()=>{await toggleDemoScene();closeSheet();};
+    box.append(el('p','em-look-label','Мероприятие'),demo,el('p','em-note','Демо-сцена — вымышленный концерт для показа возможностей, не настоящее событие.'));
+    const live=state.live?` Сейчас в Астане ${[formatTemp(state.live.temp),label('weather',state.live.kind).toLowerCase()].filter(Boolean).join(', ')}.`:'';
+    box.append(el('p','em-note',`«Авто» — по часам, календарю и реальной погоде в Астане.${live}${state.config.weatherCredit?` Погода: ${state.config.weatherCredit}.`:''}`));
+  });
+}
+
 // ---------- chrome ----------
 function chrome(){
   const bar=el('header','em-bar'),brand=el('div','em-brand');brand.append(el('strong','',state.config.title||'EventMap'),el('span','',state.config.city||'Астана'));
@@ -93,10 +145,13 @@ function chrome(){
     }
     const n=visible().length;count.textContent=state.events.length?(n?`Событий: ${n}`:'На это время событий нет'):'Событий пока нет';
   };
-  const mode=el('button','em-mode');mode.setAttribute('aria-label','День или ночь');
-  const paint=()=>{mode.textContent=(state.night??isNight(now()))?'Ночь':'День';};
-  mode.onclick=()=>{state.night=!(state.night??isNight(now()));paint();push();};
-  bar.append(brand,chips,mode);document.body.append(bar,count);render();paint();
+  const mode=el('button','em-mode');mode.setAttribute('aria-label','Время суток, сезон и погода');
+  paintLook=()=>{const s=resolved(),{phase,season,weather}=state.look;
+    const p=phase==='auto'&&s?label('phase',s.phase):label('phase',phase),z=season==='auto'&&s?label('season',s.season):label('season',season);
+    const live=weather==='auto'&&state.live?[formatTemp(state.live.temp),state.live.kind!=='clear'?label('weather',state.live.kind):''].filter(Boolean).join(' '):'';
+    mode.textContent=[p,z,weather==='auto'?live:weather!=='clear'?label('weather',weather):''].filter(Boolean).join(' · ');};
+  mode.onclick=openLook;
+  bar.append(brand,chips,mode);document.body.append(bar,count);render();paintLook();
   if(state.config.suggestUrl)document.body.append(link('+ Предложить событие',state.config.suggestUrl,'em-suggest'));
   if(state.demo)document.body.append(el('div','em-demo','Демо-данные'));
   document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet();});
@@ -126,6 +181,7 @@ async function start(){
   // Statuses (soon / live / over) change with the clock even if nothing else does.
   setInterval(()=>{refresh();push();},60000);
   setInterval(load,10*60000);
+  void refreshWeather();setInterval(refreshWeather,15*60000);
 }
 start();
 

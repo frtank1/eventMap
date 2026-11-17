@@ -1,6 +1,6 @@
 // Local check of ./dist only. Production hosting is any static file host.
 import {createServer} from 'node:http';
-import {readFile} from 'node:fs/promises';
+import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {networkInterfaces} from 'node:os';
@@ -16,7 +16,8 @@ createServer(async(req,res)=>{
     const bytes=await readFile(file),type=types[path.extname(file)]||'application/octet-stream';
     // gzip like a real static host would (overview.json 7 MB → ~2 MB), so phones on Wi-Fi load in time.
     if(/json|javascript|css|html|gltf|text/.test(type)&&/\bgzip\b/.test(req.headers['accept-encoding']||'')){
-      const key=`${file}:${bytes.length}`;let z=zipped.get(key);if(!z){z=gzipSync(bytes,{level:6});zipped.set(key,z);}
+      // Keyed by modification time too: an edit that keeps the size must not serve stale bytes.
+      const key=`${file}:${bytes.length}:${(await stat(file)).mtimeMs}`;let z=zipped.get(key);if(!z){z=gzipSync(bytes,{level:6});zipped.set(key,z);}
       res.writeHead(200,{'Content-Type':type,'Content-Encoding':'gzip','Vary':'Accept-Encoding','Cache-Control':'no-store'});res.end(z);return;}
     res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});res.end(bytes);
   }catch{res.writeHead(404).end();}

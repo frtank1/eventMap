@@ -31,6 +31,8 @@ const native=path.resolve(here,'../common/feature/map/ui/src/commonMain/composeR
 await rm(path.join(native,'city-geometry.bin.gz'),{force:true});
 if(!bake)await rm(path.join(native,'city-geometry.emc'),{force:true});
 await mkdir(native,{recursive:true});await cp(out,native,{recursive:true});
+// The app shows the web version's curated events when the events API is unreachable.
+await copyFile(path.resolve(here,'../web/events.json'),path.join(native,'events.json'));
 if(process.argv.includes('--native-only')){console.log('Built native engine and debug-only trials. Backend assets unchanged.');process.exit(0);}
 const server=path.resolve(here,'../../04_Backend/server/src/main/resources/world');
 await mkdir(server,{recursive:true});await copyFile(path.join(here,'content/manifest.json'),path.join(server,'manifest.json'));

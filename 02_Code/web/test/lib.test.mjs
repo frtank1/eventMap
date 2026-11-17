@@ -46,3 +46,13 @@ test('day/night and season follow Astana time',()=>{
   assert.equal(themeFor(Date.parse('2026-11-30T12:00:00+05:00')),'default');assert.equal(themeFor(Date.parse('2026-12-01T12:00:00+05:00')),'winter');
   assert.equal(themeFor(Date.parse('2026-12-31T23:00:00+05:00')),'newyear');assert.equal(themeFor(Date.parse('2027-03-01T12:00:00+05:00')),'default');
 });
+
+import {weatherKind,parseWeather,formatTemp} from '../lib.js';
+test('live weather codes map to the scene weather',()=>{
+  assert.equal(weatherKind(0),'clear');assert.equal(weatherKind(3),'cloudy');assert.equal(weatherKind(45),'cloudy');
+  assert.equal(weatherKind(61),'rain');assert.equal(weatherKind(95),'rain');assert.equal(weatherKind(73),'snow');assert.equal(weatherKind(86),'snow');
+  assert.equal(weatherKind(undefined),null);
+  assert.deepEqual(parseWeather({current:{temperature_2m:-7.6,weather_code:71}}),{kind:'snow',temp:-8});
+  assert.equal(parseWeather({current:{}}),null);assert.equal(parseWeather(null),null);
+  assert.equal(formatTemp(-8),'−8°');assert.equal(formatTemp(3),'+3°');assert.equal(formatTemp(0),'0°');assert.equal(formatTemp(null),'');
+});

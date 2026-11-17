@@ -196,7 +196,10 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog,repla
   materials.canopy=new THREE.MeshStandardMaterial({color:CITY_PALETTE.canopy[0],roughness:.95,metalness:0,vertexColors:true});
   materials.canopy.userData={day:CITY_PALETTE.canopy[0],night:0x3a7d72};
   const crowns=instances(canopy,materials.canopy,treeSites,(o,[x,z,s],i)=>{o.position.set(x,5.4*s,z);o.scale.setScalar(s*1.12);o.rotation.y=i*1.7;});crowns.castShadow=true;crowns.receiveShadow=true;
-  const leafTone=new THREE.Color();treeSites.forEach((p,i)=>crowns.setColorAt(i,leafTone.setHex([0xffffff,0xe6f08f,0xbfe6a8,0xf2e9a0,0xcfe7b4,0xa9d98f][i%6])));crowns.instanceColor.needsUpdate=true;
+  // Per-tree tints give the crowns variety; in winter they stay near-white (snow), not green.
+  const leafTone=new THREE.Color(),LEAF_TONES=[0xffffff,0xe6f08f,0xbfe6a8,0xf2e9a0,0xcfe7b4,0xa9d98f],SNOW_TONES=[0xffffff,0xf1f5f7,0xe6edf0];
+  const tintCrowns=winter=>{const tones=winter?SNOW_TONES:LEAF_TONES;treeSites.forEach((p,i)=>crowns.setColorAt(i,leafTone.setHex(tones[i%tones.length])));crowns.instanceColor.needsUpdate=true;};
+  tintCrowns(false);
   // Soft ground contact survives economical mode without an expensive SSAO
   // fullscreen pass. One instanced draw for every tree, no transparent stacks.
   const shadowPixels=new Uint8Array(32*32*4);
@@ -265,12 +268,13 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog,repla
   const crowdLods=[];const crowdMaterials=new Set();crowd.group.traverse(o=>{if(o.material)crowdMaterials.add(o.material);});
   for(const mat of crowdMaterials)crowdLods.push(decorateLodFade(mat));
   let night=false,winter=false,level='near';
-  function setAppearance(isNight,theme){night=!!isNight;winter=theme!=='default';
+  function setAppearance(isNight,theme,foliage=null){night=!!isNight;winter=theme!=='default';
     for(const [key,m]of [...Object.entries(materials),...Object.entries(partMaterials)]){
       if(m.userData.day!==undefined)m.color.setHex(night?m.userData.night:m.userData.day);
       m.userData.facade?.setNight(night);m.userData.facade?.setTheme(theme);
       if(winter&&['grass','leaf','canopy','rooftop'].includes(key))m.color.setHex(night?0x8094a8:0xe1e8e5);
-    }nightGroup.visible=night;importedProps.setAppearance(night,theme);traffic.setNight(night);
+      else if(!night&&foliage&&foliage[key]!==undefined)m.color.setHex(foliage[key]); // season: spring/summer/autumn
+    }tintCrowns(winter);nightGroup.visible=night;importedProps.setAppearance(night,theme);traffic.setNight(night);
   }
   function update(distance,time,reduced=false,quality='balanced'){
     const next=detailLevel(distance,level);if(next!==level){level=next;details.visible=next!=='far';street.visible=next!=='far';}

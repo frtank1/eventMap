@@ -78,3 +78,17 @@ export function nearby(events,lat,lng,metres=150){
   const k=111320*Math.cos(lat*Math.PI/180);
   return events.filter(e=>Math.hypot((e.lng-lng)*k,(e.lat-lat)*111320)<=metres);
 }
+
+// Live weather (Open-Meteo "current" block, WMO weather codes) → the scene's weather kinds.
+export function weatherKind(code){
+  const c=Number(code);if(!Number.isFinite(c))return null;
+  if(c<=1)return 'clear';if(c<=48)return 'cloudy';
+  if((c>=71&&c<=77)||c===85||c===86)return 'snow';
+  return 'rain'; // drizzle, rain, freezing rain, showers, thunderstorms
+}
+export function parseWeather(json){
+  const cur=json&&typeof json==='object'?json.current:null,kind=weatherKind(cur?.weather_code);if(!kind)return null;
+  const t=Number(cur.temperature_2m);
+  return {kind,temp:Number.isFinite(t)&&Math.abs(t)<70?Math.round(t):null};
+}
+export const formatTemp=t=>t===null||t===undefined?'':`${t>0?'+':t<0?'−':''}${Math.abs(t)}°`;

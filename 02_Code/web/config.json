@@ -6,5 +6,7 @@
   "suggestUrl": "",
   "apiEvents": "",
   "theme": "auto",
-  "demoEvents": true
+  "demoEvents": true,
+  "weatherUrl": "https://api.open-meteo.com/v1/forecast?latitude=51.1694&longitude=71.4491&current=temperature_2m,weather_code",
+  "weatherCredit": "Open-Meteo.com (CC BY 4.0)"
 }

@@ -31,9 +31,17 @@ export const VERIFIED_PARTS = Object.freeze({
   beijing: ['way/460047238'],
   moscow: ['way/258345462', 'way/230403257'],
   petersburg: ['way/230403283', 'way/258351821'],
+  keruen: ['way/258739309'],
+  keruencity: ['way/501394752', 'way/501394749', 'way/501394746'],
+  severnoe: ['way/230358852', 'way/230358853', 'way/230358851'],
+  izumrud: ['way/258735490', 'way/230361899', 'way/258735487', 'way/258735488'],
+  triumph: ['way/460703795', 'way/460703796', 'way/460703789', 'way/460703791', 'way/460703792', 'way/460703790', 'way/460703793', 'way/460703794'],
+  highvill: ['way/1385141126', 'way/1385141134', 'way/1385141132', 'way/1385141125', 'way/1385141133', 'way/1385141124', 'way/1385141131'],
 });
-const legacyParts = new Map(JSON.parse(readFileSync(new URL('./source/baiterek.json', ROOT), 'utf8'))
-  .buildings.map(b => [`way/${b.id}`, b.points]));
+// Reviewed model-source rings: the Baiterek snapshot plus malls/residential towers fetched by id.
+const legacyParts = new Map(['./source/baiterek.json', './source/city-landmarks-osm.json']
+  .flatMap(file => JSON.parse(readFileSync(new URL(file, ROOT), 'utf8')).buildings.map(b => [`way/${b.id}`, b.points])));
+export const MODEL_COUNT = 31;
 function sameRingEdges(a, b) {
   const open = ring => ring.length > 1 && same(ring[0], ring.at(-1)) ? ring.slice(0, -1) : ring;
   a = open(a); b = open(b);
@@ -76,6 +84,31 @@ export const REVIEWED_MATCHES = Object.freeze({
   museum: {refs: ['way/1381418247'], tags: {building: 'yes', tourism: 'museum', 'addr:housenumber': '54'},
     identity: {ref: 'node/4894937300', name: /national museum|национальный музей/i}, review: true,
     notes: 'Museum building at Tauelsizdik 54 contains the named National Museum POI node/4894937300; NOT National Museum LRT way/1484667030. Manifest anchor is west of building; asymmetric block model/yaw -0.1 rad needs placement and size review.'},
+  keruen: {refs: ['way/108096984'], name: /керуен|keruen/i,
+    notes: 'Named Keruen shopping centre (Dostyk 9) plus its building:part. Stylised mall: glazed ground floor, sign band, roof plant; 5 m storeys from OSM levels.'},
+  asiapark: {refs: ['way/239713764'], name: /asia.?park|азия/i,
+    notes: 'Named Asia Park retail building. Stylised mall from the mapped outline; 5 m storeys from OSM levels.'},
+  keruencity: {refs: ['way/209448027'], name: /keruen.?city|керуен/i,
+    notes: 'Named KeruenCity retail building (Korgalzhyn hwy 1) plus three building:parts. Stylised mall; heights from OSM height/levels.'},
+  astanamall: {refs: ['way/240502747'], name: /astana.?mall|астана.?молл/i,
+    notes: 'Named Astana Mall retail building (Tauelsizdik 34). Stylised mall from the mapped outline.'},
+  eurasia: {refs: ['way/1089059381', 'way/475995069', 'way/240592139'], name: /еуразия|евразия|eurasia/i,
+    notes: 'Named Eurasia, Eurasia-2 and Eurasia-3 retail buildings, kept as three separate mapped buildings.'},
+  severnoe: {refs: ['way/230358850'], name: /северное|солтүстік|northern/i,
+    notes: 'Named Northern Lights complex podium plus its three named tower building:parts (32/37/42 levels). Stylised glass towers with crowns.'},
+  izumrud: {refs: ['way/289011352', 'way/289011351'], name: /изумруд|emerald/i,
+    notes: 'Named Emerald Quarter outline and podium plus four tower building:parts with OSM heights (163-210 m). Green glass is stylised.'},
+  triumph: {refs: ['way/240909255'], name: /салтанат|триумф|triumph/i,
+    notes: 'Named Triumph of Astana (Astana Saltanaty) outline plus eight stepped building:parts. Spire height is stylised to the published ~142 m total.'},
+  highvill: {refs: ['way/425291398', 'way/963622735', 'way/425291399', 'way/963623283', 'way/240860162'], name: /хайвил|highvill/i,
+    notes: 'Named Highvill Astana blocks B, D, E1, E2 and G plus seven tower building:parts. Stylised; unnamed podium way/1385141127 is not imported.'},
+  europecity: {refs: ['way/1161754596', 'way/1161754597', 'way/1161754598', 'way/1161754599', 'way/1161754600', 'way/1161754601'],
+    tags: {building: 'apartments', 'addr:street': 'Ақмешіт көшесі', 'addr:housenumber': '1'},
+    notes: 'Europe City (Orda Invest): six unnamed apartment towers at Akmeshit 1, identified by address. Levels 22/25 from OSM; one tower without levels uses 22 (listing: 18-25).'},
+  lavie: {refs: ['way/626933554'], name: /la ?vie/i,
+    notes: 'La Vie (Orda Invest), Koshkarbayev 1: OSM still maps a named construction site with seven building=construction outlines. Model uses those outlines at an estimated 15 storeys (listing: 12-18).'},
+  dara: {refs: ['way/1531639893'], name: /dara/i,
+    notes: 'Dara Residence (Sensata), Saraishyk 34a: OSM maps only the named residential area. Model uses two NSDI building outlines at estimated 14 and 22 storeys (listing: 2-22).'},
   hazret: {refs: ['way/240860325'], name: /хазрет|әзірет|hazrat/i,
     notes: 'Named Hazrat Sultan mosque building, not grounds. Model main body 98 x 88 m, yaw 2.25 rad; minarets/stairs extend beyond that body. Architecture remains stylized.'},
   grandmosque: {refs: ['relation/18901938'], name: /мешіт|мечеть|mosque/i,
@@ -244,8 +277,8 @@ export function buildCatalog(data, manifest) {
   const timestamp = data.osm3s?.timestamp_osm_base || (data.source === 'OpenStreetMap' ? data.timestamp : null);
   if (typeof timestamp !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(timestamp) || !Number.isFinite(Date.parse(timestamp)))
     fail('Missing OSM source timestamp');
-  if (!Array.isArray(manifest?.models) || manifest.models.length !== 19
-    || new Set(manifest.models.map(m => m.id)).size !== 19) fail('Expected the 19-model manifest');
+  if (!Array.isArray(manifest?.models) || manifest.models.length !== MODEL_COUNT
+    || new Set(manifest.models.map(m => m.id)).size !== MODEL_COUNT) fail(`Expected the ${MODEL_COUNT}-model manifest`);
   const index = new Map();
   for (const e of data.elements) {
     if (!['node', 'way', 'relation'].includes(e.type) || !Number.isSafeInteger(e.id) || e.id <= 0) fail('Invalid OSM object ID/type');

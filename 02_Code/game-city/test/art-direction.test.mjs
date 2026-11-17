@@ -7,7 +7,7 @@ import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 
 test('city palette is bounded shared day/night data',()=>{
-  assert.equal(ART_VERSION,'city-day-diorama-2');
+  assert.equal(ART_VERSION,'city-seasons-1');
   for(const colors of Object.values(CITY_PALETTE)){
     assert.equal(colors.length,2);for(const c of colors)assert.ok(Number.isInteger(c)&&c>=0&&c<=0xffffff);
   }

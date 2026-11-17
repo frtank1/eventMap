@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import data from '../source/baiterek.json';
+import osm from '../source/city-landmarks-osm.json';
 import {mergeGeometries} from '../source/vendor/BufferGeometryUtils.js';
 import {createCivicLandmarks} from '../source/civic-landmarks.js';
 import {createCivicExtras} from '../source/civic-extras.js';
@@ -21,7 +22,42 @@ export const CITY_PLACES=Object.freeze([
   {id:'expo',title:'EXPO · Нұр Әлем',lng:71.41629,lat:51.089227,height:100,radius:65},
   {id:'mega',title:'MEGA Silk Way',lng:71.40733,lat:51.08909,height:32,radius:265},
   {id:'museum',title:'Национальный музей',lng:71.467,lat:51.1184,height:45,radius:155},
+  ...notablePlaces(),
 ]);
+// Malls and notable residential complexes from OSM outlines/parts (source/city-landmarks-osm.json).
+// Heights: OSM height tag, else levels × storey (5 m in malls, 3.3 m in housing). Stylised, not surveyed.
+function notablePlaces(){
+  const sites=[
+    {id:'keruen',site:'keruen',title:'ТРЦ «Керуен»',style:'mall'},
+    {id:'asiapark',site:'asia',title:'ТРЦ Asia Park',style:'mall'},
+    {id:'keruencity',site:'keruencity',title:'ТРЦ Keruen City',style:'mall'},
+    {id:'astanamall',site:'astanamall',title:'ТРЦ Astana Mall',style:'mall'},
+    {id:'eurasia',site:'eurasia',title:'ТРЦ «Евразия»',style:'mall'},
+    {id:'severnoe',site:'severnoe',title:'ЖК «Северное сияние»',style:'tower',skin:'glass'},
+    {id:'izumrud',site:'izumrud',title:'Изумрудный квартал',style:'tower',skin:'emerald'},
+    {id:'triumph',site:'triumph',title:'ЖК «Триумф Астаны»',style:'tower',skin:'ivory',spire:34},
+    {id:'highvill',site:'highvill',title:'ЖК Highvill Astana',style:'tower',skin:'ivory'},
+    {id:'europecity',site:'europe',title:'ЖК Europe City',style:'tower',skin:'ivory'},
+    {id:'lavie',site:'lavie',title:'ЖК La Vie',style:'tower',skin:'ivory'},
+    {id:'dara',site:'dara',title:'ЖК Dara Residence',style:'tower',skin:'glass'},
+  ];
+  return sites.map(site=>{
+    const all=osm.buildings.filter(b=>b.site===site.site),storey=site.style==='mall'?5:3.3;
+    const fallback=Math.max(...all.map(b=>b.levels||0))||3;
+    // A site outline without its own height is the ground plan for its parts, not a volume.
+    const parts=all.filter(b=>b.part||b.height||b.levels||all.length===1||b.kind==='parking').map(b=>[String(b.id),Math.max(6,Math.round(b.height||(b.levels||(b.kind==='parking'?2:fallback))*storey))]);
+    // Anchor at a mapped outline's centre (landmark exclusion only trusts footprints that contain
+    // it), choosing the outline that keeps the whole complex closest (model radius ≤ 500 m).
+    const pts=all.flatMap(b=>b.points),centre=r=>[r.reduce((a,p)=>a+p[0],0)/r.length,r.reduce((a,p)=>a+p[1],0)/r.length];
+    const reach=([x0,y0])=>Math.max(...pts.map(([x,y])=>Math.hypot((x-x0)*LON_SCALE,(y-y0)*METERS)));
+    const within=([x,y],r)=>{let c=false;for(let i=0,j=r.length-1;i<r.length;j=i++){const [xi,yi]=r[i],[xj,yj]=r[j];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)c=!c;}return c;};
+    const box=[(Math.min(...pts.map(p=>p[0]))+Math.max(...pts.map(p=>p[0])))/2,(Math.min(...pts.map(p=>p[1]))+Math.max(...pts.map(p=>p[1])))/2];
+    // Courtyard blocks (e.g. Dara) have no centre inside a ring: the site's mapped area holds the anchor instead.
+    const [lng,lat]=all.filter(b=>parts.some(p=>p[0]===String(b.id))).map(b=>centre(b.points)).filter((c,i,list)=>within(c,all.filter(b=>parts.some(p=>p[0]===String(b.id)))[i].points)).sort((a,b)=>reach(a)-reach(b))[0]||box;
+    const radius=Math.ceil(Math.max(...pts.map(([x,y])=>Math.hypot((x-lng)*LON_SCALE,(y-lat)*METERS)))+4);
+    return {...site,lng:+lng.toFixed(6),lat:+lat.toFixed(6),height:Math.max(...parts.map(p=>p[1]))+(site.spire||0)+8,radius,parts};
+  });
+}
 // Oriented bounding rectangle of a part outline in local metres (x east, y north).
 // Roof embellishments are placed on this rectangle: they used to be axis-aligned
 // at the model origin and sat across, or skewed on, the building below them.
@@ -38,11 +74,12 @@ export function orientedRect(points){
   return best;
 }
 export function createCityLandmarks(){
-  const group=new THREE.Group(),entries=[],materials={},geometries=new Set(),specs={ivory:CITY_PALETTE.ivory,glass:CITY_PALETTE.glass,roof:CITY_PALETTE.roof,gold:CITY_PALETTE.gold,green:CITY_PALETTE.leaf,dark:CITY_PALETTE.dark};
-  group.name='Astana · authored landmarks';const byId=new Map(data.buildings.map(b=>[String(b.id),b]));
+  const group=new THREE.Group(),entries=[],materials={},geometries=new Set(),specs={ivory:CITY_PALETTE.ivory,glass:CITY_PALETTE.glass,roof:CITY_PALETTE.roof,gold:CITY_PALETTE.gold,green:CITY_PALETTE.leaf,dark:CITY_PALETTE.dark,emerald:CITY_PALETTE.emerald};
+  group.name='Astana · authored landmarks';const byId=new Map([...data.buildings,...osm.buildings].map(b=>[String(b.id),b]));
   for(const [key,[day,night]]of Object.entries(specs)){
-    const m=new THREE.MeshStandardMaterial({color:day,roughness:key==='glass'?.4:.8,metalness:key==='glass'?.12:key==='gold'?.25:0});m.name=`city-${key}`;m.userData={day,night};
-    if(['ivory','glass'].includes(key))m.userData.facade=decorateQuarterMaterial(m,{glass:key==='glass'});
+    const glassy=key==='glass'||key==='emerald';
+    const m=new THREE.MeshStandardMaterial({color:day,roughness:glassy?.4:.8,metalness:glassy?.12:key==='gold'?.25:0});m.name=`city-${key}`;m.userData={day,night};
+    if(['ivory','glass','emerald'].includes(key))m.userData.facade=decorateQuarterMaterial(m,{glass:glassy});
     materials[key]=m;
   }
   for(const spec of CITY_PLACES){
@@ -56,10 +93,22 @@ export function createCityLandmarks(){
     const onCrown=(key,geometry,y)=>add(key,geometry.rotateY(crown?.angle||0).translate(crown?.x||0,y,crown?-crown.north:0));
     for(const [id,h]of spec.parts||[]){const b=byId.get(id);if(!b)continue;const s=new THREE.Shape();b.points.forEach(([lng,lat],i)=>{const x=(lng-spec.lng)*LON_SCALE,y=(lat-spec.lat)*METERS;i?s.lineTo(x,y):s.moveTo(x,y);});s.closePath();
       if(!crown||h>crown.h){const rect=orientedRect(b.points.map(([lng,lat])=>[(lng-spec.lng)*LON_SCALE,(lat-spec.lat)*METERS]));if(rect)crown={h,...rect};}
-      add(h>30&&spec.id!=='beijing'?'glass':'ivory',new THREE.ExtrudeGeometry(s,{depth:h,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,.5,0));
-      add('roof',new THREE.ExtrudeGeometry(s,{depth:.65,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,h+.6,0));partCount++;
+      const band=(key,y0,y1)=>{if(y1-y0>.2)add(key,new THREE.ExtrudeGeometry(s,{depth:y1-y0,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,y0+.5,0));};
+      if(spec.style==='mall'){
+        // Shop-front glazing at street level, a sign band under the parapet.
+        band('glass',0,Math.min(5,h));if(h>9){band('ivory',5,h-3.2);band('gold',h-3.2,h-1.7);band('ivory',h-1.7,h);}else band('ivory',5,h);
+      }else if(spec.skin){band(h>30?spec.skin:'ivory',0,Math.min(h,6));band(h>30?spec.skin:'ivory',Math.min(h,6),h);}
+      else add(h>30&&spec.id!=='beijing'?'glass':'ivory',new THREE.ExtrudeGeometry(s,{depth:h,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,.5,0));
+      add(spec.style==='tower'?'ivory':'roof',new THREE.ExtrudeGeometry(s,{depth:.65,steps:1,bevelEnabled:false,curveSegments:1}).rotateX(-Math.PI/2).translate(0,h+.6,0));partCount++;
+      // Tower crowns: a recessed glass lantern and a slim cap on every high-rise part.
+      if(spec.style==='tower'&&h>60){const rect=orientedRect(b.points.map(([lng,lat])=>[(lng-spec.lng)*LON_SCALE,(lat-spec.lat)*METERS]));
+        if(rect){const w=rect.length*.62,d=rect.width*.62,crownKey=spec.skin;
+          add(crownKey,new THREE.BoxGeometry(w,5,d).rotateY(rect.angle).translate(rect.x,h+1.2+2.5,-rect.north));
+          add('ivory',new THREE.BoxGeometry(w*1.08,.8,d*1.08).rotateY(rect.angle).translate(rect.x,h+1.2+5.4,-rect.north));}}
     }
     if(spec.parts&&!partCount)box('ivory',35,spec.height-5,35); // recognisable scale, explicitly approximate fallback.
+    if(spec.style==='mall'&&crown){for(const [dx,dz] of [[-.18,-.1],[.12,.15],[.22,-.2]])onCrown('dark',new THREE.BoxGeometry(6,3,4).translate(dx*crown.length,0,dz*crown.width),crown.h+2.1);}
+    if(spec.spire&&crown){onCrown('ivory',new THREE.CylinderGeometry(3.2,4.4,6,12),crown.h+1+6+3);onCrown('gold',new THREE.ConeGeometry(2.2,spec.spire,12),crown.h+1+12+spec.spire/2);}
     if(spec.id==='beijing')for(const [y,w]of [[103,46],[111,36],[118,24]]){onCrown('green',new THREE.BoxGeometry(w,2,w),y);onCrown('green',new THREE.ConeGeometry(w*.65,6,4).rotateY(Math.PI/4),y+3);}
     // Long side along the tower: the cap is 58 x 26 m on a 97 x 28 m tower top.
     if(spec.id==='moscow'){onCrown('ivory',new THREE.BoxGeometry(58,4,26),98);onCrown('gold',new THREE.BoxGeometry(42,2,17),102);}

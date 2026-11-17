@@ -14,7 +14,9 @@ import {clampTarget,containsCoordinate,fallbackDistrict,referenceDistrict,CITY_A
 import {CITY_LOD_VERSION,cityLodBand,cityLodWeights} from './city-lod.js';
 import {labelsOverlap} from './social-state.js';
 import {setLabelVisible,positionLabel} from './event-bubbles.js';
-import {ART_VERSION,sceneMood,CITY_PALETTE,landmarkColor,landmarkSwatch} from './art-direction.js';
+import {ART_VERSION,sceneMood,CITY_PALETTE,landmarkColor,landmarkSwatch,atmosphere,autoPhase,autoSeason,PHASES,SEASONS,WEATHERS,SEASON_FOLIAGE} from './art-direction.js';
+import {createWeather} from './weather.js';
+import {createEventScene} from './event-scene.js';
 import {createLandmarkGround} from './landmark-ground.js';
 import {readBundledJSON,placeMessage} from './place-addresses.js';
 import {GeoCatalogStore,GEO_LIMITS} from './geo-catalog-store.js';
@@ -81,10 +83,18 @@ async function refreshBackdrop(){
 const allPlaces=()=>models;
 const styledPlaces=new Set(CITY_PLACES.map(p=>p.id));
 let depthBits=0;
+// 'auto' follows the Astana clock and calendar; shells may pin phase/season/weather.
+let eventScene=null;
+let phaseSetting='auto',seasonSetting='auto',weatherSetting='clear',phase='day',season='summer',weatherFx=null,lastAutoLook=0;
 let sceneTime=0,lastSceneTime=null,lastCityUpdate=0,lastAnchorLayout='',shadowDirty=true,shadowsEnabled=false;
 let shadowCenter=null,shadowSpan=0,contextLost=false;
 // Late-afternoon key light: about 37 degrees above the horizon.
-const SUN_OFFSET=new THREE.Vector3(-380,360,300);
+// Golden hour: a low sun (≈18°) for long, readable shadows.
+const SUN_OFFSET=new THREE.Vector3(-420,175,320);
+// Khan Shatyr: silver ETFE cushions by day (sampled from photos: light cool grey that
+// mirrors the sky); at night the tent is lit from inside and slowly changes colour.
+const KHAN_ETFE=0xd3d8dc,KHAN_NIGHT=0x353d55,KHAN_SHOW=[0x7d4dff,0x2f78ff,0x22c3c6,0xffbe4a,0xff4f9e];
+const khanShow=new THREE.Color(),khanNext=new THREE.Color();let khanMembranes=[];
 let pmrem,environment,environmentKey='';
 // Placement under review: the authored museum sits about 45 m off its real
 // outline, so drawing it next to the real footprint shows two overlapping
@@ -94,9 +104,13 @@ const withheldModels=new Set(['museum']);
 // the real outline in the place catalogue (minimum-area rectangle of both).
 // MEGA was 18.8 degrees off, the Palace of Peace 14.6. Fold these into the
 // source models at the next export and delete the entries here.
-const placementYaw={mega:-0.328,palace:-0.255,arena:0.0692,talan:-0.2478};
+// Arena: model long axis 76.6° + 1.5° = OSM way/166223262 area-moment axis 78.1°, checked on satellite.
+// Khan Shatyr: the mast leans west of the base centre (satellite, net of view tilt): turn 180°.
+const placementYaw={mega:-0.328,palace:-0.255,arena:0.026,talan:-0.2478,khan:Math.PI};
 // Metres east / north that move the corrected model centre onto the real outline centre.
-const placementOffset={arena:[16.1,10.9],talan:[10.0,-2.0]};
+const placementOffset={arena:[12.5,7.8],talan:[10.0,-2.0]};
+// Khan Shatyr's base is an ellipse (OSM 197 × 169 m, long axis ≈ east-west), not the model's 236 m circle.
+const placementScale={khan:[.83,1,.72]};
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 const governor=createFrameGovernor({devicePixelRatio,mode:'auto'});
 function applyQuality(next){
@@ -118,7 +132,8 @@ function makeModels(pack) {
         const m = new THREE.MeshStandardMaterial({color:x.color, roughness:x.roughness, metalness:x.metalness,
           emissive:x.emissive, emissiveIntensity:x.emissiveIntensity, opacity:x.opacity, transparent:x.transparent, side:x.side});
         m.userData = {color:x.color, emissive:x.emissive, intensity:x.emissiveIntensity,landmark:entry.id};
-        if(styledPlaces.has(entry.id)&&['ivory','glass'].includes(landmarkSwatch(x.color)))m.userData.facade=decorateQuarterMaterial(m,{glass:landmarkSwatch(x.color)==='glass'});
+        if(entry.id==='khan'&&landmarkSwatch(x.color)==='roof'){m.userData.membrane=true;m.roughness=.3;m.metalness=.22;}
+        if(styledPlaces.has(entry.id)&&['ivory','glass','emerald'].includes(landmarkSwatch(x.color)))m.userData.facade=decorateQuarterMaterial(m,{glass:landmarkSwatch(x.color)!=='ivory'});
         materials.push(m); return m;
       });
       for (const x of data.meshes) {
@@ -129,7 +144,7 @@ function makeModels(pack) {
         const mesh = new THREE.Mesh(g, mats[x.material]); mesh.userData.detail = x.detail;
         mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
       }
-      group.position.copy(project(entry.lng, entry.lat)); group.rotation.y=placementYaw[entry.id]||0;{const o=placementOffset[entry.id];if(o){group.position.x+=o[0];group.position.z-=o[1];}} group.userData.place = {...entry,geometryKind:'stylized'};
+      group.position.copy(project(entry.lng, entry.lat)); group.rotation.y=placementYaw[entry.id]||0;if(placementScale[entry.id])group.scale.set(...placementScale[entry.id]);{const o=placementOffset[entry.id];if(o){group.position.x+=o[0];group.position.z-=o[1];}} group.userData.place = {...entry,geometryKind:'stylized'};
       entries.push({entry, group});
     }
     return {root, entries, materials};
@@ -201,13 +216,21 @@ async function selectPlace(p) {
 }
 function appearance() {
   if (!scene) return;
-  const winter = theme !== 'default';
-  const mood=sceneMood(night,theme);
+  const now=Date.now();
+  // 'auto' follows the Astana clock fully; 'auto-day' is for older shells that send only
+  // night/theme: their night flag decides night, the clock picks sunrise/day/sunset.
+  const clock=autoPhase(now);
+  phase=phaseSetting==='auto'?clock:phaseSetting==='auto-day'?(clock==='night'?'day':clock):phaseSetting;
+  season=seasonSetting!=='auto'?seasonSetting:theme!=='default'?'winter':autoSeason(now);
+  night=phase==='night';
+  const look=theme==='newyear'?'newyear':season==='winter'?'winter':'default',foliage=season==='winter'?null:SEASON_FOLIAGE[season];
+  const mood=atmosphere(phase,season,weatherSetting);SUN_OFFSET.set(...mood.sunOffset);
+  weatherFx?.set(weatherSetting);
   scene.background = new THREE.Color(mood.sky);
   // Only soften the outer edge; keep the playable district crisp, including night.
   scene.fog = new THREE.Fog(scene.background,11000,45000);
-  sky?.setMood({top:mood.zenith,horizon:mood.sky,cloud:mood.cloud,glow:night?0x5f7fb5:0xfff0c8,night,sun:SUN_OFFSET});
-  const key=`${night}:${theme}`;
+  sky?.setMood({top:mood.zenith,horizon:mood.sky,cloud:mood.cloud,glow:mood.glow,night,sun:SUN_OFFSET});
+  const key=`${phase}:${look}:${weatherSetting}`;
   // PMREM renders into half-float targets. Without a renderable float format (the Android
   // emulator's GLES translator, some phones) it yields garbage and every PBR surface goes
   // black or fog-grey, so the sky environment is skipped there; the hemisphere light stays.
@@ -216,17 +239,17 @@ function appearance() {
   if(floatTargets&&key!==environmentKey){
     // One small prefiltered sky per day/night change; no per-frame cost.
     environmentKey=key;pmrem||=new THREE.PMREMGenerator(renderer);
-    const source=createEnvironmentScene({top:mood.zenith,horizon:mood.sky,ground:mood.groundLight,glow:night?0x6f8fc5:0xffe2b0,sun:SUN_OFFSET});
+    const source=createEnvironmentScene({top:mood.zenith,horizon:mood.sky,ground:mood.groundLight,glow:mood.envGlow,sun:SUN_OFFSET});
     const next=pmrem.fromScene(source.scene,0,1,50);source.dispose();environment?.dispose();environment=next;
     scene.environment=next.texture;scene.environmentIntensity=night?.22:.2;
   }
   ambient.intensity=mood.ambient;ambient.color.setHex(mood.skyLight);ambient.groundColor.setHex(mood.groundLight);
   sunlight.intensity=mood.direct;sunlight.color.setHex(mood.sun);renderer.toneMappingExposure=mood.exposure;
   terrain.material.color.setHex(mood.land);
-  city?.setNight(night); city?.setTheme(theme);
-  backdrop?.setAppearance(night,theme);
-  trialBackdrop?.setAppearance(night,theme);
-  quarter?.setAppearance(night,theme);effects?.setNight(night);landmarkGround?.setNight(night);shadowDirty=true;
+  city?.setSeason?.(foliage);city?.setNight(night); city?.setTheme(look);
+  backdrop?.setAppearance(night,look,foliage);
+  trialBackdrop?.setAppearance(night,look,foliage);
+  quarter?.setAppearance(night,look,foliage);effects?.setNight(night);landmarkGround?.setNight(night);shadowDirty=true;
   social?.setAppearance(night,quality);
   social?.refreshAnchors();
   document.body.classList.toggle('night',night);
@@ -234,14 +257,16 @@ function appearance() {
     m.color.setHex(m.userData.color); m.emissive.setHex(m.userData.emissive);
     if(styledPlaces.has(m.userData.landmark))m.color.setHex(landmarkColor(m.userData.color,night));
     m.emissiveIntensity = m.userData.intensity * (night ? 1.4 : .5);
-    m.userData.facade?.setNight(night);m.userData.facade?.setTheme(theme);
+    m.userData.facade?.setNight(night);m.userData.facade?.setTheme(look);
     if(night&&m.userData.emissive===0xffcf8a)m.emissiveIntensity=.5;
     // Architectural illumination, not a fake live-event indicator.
     if (night && m.userData.emissive === 0 && m.color.getHSL({}).l > .65) {
       m.emissive.setHex(m.userData.landmark==='baiterek'?0xffdca5:theme === 'newyear' ? 0xf4b75e : 0xbacbd9); m.emissiveIntensity = .25;
     }
     if(m.userData.landmark==='baiterek'&&m.userData.emissive!==0)m.emissiveIntensity=night?.9:.3;
+    if(m.userData.membrane){m.color.setHex(night?KHAN_NIGHT:KHAN_ETFE);m.emissive.setHex(night?KHAN_SHOW[0]:0);m.emissiveIntensity=night?.6:0;}
   }
+  khanMembranes=nightMaterials.filter(m=>m.userData.membrane);
 }
 let eventPresentation='bubbles',festivalDensity=false;
 let zoomBenchmark=null,benchmarkRevision=0,benchmarkLods=[],benchmarkOrigin={x:0,z:0,id:'center'},benchmarkCoverage={};
@@ -375,8 +400,8 @@ function receive(m) {
     const signature=JSON.stringify([preview,festivalDensity,m.events]);
     if(signature!==eventSignature){eventSignature=signature;setEvents(m.events);}
     social?.setCovers(m.covers);
-    const lookSignature=JSON.stringify([m.night,m.theme]);
-    if(lastNativeAppearance!==lookSignature){lastNativeAppearance=lookSignature;receive({v:1,type:'appearance',night:m.night,theme:m.theme});}
+    const lookSignature=JSON.stringify([m.night,m.theme,m.phase,m.season,m.weather]);
+    if(lastNativeAppearance!==lookSignature){lastNativeAppearance=lookSignature;receive({v:1,type:'appearance',night:m.night,theme:m.theme,phase:m.phase,season:m.season,weather:m.weather});}
     if(m.focusRevision!==focusRevision){focusRevision=m.focusRevision;focus(m.focusId);}
     if(m.updateRevision!==updateRevision){updateRevision=m.updateRevision;void store?.update();void addresses.update();}
     receive({v:1,type:'active',active:m.active});
@@ -389,7 +414,16 @@ function receive(m) {
   if (m.type === 'benchmark') receiveBenchmark(m);
   if (m.type === 'quarter-variant'&&debugSceneAllowed(m,debugContext()))void switchQuarterVariant(m.variant);
   if (m.type === 'focus') focus(m.id);
-  if (m.type === 'appearance') { night = m.night === true; theme = ['default','winter','newyear'].includes(m.theme) ? m.theme : 'default'; appearance(); }
+  // An event's own 3D scene (config from the shell). `scene:null` removes it.
+  if (m.type === 'eventScene') {
+    eventScene?.destroy();eventScene=null;
+    if(m.scene)try{eventScene=createEventScene(m.scene,project);scene.add(eventScene.group);
+      if(m.focus!==false){social?.closeEditor();controls.target.copy(eventScene.focus.target);camera.position.copy(eventScene.focus.target).add(eventScene.focus.offset);controls.update();setQuarterMode();}
+    }catch(e){console.warn('event scene rejected',e);}
+  }
+  if (m.type === 'appearance') { night = m.night === true; theme = ['default','winter','newyear'].includes(m.theme) ? m.theme : 'default';
+    phaseSetting=m.phase==='auto'||PHASES.includes(m.phase)?m.phase:night?'night':'auto-day';if(m.season==='auto'||SEASONS.includes(m.season))seasonSetting=m.season;if(WEATHERS.includes(m.weather))weatherSetting=m.weather;
+    appearance(); }
   if (m.type === 'update') {void store?.update();void addresses.update();}
   if (m.type === 'active') { if(active!==(m.active===true)){lastSceneTime=null;if(m.active===true)void addresses.update({force:false});}active = m.active === true; if(!active)finishZoomBenchmark('inactive');if (active && !frame) frame = requestAnimationFrame(render); }
   if (m.type === 'init' && !store) {
@@ -442,6 +476,15 @@ function render(t) {
   const reach=quarterMode?1450:(city?.reach()||6000);
   scene.fog.near=backdrop?distance+24000:distance+reach*(quarterMode?.18:.38);scene.fog.far=backdrop?Math.min(72000,distance+49000):distance+reach*1.03;
   sky.update(camera,sceneTime);
+  weatherFx?.update(sceneTime,camera,controls.target,reducedMotion.matches,renderer.getPixelRatio());
+  eventScene?.update(sceneTime,renderer.getPixelRatio(),reducedMotion.matches);
+  if(night&&khanMembranes.length){
+    // About nine seconds per colour with a short cross-fade; still under reduced motion.
+    const t=reducedMotion.matches?0:sceneTime/9,i=Math.floor(t),f=t-i,k=Math.max(0,(f-.75)/.25),n=KHAN_SHOW.length;
+    khanShow.setHex(KHAN_SHOW[i%n]).lerp(khanNext.setHex(KHAN_SHOW[(i+1)%n]),k*k*(3-2*k));for(const m of khanMembranes)m.emissive.copy(khanShow);
+  }
+  // Auto time of day/season advance on their own (sunrise → day → sunset → night).
+  if((phaseSetting.startsWith('auto')||seasonSetting==='auto')&&performance.now()-lastAutoLook>120000){lastAutoLook=performance.now();appearance();}
   const depth=cameraDepth(distance,quarterMode,!!backdrop);
   if(Math.abs(camera.near-depth.near)>.02||camera.far!==depth.far){camera.near=depth.near;camera.far=depth.far;camera.updateProjectionMatrix();}
   if(t-lastCityUpdate>250){
@@ -466,7 +509,7 @@ function render(t) {
   effects.update(dt,{camera,target:controls.target,distance:camera.position.length(),quality,visible:camera.position.length()<1800,reduced:reducedMotion.matches,blocked,dpr:renderer.getPixelRatio()});
   // Phones: a soft shadow map re-renders the whole quarter every update, which the
   // 17.11 iPhone test felt as lag; the contact-shadow textures stay.
-  const shadows=quality==='balanced'&&distance<1200&&!coarsePointer;
+  const shadows=quality==='balanced'&&distance<1200&&(!coarsePointer||!night);
   if(shadows!==shadowsEnabled){shadowsEnabled=shadows;renderer.shadowMap.enabled=shadows;shadowDirty=true;}
   if(shadows&&shadowDirty){renderer.shadowMap.needsUpdate=true;shadowDirty=false;}
   // Event covers take priority over place captions; never print both on top of
@@ -536,7 +579,7 @@ try {
   renderer = new THREE.WebGLRenderer({canvas:canvasEl,context:gl2||undefined,antialias:true,alpha:false,powerPreference:'default'});
   const gl=renderer.getContext();depthBits=gl.getParameter(gl.DEPTH_BITS);
   renderer.setPixelRatio(governor.pixelRatio); renderer.outputColorSpace=THREE.SRGBColorSpace;
-  renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;
+  renderer.shadowMap.type=THREE.PCFShadowMap;renderer.shadowMap.autoUpdate=false;
   renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1.05;
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(42,1,.15,40000);
   ambient=new THREE.HemisphereLight(0xe3efff,0x69593d,1.15);sunlight=new THREE.DirectionalLight(0xffdfaa,3.3);sunlight.position.set(-300,500,250);scene.add(ambient,sunlight);
@@ -547,7 +590,7 @@ try {
   controls.touches.ONE=THREE.TOUCH.PAN;controls.touches.TWO=THREE.TOUCH.DOLLY_ROTATE;
   controls.addEventListener('change',()=>{clampTarget(controls.target);});
   controls.addEventListener('start',()=>finishZoomBenchmark('gesture'));
-  sky=createSky();scene.add(sky.group);
+  sky=createSky();scene.add(sky.group);weatherFx=createWeather(scene);
   activate(seed);city=createWorldStream();scene.add(city.group);
   quarter=createBaiterekQuarter({entries:models.map(p=>p.entry),catalog:geoCatalog});districts.set('baiterek',quarter);effects=createQuarterEffects();scene.add(quarter.group,effects.group);focus('baiterek');resize();
   social=createSocialLayer({scene,camera,controls,native,project,groundHeight:(x,z)=>quarterMode?quarter.groundHeight(x,z):.62,editorSpot:()=>{
@@ -569,7 +612,7 @@ try {
   addEventListener('pagehide',()=>{backdropStopped=true;trialRevision++;trialBuild?.abort();trialBackdrop?.destroy();});
   addEventListener('resize',resize);window.visualViewport?.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{lastSceneTime=null;if(document.hidden)finishZoomBenchmark('hidden');if(!document.hidden){void addresses.update({force:false});if(active&&!frame)frame=requestAnimationFrame(render);}});
   addEventListener('pagehide',()=>{backdropBuild?.abort();backdrop?.destroy();store?.stop();addresses.stop();active=false;cancelAnimationFrame(frame);social?.destroy();districts.forEach(d=>d.destroy());effects?.destroy();sky?.destroy();environment?.dispose();pmrem?.dispose();landmarkGround?.destroy();controls.dispose();city?.destroy();dispose(modelRoot);for(const x of markers)dispose(x.mesh);renderer.dispose();});
-  window.EventMapMobile={receive,stats:()=>({artVersion:ART_VERSION,lodVersion:CITY_LOD_VERSION,layer:cityLodBand(camera.position.distanceTo(controls.target)).id,layerWeights:cityLodWeights(camera.position.distanceTo(controls.target),quality),quarterVariant:trialVariant(),trialBusy,trialData:quarterReplacement?.stats||null,trialLod:trialBackdrop?(quarterMode&&districtId==='baiterek'?'near-quarter':'city-silhouette'):null,trialSilhouette:trialBackdrop?.stats()||null,cameraDistance:camera.position.distanceTo(controls.target),geographyRelease:addresses.manifest?.release||'bundled',addressCount:addresses.current?.index.count||0,fps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,release:current.manifest.release,quality,qualityMode:governor.mode,pixelRatio:renderer.getPixelRatio(),quarterMode,night,theme,depthBits,depthNear:camera.near,depthFar:camera.far,landmarks:allPlaces().length,...city?.stats(),...backdrop?.stats(),frameTiming:governor.snapshot().frameTiming,...quarter?.stats(),...effects?.stats(),...social?.stats()})};
+  window.EventMapMobile={receive,stats:()=>({artVersion:ART_VERSION,lodVersion:CITY_LOD_VERSION,layer:cityLodBand(camera.position.distanceTo(controls.target)).id,layerWeights:cityLodWeights(camera.position.distanceTo(controls.target),quality),quarterVariant:trialVariant(),trialBusy,trialData:quarterReplacement?.stats||null,trialLod:trialBackdrop?(quarterMode&&districtId==='baiterek'?'near-quarter':'city-silhouette'):null,trialSilhouette:trialBackdrop?.stats()||null,cameraDistance:camera.position.distanceTo(controls.target),geographyRelease:addresses.manifest?.release||'bundled',addressCount:addresses.current?.index.count||0,fps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,release:current.manifest.release,quality,qualityMode:governor.mode,pixelRatio:renderer.getPixelRatio(),quarterMode,night,theme,phase,season,weather:weatherSetting,phaseSetting,seasonSetting,...weatherFx?.stats(),...eventScene?.stats(),depthBits,depthNear:camera.near,depthFar:camera.far,landmarks:allPlaces().length,...city?.stats(),...backdrop?.stats(),frameTiming:governor.snapshot().frameTiming,...quarter?.stats(),...effects?.stats(),...social?.stats()})};
   frame=requestAnimationFrame(render);native({type:'ready'});
   // Resolve replacement footprints once, then upload baked district buffers.
   // Source polygons are read only for a changed catalog / explicit A-B trial.

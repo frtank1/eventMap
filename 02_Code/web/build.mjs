@@ -44,6 +44,8 @@ if(config.demoEvents===true)await copyFile(path.join(here,'events.sample.json'),
 for(const name of ['shell.js','lib.js','shell.css'])await copyFile(path.join(here,name),path.join(out,name));
 // Installable on phones (Add to Home Screen): manifest + icons, no service worker yet.
 await cp(path.join(here,'icons'),path.join(out,'icons'),{recursive:true});
+// Event scene configs (3D scenes of events; the demo one is clearly marked as such).
+await cp(path.join(here,'scenes'),path.join(out,'scenes'),{recursive:true}).catch(()=>{});
 await writeFile(path.join(out,'manifest.webmanifest'),JSON.stringify({name:`${config.title||'EventMap'} · ${config.city||'Астана'}`,short_name:config.title||'EventMap',
   description:config.description||'',lang:'ru',start_url:'./',scope:'./',display:'standalone',orientation:'portrait',background_color:'#17263a',theme_color:'#17263a',
   icons:[{src:'icons/icon-192.png',sizes:'192x192',type:'image/png'},{src:'icons/icon-512.png',sizes:'512x512',type:'image/png'},{src:'icons/icon-maskable-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]}));
@@ -62,6 +64,11 @@ const head=[`<meta name="description" content="${attr(config.description||'')}">
 html=html.replace(/<title>[^<]*<\/title>/,`<title>${attr(title)}</title>`).replace('</head>',`${head}</head>`).replace('</body>',`<script type="module" src="shell.js"></script></body>`);
 if(config.apiEvents&&/^https:\/\//.test(config.apiEvents)){
   const origin=new URL(config.apiEvents).origin;
+  if(!html.includes(origin)){if(!html.includes("connect-src 'self'"))throw new Error('Engine CSP has no connect-src to extend');html=html.replace("connect-src 'self'",`connect-src 'self' ${origin}`);}
+}
+// Live weather for «Авто» (Open-Meteo by default): only that origin, and only over HTTPS.
+if(config.weatherUrl&&/^https:\/\//.test(config.weatherUrl)){
+  const origin=new URL(config.weatherUrl).origin;
   if(!html.includes(origin)){if(!html.includes("connect-src 'self'"))throw new Error('Engine CSP has no connect-src to extend');html=html.replace("connect-src 'self'",`connect-src 'self' ${origin}`);}
 }
 // The engine CSP is default-src 'none': the web build allows its own manifest only.

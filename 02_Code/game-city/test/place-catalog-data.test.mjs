@@ -12,12 +12,12 @@ const square = [node(1, 71.427, 51.127), node(2, 71.428, 51.127),
   node(3, 71.428, 51.128), node(4, 71.427, 51.128)];
 const extract = elements => ({osm3s: {timestamp_osm_base: '2026-11-16T06:10:36Z'}, elements});
 
-test('all 19 manifest entries pass current runtime schema and own-boundary entrance checks', () => {
+test('all 31 manifest entries pass current runtime schema and own-boundary entrance checks', () => {
   assert.equal(validatePlaceCatalog(catalog), catalog);
   assert.deepEqual(catalog.places.map(p => p.id), manifest.models.map(m => m.id));
   assert.equal(catalog.source, 'OpenStreetMap');
   assert.equal(catalog.license, 'ODbL-1.0');
-  assert.equal(catalog.places.reduce((n, p) => n + p.footprints.length, 0), 34);
+  assert.equal(catalog.places.reduce((n, p) => n + p.footprints.length, 0), 84);
   assert.equal(catalog.places.reduce((n, p) => n + p.entrances.length, 0), 27);
   assert.equal(catalog.places.filter(p => p.entrances.length).length, 8);
   assert.deepEqual(catalog.places.filter(p => p.review.status === 'needs_review').map(p => p.id),
@@ -37,10 +37,12 @@ test('original eight landmark mappings retain all 22 source polygons, plus ADP p
     const p = catalog.places.find(p => p.id === id), m = manifest.models.find(m => m.id === id);
     assert.ok(p.footprints.some(f => ringLocation([m.lng, m.lat], f.rings[0]) >= 0));
   }
-  const snapshot = read('../source/baiterek.json');
+  // Model-source rings: the by-id landmark fetch wins over the older Baiterek snapshot (as in the importer).
+  const snapshot = read('../source/baiterek.json'), fetched = read('../source/city-landmarks-osm.json');
+  const source = new Map([...snapshot.buildings, ...fetched.buildings].map(b => [`way/${b.id}`, b.points]));
   for (const [id, refs] of Object.entries(VERIFIED_PARTS)) for (const ref of refs) {
     const ring = catalog.places.find(p => p.id === id).footprints.find(f => f.sourceRef === ref).rings[0];
-    const old = snapshot.buildings.find(b => `way/${b.id}` === ref).points;
+    const raw = source.get(ref), old = raw[0].join() === raw.at(-1).join() ? raw : [...raw, raw[0]];
     const edges = r => r.slice(1).map((p, i) => [r[i].join(','), p.join(',')].sort().join('|')).sort();
     assert.deepEqual(edges(ring), edges(old), `${id}: ${ref} must retain every model-source edge`);
   }
@@ -96,7 +98,7 @@ test('only boundary nodes become entrances; private/service/unknown never become
   assert.deepEqual(p.entrances.map(e => [e.id, e.kind, e.access, e.wheelchair]),
     [['node/1', 'service', 'private', 'no'], ['node/2', 'unknown', 'unknown', 'unknown']]);
   assert.ok(!JSON.stringify(result).includes('must-not-leak'));
-  assert.equal(result.places.length, 19);
+  assert.equal(result.places.length, 31);
   assert.equal(result.places.find(p => p.id === 'museum').review.status, 'not_found');
 });
 

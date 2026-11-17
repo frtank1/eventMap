@@ -14,7 +14,7 @@ async function loadBuilders(seed=1){
   const math=Object.create(Math);let state=seed>>>0;
   math.random=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/0x100000000;};
   const context=vm.createContext({console,Math:math}),modules=new Map();
-  const allowed=new Set(['landmarks.js','civic-landmarks.js','civic-extras.js','baiterek.json',
+  const allowed=new Set(['landmarks.js','civic-landmarks.js','civic-extras.js','baiterek.json','city-landmarks-osm.json',
     'stadium-match.js','stadium-crowd.js','vendor/three.module.js','vendor/BufferGeometryUtils.js',
     '../runtime/city-landmarks.js','../runtime/quarter-materials.js','../runtime/world-state.js','../runtime/art-direction.js']
     .map(file=>path.join(source,file)));
@@ -77,9 +77,9 @@ if(typeof vm.SourceTextModule!=='function'){
   }
   after(()=>{city.dispose();other.dispose();layer.destroy();Object.values(heroes).forEach(model=>disposeRoot(model.group));});
 
-  test('all 19 landmarks fit finite engine-v2 static-data envelopes and mobile budgets',t=>{
+  test('all 31 landmarks fit finite engine-v2 static-data envelopes and mobile budgets',t=>{
     assert.equal(manifest.engineVersion,2);
-    assert.equal(data.size,19);
+    assert.equal(data.size,31);
     for(const [id,model]of data){
       const summary=validateModel(model),spec=manifest.models.find(p=>p.id===id);
       assert.ok(spec,`${id}: missing content metadata`);
@@ -180,7 +180,7 @@ if(typeof vm.SourceTextModule!=='function'){
   });
 
   test('all-city builders share day/night palette and keep complete silhouettes at overview LOD',()=>{
-    const paletteKey={ivory:'ivory',glass:'glass',roof:'roof',gold:'gold',green:'leaf',dark:'dark'};
+    const paletteKey={ivory:'ivory',glass:'glass',roof:'roof',gold:'gold',green:'leaf',dark:'dark',emerald:'emerald'};
     for(const night of [false,true]){
       layer.setAppearance(night,'default');
       for(const {entry,group}of layer.entries.filter(p=>primaryIds.has(p.entry.id)))group.traverse(node=>{

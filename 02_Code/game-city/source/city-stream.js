@@ -4,7 +4,7 @@ import {mergeGeometries} from './vendor/BufferGeometryUtils.js';
 import {VectorTile} from './vendor/vector-tile.js';
 import Pbf from './vendor/pbf.js';
 import {decorateQuarterMaterial} from '../runtime/quarter-materials.js';
-import {CITY_PALETTE} from '../runtime/art-direction.js';
+import {CITY_PALETTE,ROOF_COLORS,roofKeyAt} from '../runtime/art-direction.js';
 import {cityLodBand,cityLodWeights,decorateLodFade} from '../runtime/city-lod.js';
 import {WORLD_BOUNDS} from '../runtime/world-state.js';
 import {createUrbanDetails} from './urban-details.js';
@@ -94,6 +94,7 @@ function makeMaterials() {
     trunk: CITY_PALETTE.trunk, foliage: CITY_PALETTE.canopy,
     roof: CITY_PALETTE.rooftop, plinth: CITY_PALETTE.trim, roofUnit: CITY_PALETTE.rooftop,
     marking: CITY_PALETTE.trim, car: [0xffffff,0xb3b9bd], carGlass: CITY_PALETTE.dark, bench: CITY_PALETTE.wood,
+    ...ROOF_COLORS,
   };
   const materials = {};
   for (const [name, [day, night]] of Object.entries(specs)) {
@@ -101,7 +102,7 @@ function makeMaterials() {
     material.name = `city-${name}`;
     material.userData = {day, night};
     if (name === 'water') { material.roughness = 0.35; material.metalness = 0.12; }
-    if (['cream','cyan','sand','mint','roof','path'].includes(name)) material.userData.facade=decorateQuarterMaterial(material,{glass:name==='cyan',paving:name==='path'});
+    if (['cream','cyan','sand','mint','roof','path',...Object.keys(ROOF_COLORS)].includes(name)) material.userData.facade=decorateQuarterMaterial(material,{glass:name==='cyan',paving:name==='path'});
     if(name==='minorPath'){material.transparent=true;material.depthWrite=false;material.userData.facade=decorateQuarterMaterial(material,{paving:true,minorPath:true});}
     // Separated layers and offsets keep overlapping GIS footprints stable while panning.
     if(['cream','cyan','sand','mint'].includes(name)){material.polygonOffset=true;material.polygonOffsetFactor=1;material.polygonOffsetUnits=1;}
@@ -277,7 +278,7 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
     merged.computeBoundingSphere();
     const mesh = new THREE.Mesh(merged, context.materials[name]);
     mesh.name = `city-${name}`;
-    mesh.userData.cityBuilding = ['cream', 'cyan', 'sand', 'mint', 'roof', 'plinth'].includes(name);
+    mesh.userData.cityBuilding = ['cream', 'cyan', 'sand', 'mint', 'roof', 'plinth', ...Object.keys(ROOF_COLORS)].includes(name);
     if (name === 'overview') mesh.raycast = () => {}; // Never advertise cartographic relief as a place.
     root.add(mesh);
   }
@@ -336,7 +337,7 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
               if (detailed) {
                 architectureCount++;
                 if (plinth) add('plinth', extrude(shape, plinth, base + .55));
-                add('roof', extrude(shape, style.roof, top + .55));
+                add(roofKeyAt(lon*1e4,lat*1e4), extrude(shape, style.roof, top + .55));
               }
               // Vector-tile IDs can represent a whole MultiPolygon, not one OSM
               // building. This view-local ID must not be used as a backend place ID.
@@ -725,13 +726,15 @@ export function createCityStream({center, onStatus, excludeBuilding, nearLandmar
     }
     reconcile(); pump(); status();
   }
-  let isNight=false,seasonTheme='default';
+  let isNight=false,seasonTheme='default',seasonFoliage=null;
+  function setSeason(foliage){seasonFoliage=foliage||null;setNight(isNight);}
   function setTheme(value){seasonTheme=['winter','newyear'].includes(value)?value:'default';setNight(isNight)}
   function setNight(value) {
     if (destroyed) return;
     const night = Boolean(value);isNight=night;context.night=night;
     for (const [name, material] of Object.entries(materials)) {
       material.color.setHex(night ? material.userData.night : material.userData.day);
+      if(!night&&seasonTheme==='default'&&seasonFoliage){if(['landcover','landuse','park'].includes(name))material.color.setHex(seasonFoliage.grass);if(name==='foliage')material.color.setHex(seasonFoliage.canopy);}
       if(seasonTheme!=='default'&&['landcover','landuse','park'].includes(name))material.color.setHex(night?0x93a9bf:0xe2ebee);
       if(seasonTheme!=='default'&&name==='path')material.color.setHex(night?0x8298ac:0xc8d7df);
       if(seasonTheme!=='default'&&name==='foliage')material.color.setHex(night?0x9fb6c2:0xe2ecec);
@@ -830,5 +833,5 @@ export function createCityStream({center, onStatus, excludeBuilding, nearLandmar
     }
     backdropReady=next;signature=null;
   }
-  return {group, update, animate, setLod, setNight, setTheme, destroy, ready,coverageAt,placeAt,stats,reach,coverageBounds,setBackdropReady,detailWeight:()=>tileWeight};
+  return {group, update, animate, setLod, setNight, setTheme, setSeason, destroy, ready,coverageAt,placeAt,stats,reach,coverageBounds,setBackdropReady,detailWeight:()=>tileWeight};
 }

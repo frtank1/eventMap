@@ -4,7 +4,7 @@ import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 import Pbf from '../source/vendor/pbf.js';
 import {VectorTile} from '../source/vendor/vector-tile.js';
-import {CITY_PALETTE} from '../runtime/art-direction.js';
+import {CITY_PALETTE,ROOF_COLORS} from '../runtime/art-direction.js';
 import {inPolygon,ringBounds} from '../source/city-overview.js';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
@@ -136,7 +136,8 @@ test('near real footprints keep heights/holes/picking and share the material pal
       if(!o.userData.cityBuilding)return;
       assert.equal(o.castShadow,true);assert.equal(o.receiveShadow,true);
       const palette={cream:'ivory',cyan:'glass',sand:'sand',mint:'sage',roof:'rooftop',plinth:'trim'};
-      assert.equal(o.material.color.getHex(),CITY_PALETTE[palette[o.name.slice(5)]][0]);
+      // Detailed roofs take one of the coloured roof swatches per building.
+      const key=o.name.slice(5);assert.equal(o.material.color.getHex(),(ROOF_COLORS[key]||CITY_PALETTE[palette[key]])[0]);
       for(let i=0;i<o.geometry.attributes.position.count;i++)assert.ok(o.geometry.attributes.position.getY(i)<44);
     });
   }

@@ -58,16 +58,19 @@ export function decorateQuarterMaterial(material,{glass=false,paving=false,minor
         vec2 nightQ=${glass?'vec2(u/3.8,(y-5.0)/3.6)':'q'};
         vec2 nightAA=max(fwidth(nightQ),vec2(.001));
         float nightPane=quarterRect(fract(nightQ),vec2(.32,.29),nightAA)*smoothstep(5.0,5.6,y);
-        nightPane*=1.0-smoothstep(.2,.5,max(nightAA.x,nightAA.y));
+        // Windows smaller than a pixel fade out to avoid aliasing; replace them with their
+        // average glow, or mid-distance districts went dark at night ("lights switched off").
+        float nightFar=smoothstep(.2,.5,max(nightAA.x,nightAA.y));
+        nightPane*=1.0-nightFar;
         float cluster=quarterHash(floor(nightQ)+vec2(face,face*.17));
         float occupied=step(.55,cluster);
         vec3 lamp=mix(vec3(1.0,.64,.3),vec3(.64,.84,1.0),step(.94,cluster));
-        totalEmissiveRadiance+=uQuarterNight*facade*lamp*(nightPane*occupied*.34+shopPane*.48);
+        totalEmissiveRadiance+=uQuarterNight*(facade*lamp*(nightPane*occupied*.34+shopPane*.48)+wall*nightFar*vec3(1.0,.66,.34)*(smoothstep(5.0,5.6,y)*.075+smoothstep(.8,1.4,y)*(1.0-smoothstep(4.4,5.0,y))*.06));
       `}
       float roof=smoothstep(.65,.92,normalize(vQuarterNormal).y);
       diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.86,.9,.91),uQuarterSnow*roof);
       `);
   };
-  material.customProgramCacheKey=()=>`quarter-art-8:${glass}:${paving}:${minorPath}:${amber}`;
+  material.customProgramCacheKey=()=>`quarter-art-9:${glass}:${paving}:${minorPath}:${amber}`;
   return {setNight:value=>{night.value=value?1:0;},setTheme:value=>{snow.value=value==='default'?0:1;},dispose(){material.onBeforeCompile=previous;material.customProgramCacheKey=previousKey;material.needsUpdate=true;}};
 }
