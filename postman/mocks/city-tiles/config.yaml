@@ -1,0 +1,8 @@
+version: 1
+name: city-tiles
+description: Synthetic TileJSON and empty MVT responses for retry/cache lifecycle tests, not real map data.
+origin: tiles.openfreemap.org
+interceptRequests: true
+scenarios:
+  - name: default
+    path: default.js

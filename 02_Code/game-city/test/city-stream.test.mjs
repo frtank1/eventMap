@@ -77,6 +77,17 @@ async function withCity(run){
 }
 const worldPoint=(tile,p)=>({x:tile.position.x+p[0],z:tile.position.z+p[1]});
 
+test('baked-city startup defers unnecessary coarse tiles and resumes at the actual camera',async()=>{
+  const original=globalThis.fetch;let requests=0;
+  globalThis.fetch=async url=>String(url).endsWith('/planet/latest')?{ok:true,json:async()=>({tiles:['https://tiles.openfreemap.org/test/{z}/{x}/{y}.pbf']})}:{ok:true,arrayBuffer:async()=>{requests++;return bytes;}};
+  const city=createCityStream({center,deferTiles:true});
+  try{await city.ready;assert.equal(requests,0);city.setBackdropReady(true);city.update(new THREE.Vector3(),22000);await new Promise(r=>setTimeout(r,10));assert.equal(requests,0);city.update(new THREE.Vector3(),1500);await settle(city);assert.ok(requests>0);
+    const root=city.group.children[0],traverse=root.traverse;let visits=0;root.traverse=function(fn){visits++;return traverse.call(this,fn);};
+    city.setLod(1500);city.setLod(1501);assert.equal(visits,0,'warm geometry is not retraversed for uniform-only fades');
+    city.setLod(300);assert.ok(visits>0,'visibility boundary still updates people/props');
+  }finally{city.destroy();globalThis.fetch=original;}
+});
+
 test('city detail channels and overview handover reuse geometry across six zoom bands',async()=>withCity(async city=>{
   city.setBackdropReady(true);city.update(new THREE.Vector3(),5500);await settle(city);
   const roots=[...city.group.children],geometries=[];for(const r of roots)r.traverse(o=>{if(o.geometry)geometries.push(o.geometry);});

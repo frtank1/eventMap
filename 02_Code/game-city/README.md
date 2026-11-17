@@ -2,6 +2,125 @@
 
 Local adaptation of the existing Astana visualisation; the hosted private Site is untouched.
 
+## Baked city buffers, persistent district cache and recovery — 17 November 2026 (Codex)
+
+- `bake-city.mjs` runs during every engine build. The current 76,025 buildings and
+  342 bridges become **318 GPU batches**, including district building groups,
+  surfaces and bridges. Indexed roofs/walls, courtyards, picking polygons,
+  day/night/winter attributes, geographic exclusions and six distance bands stay
+  the same. These are not 318 administrative districts or new surveyed buildings.
+- `city-geometry.emc` contains bounded, validated typed-array buffers: 15,132,648
+  compressed bytes (14.43 MiB), 80,322,940 decoded bytes. Runtime uploads views
+  instead of triangulating the entire city. It checks the model/footprint key;
+  incompatible catalog updates and the explicit NSDI trial retain the polygon
+  builder fallback. Address-only changes do not rebuild the scene. Geometry
+  source, height estimates and existing model-placement corrections are unchanged.
+- Android's asset packager silently expands/renames `.gz`; the opaque `.emc`
+  suffix avoids that. A clean map-module/app build removed the obsolete experiment
+  from generated resources. The final APK/release assets contain only `.emc`, not
+  a duplicate 80 MB `.bin`. Do not hand-copy generated resources.
+- `runtime/tile-cache.js`: IndexedDB cache for **visited public vector tiles**, keyed
+  by the full advertised provider version URL. Limit: 32 MiB / 256 entries / 4 MiB
+  per tile / seven days. Metadata freshness is one hour; saved metadata supports
+  offline use. LRU bookkeeping reads small usage records, not every cached PBF.
+  Denied storage/quotas fall back to networking. Auth, locations, events and the
+  independent model/address caches are untouched. Unvisited districts still have
+  the bundled volumetric city, but not downloaded street-level detail.
+- TileJSON no longer stops permanently after three failures: bounded retries,
+  online/resume recovery and 404/410 source-version rediscovery. HTTPS host checks,
+  streamed byte limits, cancellation and two tile-request slots remain enforced.
+  Tile bytes are persisted only after parsing/building succeeds. Actual tile meshes
+  remain a 16-record **memory** LRU; they are not stored as skinned/Three objects.
+- Whole-city startup defers detail requests until the baked backdrop is ready and
+  uses the actual camera position. Warm zooms reuse meshes; object visibility is
+  traversed only when a detail/shadow threshold changes, while fades remain uniforms.
+  Android identifies itself as `EventMapCity/1.0`. Provider policy checked against
+  the [official guide](https://openfreemap.org/quick_start/); there is no bulk city download.
+
+Verification on API 36 (`emulator-5556`, host GPU Apple M4 Pro, 412×628 WebView,
+150 explicitly fictional events; **not a physical-phone acceptance**):
+
+- Cold process + empty public-tile cache: full backdrop ready in 6.012 s from
+  activity launch / 3.971 s from page navigation, 362 ms buffer hydration. Warm
+  process restart: 5.960 s / 4.184 s / 509 ms respectively. The former polygon
+  builder took 9.509 s for geometry alone on this emulator. These measure different
+  boundaries; hydration time is **not** the whole launch time.
+- Far view: zero PBF requests. Opening Baiterek cold fetched four real PBFs;
+  the identical warm visit made zero tile requests, five disk hits including
+  metadata. Cache: 426,557 bytes / five records. The harness's ~5.2–5.4 s detail
+  wall time includes native UI hierarchy lookup/tap and settling, not just HTTP.
+- Initial six sweeps with real detailed coverage: center first 28.04 FPS / p95
+  50 ms, center warm 30 / 33.4 ms, north 28.89 / 33.4 ms, east 29.89 / 33.4 ms,
+  west day 28.59 / 33.4 ms, west night 30 / 33.4 ms. Every sweep loaded up to nine
+  tiles (1,262–3,968 detailed buildings), unlike the earlier no-network benchmark.
+- Final clean APK rerun (engine SHA-256 `ba5aac1444b5a923b373e10542e825fc52a4489896df6da9b9f9b5b0b7ba2b39`):
+  center first **28.30**, center warm **29.80**, north **30.00**, east **28.35**,
+  west day **29.91**, west night **30.00 FPS**; p95 33.4–33.5 ms. All six had
+  nine detailed tiles at peak. This also includes the concurrent character-kit
+  work present in the shared tree. The run was resumed after one CDP transport
+  timeout and one gesture-cancelled sweep; the cancelled sweep is not counted.
+  Final real pinch, native event card and avatar checks also passed.
+- Real two-finger zoom in/out, event-cover tap → native event card, full avatar
+  editor and six LOD bands passed. First visits still have some frames over 50 ms;
+  this is not a claim of zero stutter on every phone. One startup GL_INVALID_ENUM
+  driver warning is present in this emulator, also before this change; no failed
+  city shader/geometry load was observed on the accepted runs.
+- Local Postman HTTP simulation exercises 503 recovery, including the 30-second
+  retry after all three metadata attempts fail, without reload; then offline cache
+  with zero HTTP calls. Its PBFs are intentionally empty and prove lifecycle only.
+  Real visual coverage/performance comes from Android, not that simulation.
+  CLI is signed out: no workspace discovery/publishing or production calls.
+- 219 JS tests passed on the shared tree; Android debug build, map desktop tests,
+  and release asset merge passed. NSDI/festival fixtures remain debug-only. Existing
+  `check-export` palette drift is not fixed by this work. No Git push/deployment.
+
+Evidence: `test-results/2026-11-17-prepared-city/` (ignored), including
+`cache-startup.json`, comparisons, gesture/card/avatar screenshots; `final/` is
+the second full run against the final APK. Repeat with:
+
+```sh
+node build.mjs --native-only
+# From 02_Code: ./gradlew :androidApp:assembleDebug :common:feature:map:ui:desktopTest :androidApp:mergeReleaseAssets
+node test/android-cache-acceptance.mjs emulator-5556 # removes ONLY the new public tile cache
+node test/android-city-lod-acceptance.mjs emulator-5556 --prepared --final
+# From repo root, in another terminal:
+postman simulation run postman/simulations/city-tiles/city-tiles.sim.yaml --port 4107 --no-history
+# From game-city:
+node test/tile-http-acceptance.mjs http://127.0.0.1:4107/city-tiles --recovery
+```
+
+## Avatar editor, crowd size, parks, building heights, Arena and Talan — 17 November 2026 (Claude)
+
+Owner reports: "my character is half the size of the people", "the editor is weak", "parks are
+green only near Baiterek, elsewhere it looks like steppe", "many buildings look one-storey",
+"the stadium and Talan Towers stand crooked".
+
+- **Crowd size.** The look pass of 16.11 set the Baiterek pedestrians to 1.9x scale (about
+  3.5 m tall). Back to 1.0: measured 1.87 m against the avatar's 1.92 m.
+- **Crowd look.** `source/people.js` solids are now 12-sided soft superellipses with shared
+  vertices (smooth shading), a rounder head and hair cap, and the editor's colour palettes,
+  instead of faceted octagons. Still 8 draw calls.
+- **Editor.** New: trousers (5 colours), shoes (4), buzz cut and cap (5 hair styles), glasses,
+  height (3), build (3); more skin (6), hair (6) and jacket (9) colours. Palettes only grow by
+  appending; looks saved by older versions still load (new fields take defaults). Budgets rose
+  for the separate shoe material, glasses and cap: full avatar at most 44 draws / 10.4k
+  triangles, 15 materials (tests updated with the measured values).
+- **Parks.** OSM grass and wood arrive in the `landcover` layer, which was drawn with the
+  neutral ground colour since the 16.11 palette change. It now uses `grass`. Not inspected on
+  real tiles (unreachable from the build sandbox).
+- **Heights.** OpenMapTiles writes `render_height = 5` for any building without a height or
+  levels tag: 48,319 of 76,260 overview buildings. `runtime/height-estimate.js` replaces exactly
+  that default with an estimate from the footprint (shed 4 m, long narrow slab 16 or 27 m,
+  other 9 m), in both the detailed tiles and the overview. **This is a presentation estimate,
+  not data**; tagged heights are untouched. Real floor counts need another source (e.g. 2GIS).
+- **Arena and Talan Towers.** Turned and moved onto the minimum-area rectangle of the real
+  outline at load time (`placementYaw` / `placementOffset` in `main.js`): Arena +4.0 degrees and
+  19 m, Talan -14.2 degrees (to the street grid) and 10 m. Talan's long side may still be on
+  the wrong axis; the outline alone does not tell.
+
+Verification: 203/203 JS tests; editor and walking demo rendered in headless Chromium on
+bundled data. Not seen on real tiles or a phone; no APK build; nothing deployed.
+
 ## Roof placement on BC «Moskva» and Beijing Palace — 16 November 2026 (Claude)
 
 Owner report: the tops of both towers "go crazy". Cause, in `runtime/city-landmarks.js`:

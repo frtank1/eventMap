@@ -104,3 +104,9 @@ body:not(.night) .festival-density .event-balloon[data-level=city] .balloon-face
 body:not(.night) #scene-note{color:#294d58;text-shadow:0 1px 3px #fff,0 0 8px #fff}
 body:not(.night) #caption{color:#294750;text-shadow:0 1px 2px #fffc}
 body:not(.night) #tiles{color:#425c61}
+
+/* Avatar editor: two choices per row, more palettes scroll inside the sheet. */
+.avatar-extras{flex-wrap:wrap}.avatar-extras button{flex:1 1 calc(50% - 8px)}
+.palette-section{flex-wrap:wrap;row-gap:8px}.swatches{flex-wrap:wrap;gap:7px}.swatch{width:28px;height:28px}
+
+.swatch-original{background:conic-gradient(#e07a5f 0 25%,#608fbd 0 50%,#ece4d4 0 75%,#34495e 0)!important}

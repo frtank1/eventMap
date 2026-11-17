@@ -11,7 +11,7 @@ function fixture(fail){
   let creates=0;
   const c=vm.createContext({trialRequested:'current',trialBusy:false,trialRevision:0,geometryRevision:0,backdropStopped:false,trialBuild:null,
     AbortController,setTimeout:fn=>{if(fail==='timeout')fn();return 1;},clearTimeout(){},
-    overviewData:{},trialSnapshot:fail==='read'?null:{},quarterReplacement:null,trialBackdrop:null,
+    overviewData:{},ensureOverview:async()=>({}),trialSnapshot:fail==='read'?null:{},quarterReplacement:null,trialBackdrop:null,
     backdrop:old.backdrop,quarter:old.quarter,city:old.city,districtId:'baiterek',districts:new Map([['baiterek',old.quarter]]),models:[],withheldModels:new Set(),geoCatalog:{},NSDI_LIMITS:{bytes:10},
     debugSceneAllowed:()=>true,debugContext:()=>({native:false}),trialVariant:()=>c.quarterReplacement?'nsdi':'current',trialUi(){},finishZoomBenchmark(){},
     native:m=>calls.push(m),readBundledJSON:async()=>{throw Error('HTTP 404');},

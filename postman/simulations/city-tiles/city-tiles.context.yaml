@@ -1,0 +1,17 @@
+purpose: Exercise the real city-stream caller against controlled HTTP failures and offline cache, locally only.
+assumptions:
+  - id: tile-provider
+    status: supported
+    claim: OpenFreeMap exposes TileJSON with versioned XYZ PBF URLs; the client must use the advertised template.
+    reason: Direct GET on the owner Mac and Android WebView returned a versioned template on 2026-11-17.
+    verification: curl and Android debug WebView fetch, HTTP 200.
+    source: https://tiles.openfreemap.org/planet/latest
+    updated_at: '2026-11-17'
+  - id: simulated-geometry
+    status: supported
+    claim: Simulation payloads are intentionally empty vector tiles; they do not prove visual coverage or provider performance.
+    reason: Deterministic retry/cache tests must be separate from the real Android map benchmark.
+    verification: mock source inspection
+    source: postman/mocks/city-tiles/default.js
+    updated_at: '2026-11-17'
+fingerprints: []

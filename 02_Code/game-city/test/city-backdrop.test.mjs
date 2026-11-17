@@ -14,7 +14,7 @@ const fixture=()=>({schemaVersion:1,center:[71.43056,51.12822],buildings:[[125,0
 test('overview keeps tall silhouettes and courtyards; night/winter reuse geometry',async()=>{
   const backdrop=await createCityBackdrop(fixture());
   try{
-    assert.equal(backdrop.placeAt(2,2).top,125);assert.equal(backdrop.placeAt(20,20),null);assert.equal(backdrop.placeAt(102,102).top,5);
+    assert.equal(backdrop.placeAt(2,2).top,125);assert.equal(backdrop.placeAt(20,20),null);assert.equal(backdrop.placeAt(102,102).top,4); // 5 m = OpenMapTiles default: small footprint is estimated as a shed
     let roofArea=0,maxY=0;
     backdrop.group.traverse(o=>{const g=o.geometry;if(!g)return;const p=g.attributes.position,n=g.attributes.normal,ids=g.index.array;
       for(let i=0;i<p.count;i++)maxY=Math.max(maxY,p.getY(i));

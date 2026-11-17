@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "node serve.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "serve:phone": "HOST=0.0.0.0 node serve.mjs"
   }
 }

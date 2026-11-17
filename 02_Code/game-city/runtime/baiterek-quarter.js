@@ -4,6 +4,7 @@ import arenaData from '../source/arena.json';
 import {mergeGeometries} from '../source/vendor/BufferGeometryUtils.js';
 import {decorateQuarterMaterial} from './quarter-materials.js';
 import {createPedestrians} from '../source/people.js';
+import {createKitCrowd,KIT_CROWD_NEAR} from './kit-crowd.js';
 import {QUARTER_CENTER,QUALITY,GROUND,detailLevel} from './quarter-state.js';
 import {CITY_PALETTE} from './art-direction.js';
 import {createLandmarkExclusion} from './landmark-footprints.js';
@@ -255,7 +256,10 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog,repla
     mesh.castShadow=!batch.detail&&['ivory','sage','sand','glass','amber'].includes(batch.key);
     (batch.nightOnly?nightGroup:batch.detail?details:group).add(mesh);
   }
-  const crowd=createPedestrians(paths.filter(([a,b])=>Math.hypot(...centerOf([a,b]))<360),{count:44,seed:2718,scale:1.9});
+  const crowdPaths=paths.filter(([a,b])=>Math.hypot(...centerOf([a,b]))<360);
+  const crowd=createPedestrians(crowdPaths,{count:44,seed:2718,scale:1});
+  // Close up, skinned animated people take over from the instanced crowd.
+  const kitCrowd=createKitCrowd(crowdPaths.filter(([a,b])=>Math.hypot(...centerOf([a,b]))<200),{seed:arena?811:2718,height:(x,z)=>groundHeight(x+originX,z+originZ)});street.add(kitCrowd.group);
   crowd.group.name='Decorative pedestrians · not real users';street.add(crowd.group);
   const traffic=createTraffic(driveRoutes,{height:GROUND.road+.03,seed:arena?5309:9157});street.add(traffic.group);
   const crowdLods=[];const crowdMaterials=new Set();crowd.group.traverse(o=>{if(o.material)crowdMaterials.add(o.material);});
@@ -271,18 +275,20 @@ export function createBaiterekQuarter({district='baiterek',entries,catalog,repla
   function update(distance,time,reduced=false,quality='balanced'){
     const next=detailLevel(distance,level);if(next!==level){level=next;details.visible=next!=='far';street.visible=next!=='far';}
     const layers=cityLodWeights(distance,quality);
-    crowd.group.visible=layers.people>0;for(const fade of crowdLods)fade.set(layers.people);
+    kitCrowd.group.visible=kitCrowd.ready&&level!=='far'&&distance<KIT_CROWD_NEAR&&layers.people>0;
+    if(kitCrowd.group.visible)kitCrowd.update(time,reduced,quality);
+    crowd.group.visible=layers.people>0&&!kitCrowd.group.visible;for(const fade of crowdLods)fade.set(layers.people);
     if(crowd.group.visible)crowd.update(time,reduced);
     if(level!=='far')traffic.update(time,reduced,quality);
     importedProps.update(distance,quality);
     trunks.count=crowns.count=treeContacts.count=Math.min(treeSites.length,(QUALITY[quality]||QUALITY.balanced).trees);
   }
-  function destroy(){group.removeFromParent();importedProps.destroy();traffic.destroy();group.traverse(o=>{if(o.isInstancedMesh)o.dispose();});
+  function destroy(){group.removeFromParent();kitCrowd.destroy();importedProps.destroy();traffic.destroy();group.traverse(o=>{if(o.isInstancedMesh)o.dispose();});
     crowd.group.traverse(o=>{if(o.geometry)o.geometry.dispose();});
     const crowdMats=new Set();crowd.group.traverse(o=>{if(o.material)crowdMats.add(o.material);});crowdMats.forEach(m=>m.dispose());
     resources.forEach(g=>g.dispose());for(const m of [...Object.values(materials),...Object.values(partMaterials)]){m.userData.facade?.dispose();m.dispose();}tex.dispose();shadowTex.dispose();
   }
   setAppearance(false,'default');
   return {group,update,setAppearance,groundHeight,surfaceHeight,placeAt,destroy,center:new THREE.Vector3(originX,0,originZ),district,
-    stats:()=>({district,quarterBuildings:buildings,styledBuildings:[...styledBuildings],quarterTrees:street.visible?trunks.count:0,quarterPedestrians:street.visible&&crowd.group.visible?crowd.count:0,quaternius:importedProps.stats(),...traffic.stats(),lod:level})};
+    stats:()=>({district,quarterBuildings:buildings,styledBuildings:[...styledBuildings],quarterTrees:street.visible?trunks.count:0,quarterPedestrians:street.visible&&crowd.group.visible?crowd.count:0,kitPedestrians:kitCrowd.group.visible?kitCrowd.count:0,quaternius:importedProps.stats(),...traffic.stats(),lod:level})};
 }

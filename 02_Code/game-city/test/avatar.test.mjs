@@ -79,8 +79,8 @@ test('hair is a connected swept silhouette with a raised forehead and lower nape
 });
 
 test('all hairstyles and bag states stay within geometry, material and texture budgets',()=>{
-  for(const detail of ['full','crowd'])for(let style=0;style<3;style++)for(const bag of [false,true]){
-    const a=createAvatar({...defaultLook,style,bag},{detail}),materials=new Set(),textures=new Set();let residentTriangles=0;
+  for(const detail of ['full','crowd'])for(let style=0;style<5;style++)for(const bag of [false,true])for(const glasses of [false,true]){
+    const a=createAvatar({...defaultLook,style,bag,glasses},{detail}),materials=new Set(),textures=new Set();let residentTriangles=0;
     a.root.traverse(o=>{
       assert.ok(!o.isLight);if(!o.isMesh)return;
       residentTriangles+=(o.geometry.index?.count||o.geometry.attributes.position.count)/3;
@@ -89,12 +89,12 @@ test('all hairstyles and bag states stay within geometry, material and texture b
       if(o.material.emissive)assert.equal(o.material.emissive.getHex(),0);
       for(const key of ['position','normal'])for(const n of o.geometry.attributes[key].array)assert.ok(Number.isFinite(n));
     });
-    assert.ok(materials.size<=13);assert.equal(textures.size,1);
+    assert.ok(materials.size<=15);assert.equal(textures.size,1);
     for(const texture of textures){assert.ok(texture.isDataTexture);assert.equal(texture.image.width,32);assert.equal(texture.image.height,32);}
-    const near=a.stats();assert.ok(near.draws<=(detail==='full'?42:28),JSON.stringify(near));
-    assert.ok(near.triangles<=(detail==='full'?9700:4100),JSON.stringify(near));
-    assert.ok(residentTriangles<=(detail==='full'?10500:4600),`resident triangles: ${residentTriangles}`);
-    a.setDetail(100);const far=a.stats();assert.ok(far.draws<=28);assert.ok(far.triangles<=(detail==='full'?6100:4100));
+    const near=a.stats();assert.ok(near.draws<=(detail==='full'?44:30),JSON.stringify(near));
+    assert.ok(near.triangles<=(detail==='full'?10400:4500),JSON.stringify(near));
+    assert.ok(residentTriangles<=(detail==='full'?11500:5300),`resident triangles: ${residentTriangles}`);
+    a.setDetail(100);const far=a.stats();assert.ok(far.draws<=30);assert.ok(far.triangles<=(detail==='full'?6700:4500));
     const colors=new Map([...materials].map(m=>[m.name,m.color.getHex()]));
     assert.equal(colors.get('Warm lining'),CITY_PALETTE.trim[0]);assert.equal(colors.get('Trousers'),CITY_PALETTE.dark[0]);
     assert.equal(colors.get('Canvas backpack'),CITY_PALETTE.sand[0]);
@@ -106,12 +106,13 @@ test('existing appearance schema, palettes, hair choices and backpack survive',(
   const a=createAvatar();
   for(let style=0;style<3;style++){
     const value={v:1,skin:3,hair:2,coat:4,style,bag:style!==1};a.apply(value);
-    assert.deepEqual(a.look,value);
+    // A look saved before the new options existed loads with their defaults.
+    assert.deepEqual(a.look,{...defaultLook,...value});
     assert.equal(a.root.getObjectByName('Short swept hairstyle').visible,style===0);
     assert.equal(a.root.getObjectByName('Long layered hairstyle').visible,style===1);
     assert.equal(a.root.getObjectByName('Beanie').visible,style===2);
     assert.equal(a.root.getObjectByName('Backpack').visible,value.bag);
-    assert.ok(a.stats().draws<=42);assert.ok(a.stats().triangles<=9700);
+    assert.ok(a.stats().draws<=44);assert.ok(a.stats().triangles<=10400);
     const colors=new Map();a.root.traverse(o=>{if(o.material)colors.set(o.material.name,o.material.color.getHex());});
     assert.equal(colors.get('Jacket fabric'),palettes.coat[4]);assert.equal(colors.get('Skin'),palettes.skin[3]);assert.equal(colors.get('Hair'),palettes.hair[2]);
   }
@@ -201,4 +202,21 @@ test('LOD and customization allocate no resources; independent avatars dispose s
   let otherDisposed=0;other.forEach(r=>r.addEventListener('dispose',()=>otherDisposed++));
   for(let i=0;i<24;i++){a.setDetail(i%2?100:0);a.apply({...defaultLook,style:i%3,bag:i%2===0});a.update(i/30,true);}
   assert.deepEqual(resources(a),before);a.destroy();assert.equal(otherDisposed,0);b.update(1,true);assert.ok(b.stats().triangles>0);b.destroy();assert.equal(otherDisposed,other.size);
+});
+
+test('new options: trousers, shoes, buzz cut, cap, glasses, height and build',()=>{
+  const a=createAvatar();
+  const look={...defaultLook,style:4,pants:2,shoes:3,glasses:true,height:2,build:0};a.apply(look);
+  assert.deepEqual(a.look,look);
+  assert.equal(a.root.getObjectByName('Cap').visible,true);assert.equal(a.root.getObjectByName('Hair base').visible,false);
+  assert.equal(a.root.getObjectByName('Glasses').visible,true);
+  const colors=new Map();a.root.traverse(o=>{if(o.material)colors.set(o.material.name,o.material.color.getHex());});
+  assert.equal(colors.get('Trousers'),palettes.pants[2]);assert.equal(colors.get('Sneaker suede'),palettes.shoes[3]);
+  assert.ok(a.root.scale.y>1);assert.ok(a.root.getObjectByName('Pelvis').scale.x<1);
+  a.apply({...look,style:3,glasses:false,height:0,build:2});
+  assert.equal(a.root.getObjectByName('Hair base').visible,true);assert.equal(a.root.getObjectByName('Short swept hairstyle').visible,false);
+  assert.equal(a.root.getObjectByName('Cap').visible,false);assert.equal(a.root.getObjectByName('Glasses').visible,false);
+  assert.ok(a.root.scale.y<1);assert.ok(a.root.getObjectByName('Pelvis').scale.x>1);
+  for(const bad of [{pants:99},{shoes:-1},{glasses:'yes'},{height:3},{build:1.5},{style:5}]){a.apply({...defaultLook,...bad});assert.deepEqual(a.look,defaultLook);}
+  a.destroy();
 });

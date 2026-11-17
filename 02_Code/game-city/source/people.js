@@ -3,11 +3,12 @@ import * as THREE from 'three';
 const FLOOR_Y = 0.35;
 const TAU = Math.PI * 2;
 const TURN_SECONDS = 0.55;
-const SHIRTS = [0xe6ac48, 0xd86d58, 0x4198aa, 0x697fbb, 0x9973af, 0x5c9272, 0xe8dfca, 0xa54858];
-const TROUSERS = [0x34435b, 0x506172, 0x665c51, 0x414948, 0x727b8a];
-const SKIN = [0xf0c6a1, 0xdca77b, 0xc58c60, 0xa96f4e, 0x754a36];
-const HAIR = [0x282321, 0x4b332b, 0x79513a, 0xb68b50, 0xc4c0b5];
-const SHOES = [0x303439, 0xebe3d4, 0x64483a];
+// Same tones as the player's editor, so the crowd and the player read as one cast.
+const SHIRTS = [0x9b7bd5, 0x4e9f92, 0xd99d58, 0x608fbd, 0xc7758f, 0x34495e, 0xece4d4, 0x7d8f4e, 0xe07a5f];
+const TROUSERS = [0x294e60, 0x2a2a30, 0x4a6fa5, 0xc9b48f, 0x5d6b3c];
+const SKIN = [0xf0c9a8, 0xd8a078, 0xb87d59, 0x764d39, 0xf7dcc6, 0x5a3826];
+const HAIR = [0x292833, 0x674632, 0xb98a55, 0xd7d4cb, 0x8c3f24, 0xe3c27e];
+const SHOES = [0xcaa48e, 0xf2efe8, 0x2b2b2e, 0xc0503f];
 
 function randomGenerator(seed) {
   let state = seed >>> 0;
@@ -19,40 +20,52 @@ function randomGenerator(seed) {
   };
 }
 
-// Original chamfered, flat-shaded solids. Rings are [y, width, depth, zOffset],
-// ordered bottom to top; several solids can share one geometry/draw call.
+// Original rounded solids. Rings are [y, width, depth, zOffset], ordered bottom
+// to top; several solids can share one geometry/draw call. Each ring is a soft
+// superellipse and rings share vertices, so shading is smooth like the player
+// avatar instead of faceted boxes.
+const SIDES = 12;
+const ROUNDNESS = 2.4; // 2 = ellipse, larger = squarer
 function solidGeometry(solids) {
   const positions = [];
-  const triangle = (a, b, c) => positions.push(...a, ...b, ...c);
+  const indices = [];
   for (const { rings, x = 0, y = 0, z = 0 } of solids) {
-    const loops = rings.map(([height, width, depth, offset = 0]) => {
-      const w = width / 2;
-      const d = depth / 2;
-      const bevel = Math.min(width, depth) * 0.18;
-      return [
-        [-w + bevel, -d], [w - bevel, -d], [w, -d + bevel], [w, d - bevel],
-        [w - bevel, d], [-w + bevel, d], [-w, d - bevel], [-w, -d + bevel],
-      ].map(([px, pz]) => [px + x, height + y, pz + z + offset]);
-    });
-    for (let level = 1; level < loops.length; level++) {
-      for (let j = 0; j < 8; j++) {
-        const next = (j + 1) % 8;
-        triangle(loops[level - 1][j], loops[level][j], loops[level][next]);
-        triangle(loops[level - 1][j], loops[level][next], loops[level - 1][next]);
+    const base = positions.length / 3;
+    for (const [height, width, depth, offset = 0] of rings) {
+      for (let j = 0; j < SIDES; j++) {
+        const a = j / SIDES * TAU - Math.PI * 0.75;
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        positions.push(
+          Math.sign(c) * Math.abs(c) ** (2 / ROUNDNESS) * width / 2 + x,
+          height + y,
+          Math.sign(s) * Math.abs(s) ** (2 / ROUNDNESS) * depth / 2 + z + offset,
+        );
       }
     }
-    for (const end of [0, loops.length - 1]) {
+    for (let level = 1; level < rings.length; level++) {
+      const lo = base + (level - 1) * SIDES;
+      const hi = base + level * SIDES;
+      for (let j = 0; j < SIDES; j++) {
+        const next = (j + 1) % SIDES;
+        indices.push(lo + j, hi + j, hi + next, lo + j, hi + next, lo + next);
+      }
+    }
+    for (const end of [0, rings.length - 1]) {
       const ring = rings[end];
-      const center = [x, y + ring[0], z + (ring[3] || 0)];
-      for (let j = 0; j < 8; j++) {
-        const next = (j + 1) % 8;
-        if (end === 0) triangle(center, loops[end][j], loops[end][next]);
-        else triangle(center, loops[end][next], loops[end][j]);
+      const center = positions.length / 3;
+      positions.push(x, y + ring[0], z + (ring[3] || 0));
+      const start = base + end * SIDES;
+      for (let j = 0; j < SIDES; j++) {
+        const next = (j + 1) % SIDES;
+        if (end === 0) indices.push(center, start + j, start + next);
+        else indices.push(center, start + next, start + j);
       }
     }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -111,7 +124,7 @@ export function createPedestrians(paths, options = { count: 80, seed: 377 }) {
 
   // Hands, paired limbs and paired shoes share batches, keeping this at 8 meshes.
   const material = new THREE.MeshStandardMaterial({
-    color: 0xffffff, roughness: 0.9, metalness: 0, flatShading: true,
+    color: 0xffffff, roughness: 0.88, metalness: 0,
   });
   const meshes = [];
   const batch = (name, solids, instances = count) => {
@@ -129,11 +142,11 @@ export function createPedestrians(paths, options = { count: 80, seed: 377 }) {
   const torso = batch('torso', [{ rings: [[0, 0.29, 0.21], [0.1, 0.33, 0.24], [0.43, 0.46, 0.26], [0.5, 0.34, 0.23]] }]);
   const head = batch('head', [
     { rings: [[-0.08, 0.13, 0.13], [0.04, 0.13, 0.13]] },
-    { rings: [[0, 0.19, 0.20], [0.05, 0.26, 0.25], [0.23, 0.26, 0.25], [0.29, 0.19, 0.20]] },
+    { rings: [[0, 0.17, 0.18], [0.05, 0.235, 0.235], [0.12, 0.26, 0.25], [0.2, 0.255, 0.245], [0.26, 0.215, 0.21], [0.3, 0.12, 0.12]] },
     { rings: [[0.1, 0.045, 0.04], [0.16, 0.035, 0.04]], z: 0.13 },
   ]);
   const hair = batch('hair', [
-    { rings: [[0.23, 0.275, 0.265], [0.29, 0.26, 0.26], [0.32, 0.18, 0.19]] },
+    { rings: [[0.22, 0.272, 0.262], [0.27, 0.252, 0.246], [0.305, 0.19, 0.186], [0.33, 0.08, 0.08]] },
     { rings: [[0.13, 0.235, 0.06], [0.25, 0.265, 0.08]], z: -0.105 },
   ]);
   const arms = batch('arms', [{ rings: [[-0.47, 0.10, 0.10, 0.025], [-0.25, 0.12, 0.12, -0.015], [0, 0.16, 0.16]] }], count * 2);

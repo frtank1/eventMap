@@ -1,3 +1,4 @@
+import {estimatedTop} from '../runtime/height-estimate.js';
 import * as THREE from 'three';
 import {mergeGeometries} from './vendor/BufferGeometryUtils.js';
 import {VectorTile} from './vendor/vector-tile.js';
@@ -8,6 +9,7 @@ import {cityLodBand,cityLodWeights,decorateLodFade} from '../runtime/city-lod.js
 import {WORLD_BOUNDS} from '../runtime/world-state.js';
 import {createUrbanDetails} from './urban-details.js';
 import {createPedestrians} from './people.js';
+import {createTileCache,parseTileMetadata,readTileBytes} from '../runtime/tile-cache.js';
 import {inPolygon, onOrInPolygon, ringBounds, footprintStyle, overviewRelief, createSpatialIndex, distanceSegment, treeCandidates} from './city-overview.js';
 
 const TILE_JSON = 'https://tiles.openfreemap.org/planet/latest';
@@ -84,7 +86,7 @@ function makeMaterials() {
   const specs = {
     cream: CITY_PALETTE.ivory, cyan: CITY_PALETTE.glass,
     sand: CITY_PALETTE.sand, mint: CITY_PALETTE.sage,
-    landcover: CITY_PALETTE.land, landuse: CITY_PALETTE.grass,
+    landcover: CITY_PALETTE.grass, landuse: CITY_PALETTE.grass,
     park: CITY_PALETTE.grass, water: CITY_PALETTE.water,
     roadEdge: CITY_PALETTE.kerb, road: CITY_PALETTE.road,
     path: CITY_PALETTE.pavement, minorPath: CITY_PALETTE.pavement,
@@ -221,6 +223,8 @@ function numberProperty(value) {
   return typeof value === 'string' && /ft|feet|'/i.test(value) ? number * 0.3048 : number;
 }
 
+const ringCentre=ring=>{let w=Infinity,e=-Infinity,n=-Infinity,so=Infinity;for(const p of ring){w=Math.min(w,p[0]);e=Math.max(e,p[0]);so=Math.min(so,p[1]);n=Math.max(n,p[1]);}return [(w+e)/2,(so+n)/2];};
+
 function firstNumber(...values) {
   return values.map(numberProperty).find(Number.isFinite);
 }
@@ -310,8 +314,8 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
           if (layerName === 'building') {
             if(tile.z<13)continue; // One LOD owner: never overlap silhouettes and real footprints.
             if (feature.type !== 3 || hiddenBuilding(props)) continue;
-            const {top, base} = buildingHeight(props);
-            if(top<=base)continue;
+            const {top:sourceTop, base} = buildingHeight(props);
+            if(sourceTop<=base)continue;
             let added = 0;
             for (const rings of polygons(feature.toGeoJSON(tile.x, tile.y, tile.z).geometry)) {
               if (++processed % 32 === 0) await checkpoint();
@@ -321,6 +325,8 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
               for(const p of rings[0]){west=Math.min(west,p[0]);east=Math.max(east,p[0]);south=Math.min(south,p[1]);north=Math.max(north,p[1])}
               const lon=(west+east)/2,lat=(south+north)/2;
               if(lon<tile.west||lon>=tile.east||lat>tile.north||lat<=tile.south||!inUrban(lon,lat)||context.excludeBuilding?.(lon,lat,rings))continue;
+              const known=sourceTop<=5&&base===0&&!context.nearLandmark?.(lon,lat)?context.heightAt?.(lon,lat):undefined;
+              const top=Number.isFinite(known)&&known>base?known:estimatedTop(sourceTop,base,rings[0],context.lonScale,METERS,!!context.nearLandmark?.(lon,lat));
               const style = footprintStyle(rings, feature.id, top, base);
               const shape = makeShape(rings, project);
               if (!shape) continue;
@@ -431,9 +437,10 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
           await checkpoint();
           try {
             const f=layer.feature(i);if(f.type!==3||hiddenBuilding(f.properties))continue;
-            const {top,base}=buildingHeight(f.properties);
-            if(top<=base)continue;
+            const {top:sourceTop,base}=buildingHeight(f.properties);
+            if(sourceTop<=base)continue;
             for(const rings of polygons(f.toGeoJSON(source.x,source.y,source.z).geometry)){
+              const top=estimatedTop(sourceTop,base,rings[0],context.lonScale,METERS,!!context.nearLandmark?.(...ringCentre(rings[0])));
               if(++processed%32===0)await checkpoint();
               if(count>=MAX_OVERVIEW||vertices>=MAX_OVERVIEW_VERTICES)break;
               const box=ringBounds(rings[0]),lon=(box.minX+box.maxX)/2,lat=(box.minZ+box.maxZ)/2,p=project([lon,lat]);
@@ -504,7 +511,7 @@ async function buildTile(bytes, tile, context, signal, overviewTiles=[]) {
  * Display group.userData.attribution in the caller's map UI.
  * @param {{center: [number, number], onStatus?: Function, excludeBuilding?: Function}} options
  */
-export function createCityStream({center, onStatus, excludeBuilding} = {}) {
+export function createCityStream({center, onStatus, excludeBuilding, nearLandmark, heightAt, diskCache=createTileCache(),deferTiles=false} = {}) {
   if (!Array.isArray(center) || center.length !== 2 || !center.every(Number.isFinite) || Math.abs(center[1]) > 85 || Math.abs(center[0]) > 180) {
     throw new TypeError('createCityStream requires center: [longitude, latitude]');
   }
@@ -514,13 +521,14 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   group.name = 'astana-city-stream';
   group.userData.attribution = 'OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors';
   group.userData.bounds = {...URBAN};
-  const context = {center: origin, lonScale, materials, excludeBuilding,night:false,bridgesReady:false};
+  const context = {center: origin, lonScale, materials, excludeBuilding, nearLandmark, heightAt,night:false,bridgesReady:false};
   const cache = new Map(), visible = new Set();
-  let desired = new Map(), zoom = 14, distance = 1500, destroyed = false, backdropReady = false;
+  let desired = new Map(), zoom = 14, distance = 1500, destroyed = false, backdropReady = false,suspended=deferTiles;
   let lodQuality='balanced',lodBand=cityLodBand(distance),weights=cityLodWeights(distance),tileWeight=1;
   let template = null, scheme = 'xyz', active = 0, touch = 0, signature = '';
   let retryTimer = null, initTimer = null, metadataController = null, initAttempts = 0, metadataFailed = false;
   let buildTail = Promise.resolve(), statusSignature = '', readyDone = false;
+  let lastError='',networkTiles=0,metadataState='loading',recoveries=0,lastMetadataRefresh=0;
   let resolveReady;
   const ready = new Promise(resolve => { resolveReady = resolve; });
   function settleReady() { if (!readyDone) { readyDone = true; resolveReady(); } }
@@ -536,7 +544,7 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     for (const key of visible) buildings += cache.get(key)?.root?.userData.buildings || 0;
     const result = {
       loaded, pending, failed: metadataFailed ? Math.max(1, desired.size) : failed, zoom, buildings,
-      message: message || (metadataFailed ? 'Map source unavailable; reload to retry.' : !template ? 'Loading OpenFreeMap TileJSON…' : pending ? `Streaming Astana · z${zoom} · ${loaded}/${desired.size} tiles` : failed ? 'Some map tiles are unavailable; keeping available coverage.' : `Astana ready · z${zoom} · ${buildings} buildings`),
+      message: message || (metadataFailed ? 'Map source unavailable; automatic retry scheduled.' : !template ? 'Loading OpenFreeMap TileJSON…' : pending ? `Streaming Astana · z${zoom} · ${loaded}/${desired.size} tiles` : failed ? 'Some map tiles are unavailable; keeping available coverage.' : `Astana ready · z${zoom} · ${buildings} buildings`),
     };
     const nextSignature = JSON.stringify(result);
     if (nextSignature === statusSignature) return;
@@ -559,6 +567,11 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   function detailVisibility(root) {
     const near=distance<3000;
     root.visible=tileWeight>0;
+    // Fades are uniforms; object traversal is only needed at a visibility or
+    // shadow boundary, not on every animation frame for every warm district.
+    const key=`${near}:${Object.values(weights).map(w=>Number(w>0)).join('')}`;
+    if(root.userData.visibilityKey===key)return;
+    root.userData.visibilityKey=key;
     root.traverse(object => {
       if(object.userData.cityDetail)object.visible=weights[object.material?.userData.lodChannel||'furniture']>0;
       if(object.userData.cityPeople)object.visible=weights.people>0;
@@ -618,22 +631,30 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     let timedOut = false;
     const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, TIMEOUT_MS);
     try {
-      const response = await fetch(tileURL(record), {signal, mode: 'cors', credentials: 'omit'});
-      if (!response.ok) {
-        const error = new Error(`Tile HTTP ${response.status}`);
-        error.permanent = [400, 401, 403, 404, 410].includes(response.status);
-        throw error;
-      }
-      const bytes = await response.arrayBuffer();
+      const fetched=[];
+      const read=async tile=>{
+        const url=tileURL(tile),cached=await diskCache.get(url);checkAbort(signal);
+        if(cached){try{new VectorTile(new Pbf(new Uint8Array(cached.bytes)));return cached.bytes;}catch{await diskCache.remove(url);}}
+        const response=await fetch(url,{signal,mode:'cors',credentials:'omit'});networkTiles++;
+        if(!response.ok){
+          // A provider may retire yesterday's version. Discover a new template
+          // once per cooldown, never guess a /latest/z/x/y path or spin requests.
+          if([404,410].includes(response.status)&&!metadataController&&Date.now()-lastMetadataRefresh>30000){lastMetadataRefresh=Date.now();void diskCache.remove(TILE_JSON).then(()=>{if(!destroyed&&!metadataController){clearTimeout(initTimer);void initialize();}});}
+          throw Error(`Tile HTTP ${response.status}`);
+        }
+        const bytes=await readTileBytes(response);
+        // Parsing before persistence prevents an HTML error page poisoning offline cache.
+        new VectorTile(new Pbf(new Uint8Array(bytes)));
+        fetched.push({url,bytes});return bytes;
+      };
+      const bytes = await read(record);
       const overviewTiles=[];
       if(record.z===12){
         // Still at most MAX_REQUESTS concurrent HTTP calls: children are serial
         // within each record, cancelled with it, and share its timeout.
         for(let dx=0;dx<2;dx++)for(let dy=0;dy<2;dy++){
           const child=descriptor(record.x*2+dx,record.y*2+dy,13);
-          const r=await fetch(tileURL(child),{signal,mode:'cors',credentials:'omit'});
-          if(!r.ok)throw new Error(`Overview tile HTTP ${r.status}`);
-          const data=await r.arrayBuffer();if(data.byteLength>4*1024*1024)throw new Error('Overview tile too large');
+          const data=await read(child);
           overviewTiles.push({...child,bytes:data});
         }
       }
@@ -646,13 +667,15 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
       const root = await build;
       if (destroyed || signal.aborted || !desired.has(record.key) || cache.get(record.key) !== record) { disposeTile(root); throw abortError(); }
       record.root = root; record.state = 'ready'; record.used = ++touch;
+      for(const item of fetched)void diskCache.put(item.url,item.bytes);
     } catch (error) {
       if (destroyed || !desired.has(record.key) || (signal.aborted && !timedOut)) {
         removeRecord(record);
       } else {
         record.error = error.message;
-        record.state = error.permanent || record.attempts >= MAX_ATTEMPTS ? 'failed' : 'retry';
-        record.retryAt = Date.now() + 700 * 2 ** (record.attempts - 1);
+        lastError=error.message;
+        record.state = record.attempts >= MAX_ATTEMPTS ? 'failed' : 'retry';
+        record.retryAt = Date.now() + (record.state==='failed'?Math.min(120000,30000*2**Math.min(record.attempts-MAX_ATTEMPTS,2)):700*2**(record.attempts-1));
       }
     } finally {
       clearTimeout(timeout);
@@ -661,15 +684,15 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     }
   }
   function pump() {
-    if (destroyed || !template) return;
+    if (destroyed || !template || suspended) return;
     clearTimeout(retryTimer); retryTimer = null;
     let nextRetry = Infinity;
     for (const tile of desired.values()) {
       let record = cache.get(tile.key);
-      if (record?.state === 'retry' && record.retryAt > Date.now()) {
+      if (['retry','failed'].includes(record?.state) && record.retryAt > Date.now()) {
         nextRetry = Math.min(nextRetry, record.retryAt); continue;
       }
-      if (record && record.state !== 'retry') continue;
+      if (record && !['retry','failed'].includes(record.state)) continue;
       if (active >= MAX_REQUESTS) break;
       if (!record) {
         if (!makeRoom()) break;
@@ -737,7 +760,7 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     }
     return found;
   }
-  function stats(){return {cityTiles:visible.size,cityCache:cache.size,cityRequests:active,cityBuildings:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.buildings||0),0),cityOverviewBlocks:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.overviewBlocks||0),0),cityZoom:zoom,cityLod:lodBand.id,cityLayerWeights:{...weights,tiles:tileWeight}};}
+  function stats(){return {cityTiles:visible.size,cityCache:cache.size,cityRequests:active,cityBuildings:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.buildings||0),0),cityOverviewBlocks:[...visible].reduce((n,key)=>n+(cache.get(key)?.root?.userData.overviewBlocks||0),0),cityZoom:zoom,cityLod:lodBand.id,cityLayerWeights:{...weights,tiles:tileWeight},cityDiskCache:diskCache.stats(),cityNetworkTiles:networkTiles,cityMetadata:metadataState,cityLastError:lastError,cityRecoveries:recoveries};}
   async function initialize() {
     if (destroyed) return;
     initAttempts++;
@@ -745,36 +768,45 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
     const controller = metadataController;
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const response = await fetch(TILE_JSON, {signal: controller.signal, mode: 'cors', credentials: 'omit'});
-      if (!response.ok) throw new Error(`TileJSON HTTP ${response.status}`);
-      const json = await response.json();
+      const saved=await diskCache.get(TILE_JSON);let json;
+      if(saved){try{json=JSON.parse(new TextDecoder().decode(saved.bytes));parseTileMetadata(json);}catch{await diskCache.remove(TILE_JSON);json=null;}}
+      if(json&&!template){const parsed=parseTileMetadata(json);template=parsed.template;scheme=parsed.scheme;metadataState='cached';metadataFailed=false;settleReady();pump();status();}
+      if(!json||Date.now()-saved.created>3600000){
+        const response = await fetch(TILE_JSON, {signal: controller.signal, mode: 'cors', credentials: 'omit'});
+        if (!response.ok) throw new Error(`TileJSON HTTP ${response.status}`);
+        json=response.body?JSON.parse(new TextDecoder().decode(await readTileBytes(response,256*1024))):await response.json();parseTileMetadata(json);
+        void diskCache.put(TILE_JSON,new TextEncoder().encode(JSON.stringify(json)).buffer);metadataState='network';
+      }
       if (destroyed) return;
-      const actualTemplate = json.tiles?.[0];
-      if (typeof actualTemplate !== 'string' || !['{z}', '{x}', '{y}'].every(token => actualTemplate.includes(token))) throw new Error('TileJSON has no supported XYZ template');
-      const url = new URL(actualTemplate, TILE_JSON);
-      if (url.protocol !== 'https:') throw new Error('TileJSON requires an HTTPS tile source');
+      const parsed=parseTileMetadata(json);
       // Use the advertised version, never invent /latest/{z}/{x}/{y}.pbf URLs.
-      template = actualTemplate.startsWith('https://') ? actualTemplate : url.href.replaceAll('%7B', '{').replaceAll('%7D', '}');
-      scheme = json.scheme === 'tms' ? 'tms' : 'xyz';
-      group.userData.attribution = json.attribution || group.userData.attribution;
+      const changed=template&&template!==parsed.template;
+      template=parsed.template;scheme=parsed.scheme;metadataFailed=false;initAttempts=0;lastError='';
+      if(changed)for(const r of cache.values())if(['failed','retry'].includes(r.state)){r.retryAt=0;r.attempts=0;}
+      group.userData.attribution = parsed.attribution || group.userData.attribution;
       group.userData.tileTemplate = template;
       group.userData.source = TILE_JSON;
       settleReady();
       pump(); status();
     } catch (error) {
       if (destroyed) return;
+      lastError=error.message;metadataState=template?'cached-offline':'retrying';
       if (initAttempts < MAX_ATTEMPTS) {
         status(`TileJSON unavailable; retrying (${initAttempts}/${MAX_ATTEMPTS})…`);
         initTimer = setTimeout(initialize, 700 * 2 ** (initAttempts - 1));
       } else {
         metadataFailed = true;
         status(`Map source unavailable: ${error.message}`); settleReady();
+        initTimer=setTimeout(initialize,Math.min(120000,30000*2**Math.min(initAttempts-MAX_ATTEMPTS,2)));
       }
-    } finally { clearTimeout(timeout); }
+    } finally { clearTimeout(timeout);metadataController=null; }
   }
+  function recover(){if(destroyed||globalThis.document?.hidden)return;recoveries++;if(!metadataController&&metadataState!=='network'){clearTimeout(initTimer);initAttempts=0;void initialize();}for(const r of cache.values())if(['failed','retry'].includes(r.state)){r.retryAt=0;r.attempts=0;}pump();}
+  globalThis.addEventListener?.('online',recover);globalThis.document?.addEventListener('visibilitychange',recover);
   function destroy() {
     if (destroyed) return;
     destroyed = true;
+    globalThis.removeEventListener?.('online',recover);globalThis.document?.removeEventListener('visibilitychange',recover);
     clearTimeout(retryTimer); clearTimeout(initTimer);
     metadataController?.abort();
     for (const record of [...cache.values()]) removeRecord(record);
@@ -788,6 +820,7 @@ export function createCityStream({center, onStatus, excludeBuilding} = {}) {
   function reach(){const tileWidth=360/2**zoom*lonScale;return clamp(distance*0.82,tileWidth*0.60,tileWidth*2.15);}
   function coverageBounds(){return [...visible].map(key=>{const r=cache.get(key);return [(r.west-origin[0])*lonScale,-(r.north-origin[1])*METERS,(r.east-origin[0])*lonScale,-(r.south-origin[1])*METERS];});}
   function setBackdropReady(value){
+    suspended=false;
     const next=!!value;
     if(context.bridgesReady!==next){
       // Already-built flat bridge ribbons must not survive beside the newly

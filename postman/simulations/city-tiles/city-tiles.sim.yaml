@@ -1,0 +1,7 @@
+simulation: eventmap-city-tiles
+routing: path
+mocks:
+  - name: city-tiles
+    routeKey: city-tiles
+    origin: tiles.openfreemap.org
+    path: postman/mocks/city-tiles

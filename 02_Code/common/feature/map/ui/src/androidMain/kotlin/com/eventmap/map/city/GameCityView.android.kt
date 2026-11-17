@@ -30,6 +30,7 @@ actual fun GameCityView(payload:String, modifier:Modifier, onMessage:(String)->U
         WebView(context).apply {
             layoutParams=ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.MATCH_PARENT)
             settings.javaScriptEnabled=true; settings.domStorageEnabled=true
+            settings.userAgentString="${settings.userAgentString} EventMapCity/1.0"
             settings.allowFileAccess=false;settings.allowContentAccess=false
             settings.mixedContentMode=WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.javaScriptCanOpenWindowsAutomatically=false

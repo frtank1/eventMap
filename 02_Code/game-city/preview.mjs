@@ -28,6 +28,8 @@ return createServer(async(req,res)=>{
     else if(url.pathname==='/stage-one-qa.js'){file=path.join(root,'test/stage-one-qa.js');type='text/javascript';}
     else if(['/test/visual-performance-qa.js','/runtime/frame-governor.js','/test/festival-qa.js','/test/festival-fixtures.js'].includes(url.pathname)){file=path.join(root,url.pathname.slice(1));type='text/javascript';}
     else if(/^\/event-covers\/(sport|music|market|discovery|route|quest|community)\.svg$/.test(url.pathname)){file=path.join(root,'test',url.pathname.slice(1));type='image/svg+xml';}
+    else if(url.pathname==='/city-geometry.emc'){file=path.join(root,'preview-dist/city-geometry.emc');type='application/octet-stream';}
+    else if(/^\/characters\/[a-z0-9-]+\.(glb|jpg)$/.test(url.pathname)){file=path.join(root,'preview-dist',url.pathname.slice(1));type=url.pathname.endsWith('.glb')?'model/gltf-binary':'image/jpeg';}
     else if(['/','/index.html','/mobile.js','/mobile.css','/addresses.json','/places.json','/overview.json'].includes(url.pathname)) {
       file=path.join(root,'preview-dist',url.pathname==='/'?'index.html':url.pathname.slice(1));
       type=file.endsWith('.html')?'text/html':file.endsWith('.js')?'text/javascript':file.endsWith('.json')?'application/json':'text/css';

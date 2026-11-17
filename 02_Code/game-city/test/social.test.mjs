@@ -5,6 +5,9 @@ const event=(id,extra={})=>({id,lat:51.128,lng:71.43,title:'Футбол',...ext
 test('appearance is bounded and strips foreign fields',()=>{
   assert.deepEqual(validateLook({...defaultLook,token:'never',lat:51}),defaultLook);
   for(const invalid of [null,{}, {...defaultLook,v:2},{...defaultLook,coat:99},{...defaultLook,skin:-1},{...defaultLook,hair:.5},{...defaultLook,bag:'true'}])assert.equal(validateLook(invalid),null);
+  // Looks saved before trousers/shoes/glasses/height/build existed stay valid.
+  assert.deepEqual(validateLook({v:1,skin:2,hair:1,coat:3,style:1,bag:false}),{...defaultLook,skin:2,hair:1,coat:3,style:1,bag:false});
+  for(const invalid of [{...defaultLook,pants:9},{...defaultLook,glasses:1},{...defaultLook,height:-1}])assert.equal(validateLook(invalid),null);
 });
 test('only valid, unique and unexpired events enter the city',()=>{
   const now=Date.parse('2026-11-12T10:00:00Z');

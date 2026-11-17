@@ -22,6 +22,7 @@ import {createLandmarkExclusion} from './landmark-footprints.js';
 import {createFrameGovernor} from './frame-governor.js';
 import {createSky,createEnvironmentScene} from './sky.js';
 import {createCityBackdrop} from './city-backdrop.js';
+import {loadPreparedCity,cityGeometryKey} from './prepared-city.js';
 import {createFramePacer} from './frame-pacer.js';
 import {festivalAllowed,debugSceneAllowed} from './event-density.js';
 import {createZoomBenchmark} from './zoom-benchmark.js';
@@ -49,23 +50,29 @@ let scene, camera, sunlight, ambient, terrain, social, preview=false, labelRoot 
 let quarter,effects,sky,quarterMode=true,quality='balanced',blocked=false,lastNativeAppearance='';
 const districts=new Map();let districtId='baiterek';
 let cityStatus={};
-let backdrop,overviewData,backdropBuild,backdropStopped=false;
+let backdrop,overviewData,overviewRead,backdropBuild,backdropStopped=false,backdropBooted=false,backdropKey='';
+const ensureOverview=()=>overviewRead??=(readBundledJSON('overview.json',16*1024*1024,{timeoutMs:30000}).then(d=>overviewData=d).catch(e=>{overviewRead=null;throw e;}));
 let quarterReplacement=null,trialBackdrop=null,trialSnapshot=null,trialRevision=0,trialBusy=false,trialRequested='current',geometryRevision=0,trialBuild=null;
 const trialVariant=()=>quarterReplacement?'nsdi':'current';
 function makeQuarter(id='baiterek',catalog=geoCatalog,replacement=quarterReplacement){return createBaiterekQuarter({district:id,entries:models.map(p=>p.entry),catalog,replacement});}
 const pacer=createFramePacer(30);
 async function refreshBackdrop(){
-  if(!overviewData||backdropStopped)return;
+  if(!backdropBooted||backdropStopped)return;
+  const key=cityGeometryKey(models.filter(p=>!withheldModels.has(p.entry.id)).map(p=>p.entry),geoCatalog);
+  if(backdrop&&backdropKey===key&&!quarterReplacement)return;
   backdropBuild?.abort();const job=new AbortController();backdropBuild=job;
   let next,nextOverlay;
   try{
     const options={entries:models.filter(p=>!withheldModels.has(p.entry.id)).map(p=>p.entry),catalog:geoCatalog,signal:job.signal};
-    next=await createCityBackdrop(overviewData,{...options,excludeBuilding:quarterReplacement?.ownsGeo});
+    let prepared;
+    if(!quarterReplacement)try{const p=await loadPreparedCity();if(p.key===key)prepared=p;}catch(e){console.warn('Prepared city fallback:',e.message);}
+    if(job.signal.aborted)return;
+    next=await createCityBackdrop(prepared?null:await ensureOverview(),{...options,prepared,excludeBuilding:quarterReplacement?.ownsGeo});
     if(quarterReplacement)nextOverlay=await createCityBackdrop(quarterReplacement.overview,options);
     if(job.signal.aborted){next.destroy();nextOverlay?.destroy();return;}
     const previous=backdrop,previousOverlay=trialBackdrop;backdrop=next;trialBackdrop=nextOverlay||null;scene.add(next.group);if(trialBackdrop)scene.add(trialBackdrop.group);next=nextOverlay=null;previous?.destroy();previousOverlay?.destroy();city?.setBackdropReady(true);appearance();setQuarterMode();
-    native({type:'status',state:'overview-ready'});
-  }catch(e){next?.destroy();nextOverlay?.destroy();if(e.name!=='AbortError'){console.warn('City overview unavailable; keeping streamed map.',e.message);if(!backdrop)native({type:'status',state:'overview-unavailable'});}}
+    backdropKey=key;native({type:'status',state:'overview-ready'});
+  }catch(e){next?.destroy();nextOverlay?.destroy();if(e.name!=='AbortError'){console.warn('City overview unavailable; keeping streamed map.',e.message);if(!backdrop){city?.setBackdropReady(false);native({type:'status',state:'overview-unavailable'});}}}
 }
 const allPlaces=()=>models;
 const styledPlaces=new Set(CITY_PLACES.map(p=>p.id));
@@ -83,7 +90,9 @@ const withheldModels=new Set(['museum']);
 // the real outline in the place catalogue (minimum-area rectangle of both).
 // MEGA was 18.8 degrees off, the Palace of Peace 14.6. Fold these into the
 // source models at the next export and delete the entries here.
-const placementYaw={mega:-0.328,palace:-0.255};
+const placementYaw={mega:-0.328,palace:-0.255,arena:0.0692,talan:-0.2478};
+// Metres east / north that move the corrected model centre onto the real outline centre.
+const placementOffset={arena:[16.1,10.9],talan:[10.0,-2.0]};
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
 const governor=createFrameGovernor({devicePixelRatio,mode:'auto'});
 function applyQuality(next){
@@ -116,7 +125,7 @@ function makeModels(pack) {
         const mesh = new THREE.Mesh(g, mats[x.material]); mesh.userData.detail = x.detail;
         mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
       }
-      group.position.copy(project(entry.lng, entry.lat)); group.rotation.y=placementYaw[entry.id]||0; group.userData.place = {...entry,geometryKind:'stylized'};
+      group.position.copy(project(entry.lng, entry.lat)); group.rotation.y=placementYaw[entry.id]||0;{const o=placementOffset[entry.id];if(o){group.position.x+=o[0];group.position.z-=o[1];}} group.userData.place = {...entry,geometryKind:'stylized'};
       entries.push({entry, group});
     }
     return {root, entries, materials};
@@ -145,8 +154,10 @@ function createWorldStream(data=geoCatalog,replacement=quarterReplacement){
     const point=project(lng,lat);
     return replacement?.occupies(lng,lat)||models.some(p=>point.distanceTo(p.group.position)<p.entry.radius);
   };
-  const stream=createCityStream({center,excludeBuilding,onStatus:s=>{cityStatus=s;shadowDirty=true;}});
-  stream.setBackdropReady(!!backdrop);return stream;
+  const nearLandmark=(lng,lat)=>{const point=project(lng,lat);return models.some(p=>Math.hypot(point.x-p.group.position.x,point.z-p.group.position.z)<p.entry.radius*1.25);};
+  const heightAt=(lng,lat)=>{const point=project(lng,lat);return backdrop?.placeAt(point.x,point.z)?.top;};
+  const stream=createCityStream({center,excludeBuilding,nearLandmark,heightAt,deferTiles:!backdrop,onStatus:s=>{cityStatus=s;shadowDirty=true;}});
+  if(backdrop)stream.setBackdropReady(true);return stream;
 }
 function activateGeography(ready){
   const signature=JSON.stringify(ready.places.places.map(p=>[p.id,p.review.status,p.footprints]));
@@ -237,13 +248,14 @@ async function switchQuarterVariant(variant){
   if(!['current','nsdi'].includes(variant)||!debugSceneAllowed({preview:true},debugContext())||variant===trialRequested&&trialBusy)return;
   trialRequested=variant;
   if(variant===trialVariant()&&!trialBusy){trialUi();return;}
-  if(!overviewData||!backdrop){native({type:'status',state:'quarter-trial-failed',title:'Дождись загрузки объёмной карты',variant:trialVariant()});return;}
+  if(!backdrop){native({type:'status',state:'quarter-trial-failed',title:'Дождись загрузки объёмной карты',variant:trialVariant()});return;}
   const revision=++trialRevision,geoRevision=geometryRevision;trialBusy=true;finishZoomBenchmark('quarter-variant');trialUi();
   native({type:'status',state:'quarter-trial-loading',title:'Готовим тестовый квартал; текущая карта остаётся на экране'});
   trialBuild?.abort();const controller=new AbortController();trialBuild=controller;
   const deadline=setTimeout(()=>controller.abort(),30000);
   let nextBackdrop,nextOverlay,nextQuarter,nextCity,previous;
   try{
+    await ensureOverview();
     let replacement=null;
     if(variant==='nsdi'){
       if(!trialSnapshot)trialSnapshot=await readBundledJSON(debugContext().native?'/assets/eventmap-nsdi/quarter.json':'/test/nsdi-quarter.json',NSDI_LIMITS.bytes);
@@ -542,9 +554,9 @@ try {
   addEventListener('pagehide',()=>{backdropBuild?.abort();backdrop?.destroy();store?.stop();addresses.stop();active=false;cancelAnimationFrame(frame);social?.destroy();districts.forEach(d=>d.destroy());effects?.destroy();sky?.destroy();environment?.dispose();pmrem?.dispose();landmarkGround?.destroy();controls.dispose();city?.destroy();dispose(modelRoot);for(const x of markers)dispose(x.mesh);renderer.dispose();});
   window.EventMapMobile={receive,stats:()=>({artVersion:ART_VERSION,lodVersion:CITY_LOD_VERSION,layer:cityLodBand(camera.position.distanceTo(controls.target)).id,layerWeights:cityLodWeights(camera.position.distanceTo(controls.target),quality),quarterVariant:trialVariant(),trialBusy,trialData:quarterReplacement?.stats||null,trialLod:trialBackdrop?(quarterMode&&districtId==='baiterek'?'near-quarter':'city-silhouette'):null,trialSilhouette:trialBackdrop?.stats()||null,cameraDistance:camera.position.distanceTo(controls.target),geographyRelease:addresses.manifest?.release||'bundled',addressCount:addresses.current?.index.count||0,fps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,release:current.manifest.release,quality,qualityMode:governor.mode,pixelRatio:renderer.getPixelRatio(),quarterMode,night,theme,depthBits,depthNear:camera.near,depthFar:camera.far,landmarks:allPlaces().length,...city?.stats(),...backdrop?.stats(),frameTiming:governor.snapshot().frameTiming,...quarter?.stats(),...effects?.stats(),...social?.stats()})};
   frame=requestAnimationFrame(render);native({type:'ready'});
-  // The 7 MB bundled overview can exceed the ordinary 6 s read deadline on
-  // Android cold start. Keep a bounded local-only allowance; API timeouts stay unchanged.
-  void readBundledJSON('overview.json',16*1024*1024,{timeoutMs:30000}).then(data=>{overviewData=data;return refreshBackdrop();}).catch(e=>{console.warn('City overview unavailable:',e.message);native({type:'status',state:'overview-unavailable'});});
+  // Resolve replacement footprints once, then upload baked district buffers.
+  // Source polygons are read only for a changed catalog / explicit A-B trial.
+  void addresses.ensureFallback().then(()=>{backdropBooted=true;return refreshBackdrop();}).catch(e=>{console.warn('City overview unavailable:',e.message);native({type:'status',state:'overview-unavailable'});});
   // Browser-only local QA. Native supplies the URL through the typed bridge.
   if (['localhost','127.0.0.1'].includes(location.hostname)) receive({v:1,type:'init',manifestUrl:new URL('/world/manifest.json',location.href).href});
 } catch (e) { info.textContent='3D недоступна. Можно вернуться к обычной карте.';native({type:'error',state:'graphics-unavailable'});console.error(e); }

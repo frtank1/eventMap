@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {createAvatar,createFootballDemo} from './avatar.js';
-import {defaultLook,palettes,validateLook,visibleEvents,groupEvents,labelsOverlap} from './social-state.js';
+import {loadPeopleKit,createPerson,OUTFITS,SLOTS,outfitIndex} from './people-kit.js';
+import {defaultLook,palettes,validateLook,visibleEvents,groupEvents,labelsOverlap,HAIR_STYLES,HEIGHTS,BUILDS,BODIES} from './social-state.js';
 import {eventStyle,eventSummary,EVENT_STYLES} from './event-style.js';
 import {eventIcon} from './event-icons.js';
 import {createEventModels} from './event-models.js';
@@ -14,9 +15,19 @@ const node=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.classNa
 const icon=(name)=>({person:'<circle cx="12" cy="7" r="3"/><path d="M5 21v-3a7 7 0 0 1 14 0v3"/>',near:'<circle cx="12" cy="12" r="8"/><path d="m15 9-2 4-4 2 2-4z"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>'}[name]);
 function iconButton(id,name,label){const b=document.querySelector(id);b.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${icon(name)}</svg><span>${label}</span>`;return b;}
 
+// The procedural explorer shows at once; the skinned Quaternius person replaces it
+// when characters/ has loaded (it stays as the fallback if the kit is unavailable).
+function createAvatarHost(initial){
+  const root=new THREE.Group();root.name='Player avatar';let current=createAvatar(initial),kit=false,latest=initial,onKit=()=>{};root.add(current.root);
+  loadPeopleKit().then(k=>{const real=createPerson(k,latest);current.destroy();current=real;root.add(real.root);kit=true;onKit();})
+    .catch(e=>console.warn('Character kit unavailable:',e.message));
+  return {root,apply:v=>{latest=v;current.apply(v);},update:(...a)=>current.update(...a),setDetail:d=>current.setDetail(d),stats:()=>current.stats(),destroy:()=>current.destroy(),
+    get kit(){return kit;},set onKit(f){onKit=f;}};
+}
+
 export function createSocialLayer({scene,camera,controls,native,project,groundHeight=()=>.12,surfaceHeight=groundHeight,editorSpot=()=>null}){
   let look={...defaultLook};try{look=validateLook(JSON.parse(localStorage.getItem(storageKey)))||look;}catch{}
-  const avatar=createAvatar(look);avatar.root.position.set(-24,groundHeight(-24,57)+.008,57);avatar.root.visible=false;scene.add(avatar.root);
+  const avatar=createAvatarHost(look);avatar.root.position.set(-24,groundHeight(-24,57)+.008,57);avatar.root.visible=false;scene.add(avatar.root);
   const markerRoot=document.querySelector('#event-labels'),editor=document.querySelector('#avatar-editor'),nearby=document.querySelector('#nearby-list');
   let eventModels=null,presentation='bubbles',covers=new Map(),nativeCovers=[],coverRequest='',lastCoverRequest=0;
   const pointGroup=new THREE.Group();scene.add(pointGroup);
@@ -58,13 +69,25 @@ export function createSocialLayer({scene,camera,controls,native,project,groundHe
   nearButton.onclick=()=>{if(!nearby.hidden){closeList();return;}const target=controls.target;listing([...events].sort((a,b)=>project(a.lng,a.lat).distanceToSquared(target)-project(b.lng,b.lat).distanceToSquared(target)));};
   function save(){avatar.apply(look);let persisted=true;try{localStorage.setItem(storageKey,JSON.stringify(look));}catch{persisted=false;}document.querySelector('#avatar-note').textContent=persisted?'Сохранено на этом устройстве. Геопозиция не используется.':'Образ изменён. Хранилище недоступно: после закрытия он может сброситься.';}
   function updatePalette(){editor.querySelectorAll('[data-palette]').forEach(b=>b.setAttribute('aria-pressed',String(look[b.dataset.palette]===Number(b.dataset.value))));}
-  for(const [key,label]of [['skin','Кожа'],['hair','Волосы'],['coat','Одежда']]){
+  for(const [key,label]of [['skin','Кожа'],['hair','Волосы'],['coat','Верх'],['pants','Низ'],['shoes','Обувь']]){
     const section=node('div','palette-section');section.append(node('span','',label));const row=node('div','swatches');
+    // -1: the outfit's own colours (people kit); the procedural fallback uses the first swatch.
+    if(['coat','pants','shoes'].includes(key)){const b=node('button','swatch swatch-original');b.dataset.palette=key;b.dataset.value=-1;b.setAttribute('aria-label',`${label}: как в образе`);b.title='Как в образе';b.onclick=()=>{look[key]=-1;save();updatePalette();};row.append(b);}
     palettes[key].forEach((hex,i)=>{const b=node('button','swatch');b.style.setProperty('--swatch',`#${hex.toString(16).padStart(6,'0')}`);b.dataset.palette=key;b.dataset.value=i;b.setAttribute('aria-label',`${label}, вариант ${i+1}`);b.onclick=()=>{look[key]=i;save();updatePalette();};row.append(b);});section.append(row);document.querySelector('#avatar-options').append(section);
   }
   const styleButton=document.querySelector('#hair-style'),bagButton=document.querySelector('#backpack');
-  function updateChoices(){styleButton.textContent=['Короткие волосы','Длинные волосы','Шапка'][look.style];bagButton.textContent=look.bag?'Рюкзак: да':'Рюкзак: нет';}
-  styleButton.onclick=()=>{look.style=(look.style+1)%3;save();updateChoices();};bagButton.onclick=()=>{look.bag=!look.bag;save();updateChoices();};
+  const extraChoices=[
+    [()=>`Тело: ${BODIES[look.body]}`,()=>{look.body=(look.body+1)%BODIES.length;}],
+    // Real outfit parts (people kit): head with hair or hat, top, bottom, shoes.
+    ...SLOTS.map(([key,,label])=>[()=>`${label}: ${OUTFITS[look.body?'women':'men'][outfitIndex(look,key,look.body?1:0)][1]}`,
+      ()=>{look[key]=(outfitIndex(look,key,look.body?1:0)+1)%OUTFITS[look.body?'women':'men'].length;},()=>avatar.kit]),
+    [()=>look.glasses?'Очки: да':'Очки: нет',()=>{look.glasses=!look.glasses;},()=>!avatar.kit],
+    [()=>`Рост: ${HEIGHTS[look.height]}`,()=>{look.height=(look.height+1)%HEIGHTS.length;}],
+    [()=>`Фигура: ${BUILDS[look.build]}`,()=>{look.build=(look.build+1)%BUILDS.length;}],
+  ].map(([text,change,shown=()=>true])=>{const b=node('button','');b.onclick=()=>{change();save();updateChoices();};styleButton.parentElement.append(b);return ()=>{b.textContent=text();b.hidden=!shown();};});
+  function updateChoices(){styleButton.textContent=HAIR_STYLES[look.style];bagButton.textContent=look.bag?'Рюкзак: да':'Рюкзак: нет';styleButton.hidden=avatar.kit;extraChoices.forEach(f=>f());}
+  avatar.onKit=updateChoices;
+  styleButton.onclick=()=>{look.style=(look.style+1)%HAIR_STYLES.length;save();updateChoices();};bagButton.onclick=()=>{look.bag=!look.bag;save();updateChoices();};
   const viewButtons=[...editor.querySelectorAll('[data-avatar-view]')],stepButton=document.querySelector('#avatar-step');
   function setView(view='three-quarter'){
     const angles={front:.537,'three-quarter':-.12,back:Math.PI+.537};

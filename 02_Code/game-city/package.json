@@ -10,5 +10,11 @@
     "test": "node --test test/*.test.mjs",
     "preview": "node preview.mjs"
   },
-  "devDependencies": { "esbuild": "0.28.2" }
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "esbuild": "0.28.2",
+    "three": "^0.170.0"
+  }
 }

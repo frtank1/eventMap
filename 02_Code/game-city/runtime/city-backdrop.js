@@ -1,3 +1,4 @@
+import {estimatedTop,nearLandmark} from './height-estimate.js';
 import * as THREE from 'three';
 import {flatPolygon,roadStrip} from '../source/city-stream.js';
 import {CITY_PALETTE} from './art-direction.js';
@@ -6,6 +7,7 @@ import {createLandmarkExclusion} from './landmark-footprints.js';
 import {onOrInPolygon} from '../source/city-overview.js';
 import {bridgeGeometry,BRIDGE_LIMITS} from './bridge-geometry.js';
 import {LOD_COVERAGE_GLSL} from './city-lod.js';
+import {preparedMesh,cityGeometryKey,encodePreparedCity} from './prepared-city.js';
 
 // Persistent, geographic silhouettes, not a second schematic map. Small houses
 // are a separate distance-culled batch; windows are filtered shader detail, not
@@ -55,8 +57,9 @@ function mesh(b,material){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3));g.setAttribute('normal',new THREE.Int8BufferAttribute(b.n.map(n=>Math.round(n*127)),3,true));
   g.setAttribute('color',new THREE.Uint8BufferAttribute(b.c,3,true));g.setAttribute('nightColor',new THREE.Uint8BufferAttribute(b.night,3,true));g.setAttribute('snowSurface',new THREE.Uint8BufferAttribute(b.snow,1));g.setAttribute('nightLighting',new THREE.Uint8BufferAttribute(b.light,1));g.setAttribute('minorBuilding',new THREE.Uint8BufferAttribute(b.minor,1));g.setAttribute('coverageAnchor',new THREE.Float32BufferAttribute(b.anchor,2));g.setIndex(b.i);g.computeBoundingSphere();return new THREE.Mesh(g,material);
 }
-export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgress,excludeBuilding=null}={}){
-  validateOverview(data);const group=new THREE.Group();group.name='persistent-astana';
+export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgress,excludeBuilding=null,prepared=null}={}){
+  if(prepared){if(excludeBuilding||prepared.key!==cityGeometryKey(entries,catalog))throw Error('Prepared city incompatible');}else validateOverview(data);
+  const started=performance.now(),group=new THREE.Group();group.name='persistent-astana';
   const masks=Array.from({length:9},()=>new THREE.Vector4());
   const uniforms={coverage:{value:masks},coverageCount:{value:0},coverageWeight:{value:1},quarterMask:{value:new THREE.Vector3(0,0,0)},cityNight:{value:0},cityWinter:{value:0}};
   const material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.9});
@@ -116,30 +119,43 @@ export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgr
   const chunks=new Map(),minor=[],bridgeDetails=[],index=new Map(),large=[];let count=0,triangles=0,bridgeParts=0,bridgeTriangles=0;
   const cleanup=()=>{group.traverse(o=>o.geometry?.dispose());material.dispose();surfaceMaterial.dispose();bridgeMaterial.dispose();group.clear();group.removeFromParent();};
   const check=()=>{if(signal?.aborted)throw new DOMException('City overview cancelled','AbortError');};
+  const places=[];
+  const indexPlace=(top,rings)=>{
+    places.push([top,rings]);const outer=rings[0],xs=outer.map(p=>p[0]),zs=outer.map(p=>p[1]);
+    const record={top,rings},x0=Math.floor(Math.min(...xs)/250),x1=Math.floor(Math.max(...xs)/250),z0=Math.floor(Math.min(...zs)/250),z1=Math.floor(Math.max(...zs)/250);
+    if((x1-x0+1)*(z1-z0+1)>64)large.push(record);
+    else for(let gx=x0;gx<=x1;gx++)for(let gz=z0;gz<=z1;gz++){const ik=`${gx}:${gz}`;if(!index.has(ik))index.set(ik,[]);index.get(ik).push(record);}
+  };
   try{
+    if(prepared){
+      let slice=performance.now();
+      for(const [top,rings]of prepared.places){check();indexPlace(top,rings);if(performance.now()-slice>5){await pause();slice=performance.now();}}
+      for(const item of prepared.meshes){check();const m=preparedMesh(item,item.role==='bridge'?bridgeMaterial:item.role==='surface'?surfaceMaterial:material);group.add(m);if(item.minor)minor.push({mesh:m,x:item.minor[0],z:item.minor[1]});if(item.name==='bridge-railings')bridgeDetails.push(m);}
+      count=places.length;triangles=prepared.triangles;bridgeTriangles=prepared.bridgeTriangles;
+    }else{
     const excluded=createLandmarkExclusion(entries,catalog);
+    const landmarks=entries.filter(e=>Number.isFinite(e.lng)&&Number.isFinite(e.lat)&&Number.isFinite(e.radius)).map(e=>({x:(e.lng-WORLD_CENTER[0])*LON_SCALE,z:-(e.lat-WORLD_CENTER[1])*METERS,radius:e.radius}));
     let slice=performance.now();
     for(const building of data.buildings){
-      check();const [top,base,style,rings]=building,outer=rings[0];
+      check();const [sourceTop,base,style,rings]=building,outer=rings[0];
       const xs=outer.map(p=>p[0]),zs=outer.map(p=>p[1]),x=(Math.min(...xs)+Math.max(...xs))/2,z=(Math.min(...zs)+Math.max(...zs))/2;
+      const top=estimatedTop(sourceTop,base,outer,1,1,nearLandmark(x,z,landmarks));
       const geo=rings.map(r=>r.map(([x,z])=>[WORLD_CENTER[0]+x/LON_SCALE,WORLD_CENTER[1]-z/METERS]));
       if(excludeBuilding?.(geo)||excluded(WORLD_CENTER[0]+x/LON_SCALE,WORLD_CENTER[1]-z/METERS,geo))continue;
       const small=top-base<15&&polygonArea(outer)<250,key=`${Math.floor(x/3000)}:${Math.floor(z/3000)}:${Number(small)}`;
       if(!chunks.has(key))chunks.set(key,{data:batch(),small,x:Math.floor(x/3000)*3000+1500,z:Math.floor(z/3000)*3000+1500});
-      appendBuilding(chunks.get(key).data,building);count++;
-      const record={top,rings},x0=Math.floor(Math.min(...xs)/250),x1=Math.floor(Math.max(...xs)/250),z0=Math.floor(Math.min(...zs)/250),z1=Math.floor(Math.max(...zs)/250);
-      if((x1-x0+1)*(z1-z0+1)>64)large.push(record);
-      else for(let gx=x0;gx<=x1;gx++)for(let gz=z0;gz<=z1;gz++){const ik=`${gx}:${gz}`;if(!index.has(ik))index.set(ik,[]);index.get(ik).push(record);}
+      appendBuilding(chunks.get(key).data,top===sourceTop?building:[top,base,style,rings]);count++;
+      indexPlace(top,rings);
       if(performance.now()-slice>7){onProgress?.(count);await pause();check();slice=performance.now();}
     }
-    for(const c of chunks.values()){check();const m=mesh(c.data,material);triangles+=c.data.i.length/3;c.data=null;group.add(m);if(c.small)minor.push({mesh:m,x:c.x,z:c.z,visible:false});await pause();}
+    for(const c of chunks.values()){check();const m=mesh(c.data,material);triangles+=c.data.i.length/3;c.data=null;group.add(m);if(c.small){m.userData.bakedMinor=[c.x,c.z];minor.push({mesh:m,x:c.x,z:c.z,visible:false});}await pause();}
     chunks.clear();
     const surfaces=batch(),rect={minX:-90000,minZ:-90000,maxX:90000,maxZ:90000};
     const addSurface=(g,kind)=>{if(!g)return;const p=g.attributes.position,n=g.attributes.normal,offset=surfaces.p.length/3;for(let i=0;i<p.count;i++)vertex(surfaces,[p.getX(i),p.getY(i),p.getZ(i)],[n.getX(i),n.getY(i),n.getZ(i)],kind,[p.getX(i),p.getZ(i)],kind==='road'?2:0);if(g.index)for(const i of g.index.array)surfaces.i.push(offset+i);else for(let i=0;i<p.count;i++)surfaces.i.push(offset+i);g.dispose();};
     for(const [kind,rings]of data.surfaces){check();addSurface(flatPolygon(rings,p=>p,kind==='water'?-.4:-.8,rect),kind);if(performance.now()-slice>7){await pause();slice=performance.now();}}
     const widths={motorway:24,trunk:22,primary:18,secondary:14,tertiary:10};
     for(const [kind,line]of data.roads){check();addSurface(roadStrip(line,p=>p,widths[kind],-.25,rect),'road');if(performance.now()-slice>7){await pause();slice=performance.now();}}
-    group.add(mesh(surfaces,surfaceMaterial));triangles+=surfaces.i.length/3;
+    const surfaceMesh=mesh(surfaces,surfaceMaterial);surfaceMesh.userData.bakedRole='surface';group.add(surfaceMesh);triangles+=surfaces.i.length/3;
     const bridgeBatches=new Map();
     for(const bridge of data.bridges){
       check();const at=bridge.points[Math.floor(bridge.points.length/2)],cell=`${Math.floor(at[0]/6000)}:${Math.floor(at[1]/6000)}`;
@@ -152,8 +168,10 @@ export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgr
         if(performance.now()-slice>7){await pause();check();slice=performance.now();}
       }
     }
-    for(const {b,detail}of bridgeBatches.values()){const m=mesh(b,bridgeMaterial);m.name=detail?'bridge-railings':'bridge-structure';group.add(m);bridgeTriangles+=b.i.length/3;if(detail)bridgeDetails.push(m);}
+    for(const {b,detail}of bridgeBatches.values()){const m=mesh(b,bridgeMaterial);m.userData.bakedRole='bridge';m.name=detail?'bridge-railings':'bridge-structure';group.add(m);bridgeTriangles+=b.i.length/3;if(detail)bridgeDetails.push(m);}
     triangles+=bridgeTriangles;
+    }
+    const readyAt=performance.now(),loadMs=readyAt-started;
     return {group,setAppearance(night,theme){uniforms.cityNight.value=night?1:0;uniforms.cityWinter.value=theme!=='default'?1:0;},
       update(camera,rectangles=[],quarter=null,coverageWeight=1){
         uniforms.coverageWeight.value=Math.max(0,Math.min(1,Number.isFinite(coverageWeight)?coverageWeight:1));
@@ -168,6 +186,7 @@ export async function createCityBackdrop(data,{entries=[],catalog,signal,onProgr
         for(const b of candidates)if((!found||b.top>found.top)&&onOrInPolygon([x,z],b.rings))found=b;
         return found?{title:'Здание',top:found.top,geometryKind:'footprint',geoRings:found.rings.map(r=>r.map(([x,z])=>[WORLD_CENTER[0]+x/LON_SCALE,WORLD_CENTER[1]-z/METERS])),lng:WORLD_CENTER[0]+x/LON_SCALE,lat:WORLD_CENTER[1]-z/METERS}:null;
       },
-      stats:()=>({backdropBuildings:count,backdropTriangles:triangles,backdropReady:true,bridges:data.bridges.length,bridgeTriangles}),destroy:cleanup};
+      bake:()=>encodePreparedCity({key:cityGeometryKey(entries,catalog),places,triangles,bridgeTriangles,bridges:data.bridges.length},group.children),
+      stats:()=>({backdropBuildings:count,backdropTriangles:triangles,backdropReady:true,backdropPrepared:!!prepared,backdropLoadMs:Math.round(loadMs),backdropReadyAtMs:Math.round(readyAt),backdropDistricts:group.children.length,bridges:prepared?.bridges??data.bridges.length,bridgeTriangles}),destroy:cleanup};
   }catch(e){cleanup();chunks.clear();throw e;}
 }

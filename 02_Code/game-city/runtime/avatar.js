@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {palettes,defaultLook,validateLook} from './social-state.js';
+import {palettes,defaultLook,validateLook,HEIGHTS,BUILDS} from './social-state.js';
 import {CITY_PALETTE} from './art-direction.js';
 import {mergeGeometries} from '../source/vendor/BufferGeometryUtils.js';
 import {loft,softBox,curve,sweptHair} from './avatar-geometry.js';
@@ -15,7 +15,8 @@ export function createAvatar(input=defaultLook,{detail='full'}={}) {
   const skin=material('Skin',0xd8a078),skinShadow=material('Skin warm recess',0xa36c51),hair=material('Hair',0x292833,.94),hairLight=material('Hair ridges',0x423b45,.94);
   const pants=material('Trousers',CITY_PALETTE.dark[0]),sole=material('Rubber sole',0x414846),bagMat=material('Canvas backpack',CITY_PALETTE.sand[0]);
   // Reuse ivory, sand and dark fabric on shirt, shoes, straps and small trims.
-  const shoe=bagMat,bagEdge=pants,white=lining,metal=lining;
+  const shoe=material('Sneaker suede',CITY_PALETTE.sand[0]),bagEdge=pants,white=lining,metal=lining;
+  const frame=material('Glasses frame',0x23272c,.5);
   const eye=material('Iris',0x28332e,.7),mouth=material('Mouth',0x87514b);
   function group(parent,name,p=[0,0,0]){const g=new THREE.Group();g.name=name;g.position.set(...p);parent.add(g);return g;}
   function fine(parent){if(!detailByParent.has(parent)){const g=group(parent,'Near detail');detailByParent.set(parent,g);detailGroups.add(g);}return detailByParent.get(parent);}
@@ -77,6 +78,14 @@ export function createAvatar(input=defaultLook,{detail='full'}={}) {
   mesh(hat,'Beanie crown',loft([[.285,.15,.132,-.012],[.34,.151,.13,-.014],[.402,.12,.103,-.02],[.435,.066,.059,-.018],[.445,.013,.012,-.018]],rich?18:12),coat);
   mesh(hat,'Folded beanie rim',loft([[.273,.15,.131,-.01],[.284,.158,.139,-.01],[.32,.156,.136,-.01],[.33,.149,.13,-.01]],rich?18:12),seam);
   if(rich)mesh(fine(hat),'Beanie fabric tab',softBox(.034,.035,.012,.005),lining,[.065,.301,.121]);
+  const cap=group(head,'Cap');
+  mesh(cap,'Cap crown',loft([[.29,.149,.131,-.012],[.33,.151,.131,-.014],[.385,.128,.11,-.018],[.41,.07,.062,-.017],[.414,.012,.012,-.017]],rich?18:12),coat);
+  const brim=mesh(cap,'Cap brim',softBox(.205,.014,.13,.006),seam,[0,.302,.155]);brim.rotation.x=.12;
+  // Thin frames read from the street; lenses stay clear so the eyes remain visible.
+  const glasses=group(head,'Glasses');
+  for(const side of [-1,1])mesh(glasses,'Lens rim',new THREE.TorusGeometry(.03,.0045,6,rich?18:10),frame,[side*.056,.224,.124]);
+  line(glasses,'Bridge',frame,[[-.027,.229,.13],[0,.234,.133],[.027,.229,.13]],.004);
+  for(const side of [-1,1])line(glasses,'Temple',frame,[[side*.086,.226,.12],[side*.128,.228,.07],[side*.14,.22,.005]],.0035);
 
   const bag=group(torso,'Backpack');
   mesh(bag,'Soft canvas pack',softBox(.30,.365,.135,.042),bagMat,[0,1.18,-.204]);
@@ -138,10 +147,16 @@ export function createAvatar(input=defaultLook,{detail='full'}={}) {
   const tone=(m,source,factor)=>m.color.copy(source.color).multiplyScalar(factor);
   function apply(value){
     if(disposed)return;
-    look=validateLook(value)||{...defaultLook};coat.color.setHex(palettes.coat[look.coat]);tone(seam,coat,.66);
+    look=validateLook(value)||{...defaultLook};coat.color.setHex(palettes.coat[look.coat]??palettes.coat[0]);tone(seam,coat,.66);
     skin.color.setHex(palettes.skin[look.skin]);tone(skinShadow,skin,.66);mouth.color.copy(skin.color).multiply(new THREE.Color(.66,.44,.43));
     hair.color.setHex(palettes.hair[look.hair]);hairLight.color.copy(hair.color).lerp(new THREE.Color(CITY_PALETTE.sand[0]),.07);
-    shortHair.visible=look.style===0;longHair.visible=look.style===1;hat.visible=look.style===2;hairCap.visible=look.style!==2;bag.visible=look.bag;
+    pants.color.setHex(palettes.pants[look.pants]??palettes.pants[0]);shoe.color.setHex(palettes.shoes[look.shoes]??palettes.shoes[0]);
+    // 0 short, 1 long, 2 beanie, 3 buzz cut (crown only), 4 cap.
+    shortHair.visible=look.style===0;longHair.visible=look.style===1;hat.visible=look.style===2;cap.visible=look.style===4;hairCap.visible=look.style!==2&&look.style!==4;bag.visible=look.bag;
+    glasses.visible=look.glasses;
+    // Height scales the whole figure; build widens only sideways, so the walk
+    // (rotations about the x axis) and foot grounding stay exact.
+    root.scale.setScalar([.93,1,1.07][look.height]??1);body.scale.x=[.9,1,1.12][look.build]??1;
   }
   function setDetail(distance=0){if(disposed)return;near=rich&&Number.isFinite(distance)&&distance>=0&&distance<(near?42:32);for(const g of detailGroups)g.visible=near;}
   function update(time,moving=false,reduced=false){
