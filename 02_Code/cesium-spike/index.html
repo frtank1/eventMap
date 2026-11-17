@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Cesium · тест у Байтерека</title>
+<script>window.CESIUM_BASE_URL='vendor/Cesium/';window.__t0=performance.now();</script>
+<link rel="stylesheet" href="vendor/Cesium/Widgets/widgets.css">
+<style>
+  html,body,#map{margin:0;width:100%;height:100%;overflow:hidden;background:#0d1520;font:500 13px system-ui,sans-serif}
+  .bar{position:fixed;z-index:5;top:max(10px,env(safe-area-inset-top));left:10px;right:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-radius:16px;background:#fffdf7ee;color:#17263a;box-shadow:0 6px 24px #0003}
+  .bar strong{margin-right:auto;font-size:14px}
+  .bar button,.bar a{min-height:32px;padding:0 11px;border-radius:10px;border:1px solid #d9d2c3;background:#fff;color:#17263a;font:600 12px system-ui,sans-serif;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
+  .bar button[aria-pressed=true]{background:#17263a;color:#fff;border-color:#17263a}
+  .bar input{width:120px}
+  .hud{position:fixed;z-index:5;left:10px;bottom:max(10px,env(safe-area-inset-bottom));padding:8px 10px;border-radius:12px;background:#17263add;color:#e8eef5;font:12px/1.45 ui-monospace,monospace;white-space:pre}
+  .card{position:fixed;z-index:6;right:10px;bottom:max(10px,env(safe-area-inset-bottom));max-width:300px;padding:12px 14px;border-radius:16px;background:#fffdf7;color:#17263a;box-shadow:0 8px 30px #0004;display:none}
+  .card h3{margin:0 0 4px;font-size:15px}.card p{margin:2px 0;color:#4b586a}
+  .cesium-viewer-bottom{display:none}
+  .credits{position:fixed;z-index:4;right:10px;top:calc(max(10px,env(safe-area-inset-top)) + 56px);max-width:46vw;color:#fff;font-size:10px;text-shadow:0 1px 2px #000;text-align:right}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="bar">
+  <strong>Cesium · тест у Байтерека</strong>
+  <button data-base="sat" aria-pressed="true">Спутник</button><button data-base="osm" aria-pressed="false">Схема</button><button data-base="none" aria-pressed="false">Без подложки</button>
+  <button id="shadows" aria-pressed="true">Тени</button><button id="quality">Качество</button>
+  <label title="Время по Астане: солнце считается по дате и часу">☀ <input id="hour" type="range" min="5" max="22" step="0.25"> <span id="hourLabel"></span></label>
+  <button id="sceneBtn" aria-pressed="false">★ 3D-сцена</button><a href="../">← Наш 3D-город</a>
+</div>
+<div class="hud" id="hud">Загрузка Cesium…</div>
+<div class="card" id="card"></div>
+<div class="credits" id="credits"></div>
+<script src="vendor/Cesium/Cesium.js"></script>
+<script src="event-scene.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
