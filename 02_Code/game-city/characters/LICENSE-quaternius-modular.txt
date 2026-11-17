@@ -1,6 +1,6 @@
 Ultimate Modular Men Pack (Feb 2022) and Ultimate Modular Women Pack (Apr 2022) by Quaternius.
 License: CC0 1.0 Universal (Public Domain Dedication) — https://creativecommons.org/publicdomain/zero/1.0/
 Source: https://quaternius.com/packs/ultimatemodularcharacters.html and
-        https://quaternius.com/packs/ultimatemodularwomen.html ("Separate Skeletal Meshes and Animations").
-Converted by build-people.mjs (FBX → glTF with three.js FBXLoader/GLTFExporter, parts rebound to one skeleton).
+        https://quaternius.com/packs/ultimatemodularwomen.html ("Individual Characters/glTF").
+Converted by build-people.mjs from "Individual Characters/glTF" (parts moved onto one shared skeleton).
 Support the author: https://www.patreon.com/quaternius

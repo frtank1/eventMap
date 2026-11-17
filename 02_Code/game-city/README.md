@@ -4,6 +4,7 @@ Local adaptation of the existing Astana visualisation; the hosted private Site i
 
 ## Baked city buffers, persistent district cache and recovery — 17 November 2026 (Codex)
 
+- **17.11.2026 (Claude): baking is opt-in (`node build.mjs --bake`).** Loading `city-geometry.emc` in Chrome/Safari and the Android emulator showed only fog; without it (overview path) the city renders. Not shipped until the prepared path is fixed and checked on a device.
 - `bake-city.mjs` runs during every engine build. The current 76,025 buildings and
   342 bridges become **318 GPU batches**, including district building groups,
   surfaces and bridges. Indexed roofs/walls, courtyards, picking polygons,

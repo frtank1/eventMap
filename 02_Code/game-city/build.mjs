@@ -8,7 +8,11 @@ import {stageNativeNsdi} from './stage-nsdi.mjs';
 import {bakeCity} from './bake-city.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const out=path.join(here,'preview-dist');await mkdir(out,{recursive:true});
-await bakeCity(out);
+// The prepared (baked) city is opt-in until fixed: on 17.11 a browser/Android-emulator
+// load of city-geometry.emc showed only fog while the overview path rendered the city.
+// Build with --bake to produce and ship it again (see README "Prepared city").
+const bake=process.argv.includes('--bake');
+if(bake)await bakeCity(out);else await rm(path.join(out,'city-geometry.emc'),{force:true});
 await build({entryPoints:[path.join(here,'runtime/main.js')],bundle:true,format:'iife',target:['safari16','chrome100'],minify:true,
   outfile:path.join(out,'mobile.js'),alias:{three:path.join(here,'source/vendor/three.module.js')},legalComments:'eof'});
 for(const name of ['index.html','mobile.css'])await copyFile(path.join(here,'runtime',name),path.join(out,name));
@@ -25,6 +29,7 @@ await stageNativeFestival();
 await stageNativeNsdi();
 const native=path.resolve(here,'../common/feature/map/ui/src/commonMain/composeResources/files/game-city');
 await rm(path.join(native,'city-geometry.bin.gz'),{force:true});
+if(!bake)await rm(path.join(native,'city-geometry.emc'),{force:true});
 await mkdir(native,{recursive:true});await cp(out,native,{recursive:true});
 if(process.argv.includes('--native-only')){console.log('Built native engine and debug-only trials. Backend assets unchanged.');process.exit(0);}
 const server=path.resolve(here,'../../04_Backend/server/src/main/resources/world');

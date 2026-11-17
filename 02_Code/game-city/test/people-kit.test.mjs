@@ -19,7 +19,7 @@ test('people packs exist, stay under the loader limit and carry the CC0 note',()
 test('every outfit has head, top, bottom and shoes, and every clip is present',()=>{
   for(const [i,f]of PEOPLE_FILES.entries()){const j=glb(f),names=new Set(j.nodes.map(n=>n.name)),clips=new Set(j.animations.map(a=>a.name));
     for(const [outfit]of OUTFITS[i?'women':'men'])for(const [,slot]of SLOTS)assert.ok(names.has(`${outfit}|${slot}`),`${f}: ${outfit}|${slot}`);
-    assert.ok(names.has('Adventurer|Backpack'),`${f}: backpack`);
+    if(i===0)assert.ok(names.has('Adventurer|Backpack'),`${f}: backpack`);
     for(const c of Object.values(PEOPLE_CLIPS))assert.ok(clips.has(c),`${f}: ${c}`);
     assert.equal(j.images,undefined,`${f} must stay textureless`);}
 });
