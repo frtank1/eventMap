@@ -131,6 +131,8 @@ val appModule = module {
     factory { CreateEventUseCase(get(), get()) }
     factory { com.eventmap.server.domain.usecase.UpdateEventUseCase(get(), get()) }
     factory { com.eventmap.server.domain.usecase.DeleteEventUseCase(get()) }
+    factory { com.eventmap.server.domain.usecase.SuggestEventUseCase(get(), get()) }
+    factory { com.eventmap.server.domain.usecase.ModerateEventUseCase(get()) }
     factory { GetOrganizerUseCase(get()) }
     factory { GetOrganizerEventsUseCase(get()) }
     factory { RegisterUseCase(get()) }

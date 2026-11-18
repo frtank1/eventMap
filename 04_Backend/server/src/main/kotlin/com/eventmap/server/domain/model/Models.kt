@@ -80,6 +80,21 @@ data class Event(
     val confirmationCount: Int = 0,
     val interestCount: Int = 0,
     val venue: EventVenue? = null,
+    // Event V3 (V17)
+    val moderationStatus: String = "published", // pending|published|rejected|expired
+    val reviewedBy: String? = null,
+    val reviewedAtMs: Long? = null,
+    val rejectReason: String? = null,
+    val createdAtMs: Long = 0,
+    val recurrence: EventRecurrence? = null,
+    val area: EventArea? = null,
+    val presentation: String = "S",             // S point · M territory · L 3D scene
+    val sceneTemplate: String? = null,
+    val sceneParams: String? = null,            // JSON object, bounded; read only by scene templates
+    val sourceUrl: String? = null,
+    val sourceName: String? = null,
+    val contact: String? = null,                // guest contact for the moderator, never public
+    val externalId: String? = null,
 )
 
 data class Organizer(

@@ -48,6 +48,12 @@ interface EventRepository {
     suspend fun reviewJoin(eventId: String, ownerId: String, userId: String, approve: Boolean): String?
     /** Ближайший живой сигнал той же категории/темы для объединения свидетельств. */
     suspend fun findLiveSignalCandidate(draft: Event, radiusDegrees: Double = 0.002): Event?
+    /** Очередь модерации V17: pending — старые сверху, остальные — новые сверху. */
+    suspend fun byModeration(status: String, limit: Int = 200): List<Event>
+    /** Опубликовать или отклонить ожидающее событие. null — нет такого или решение уже принято. */
+    suspend fun moderate(id: String, publish: Boolean, reason: String?, reviewer: String): Event?
+    /** Событие редакционного импорта по его постоянному внешнему ID. */
+    suspend fun byExternalId(externalId: String): Event?
 }
 
 interface OrganizerRepository {

@@ -7,12 +7,16 @@ import com.eventmap.server.data.db.EventSignalsTable
 import com.eventmap.server.data.db.EventsTable
 import com.eventmap.server.data.db.OrganizersTable
 import com.eventmap.server.domain.model.Event
+import com.eventmap.server.domain.model.EventArea
 import com.eventmap.server.domain.model.EventQuery
+import com.eventmap.server.domain.model.EventRecurrence
 import com.eventmap.server.domain.model.GeoPoint
 import com.eventmap.server.domain.model.Money
 import com.eventmap.server.domain.repository.EventRepository
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.JoinType
+import org.jetbrains.exposed.sql.Op
+import org.jetbrains.exposed.sql.statements.UpdateBuilder
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -27,6 +31,9 @@ import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.update
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.util.UUID
 
 class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Database? = null) : EventRepository {
@@ -37,9 +44,13 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
         onColumn = EventsTable.organizerId, otherColumn = OrganizersTable.id,
     )
 
+    // Публично видно только опубликованное: предложения гостей ждут модерации (V17).
+    private fun publicOnly(): Op<Boolean> =
+        (EventsTable.visibility eq "public") and (EventsTable.moderationStatus eq "published")
+
     override suspend fun search(query: EventQuery): List<Event> = tx {
-        // приватные события (раздел N) не попадают в публичную выдачу карты
-        val q = joined.selectAll().where { EventsTable.visibility eq "public" }
+        // приватные события (раздел N) и непроверенные предложения не попадают в выдачу карты
+        val q = joined.selectAll().where { publicOnly() }
         query.bbox?.let { b ->
             q.andWhere {
                 (EventsTable.lat greaterEq b.swLat) and (EventsTable.lat lessEq b.neLat) and
@@ -69,7 +80,7 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
     override suspend fun byOrganizers(organizerIds: List<String>, limit: Int): List<Event> = tx {
         if (organizerIds.isEmpty()) emptyList()
         else joined.selectAll()
-            .where { (EventsTable.organizerId inList organizerIds) and (EventsTable.visibility eq "public") }
+            .where { (EventsTable.organizerId inList organizerIds) and publicOnly() }
             .orderBy(EventsTable.startAt, SortOrder.ASC)
             .limit(limit)
             .map(::toEvent)
@@ -81,7 +92,7 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
         val pattern = "%${q.lowercase()}%"
         joined.selectAll()
             .where {
-                (EventsTable.visibility eq "public") and (
+                publicOnly() and (
                     (EventsTable.title.lowerCase() like pattern) or
                         (EventsTable.description.lowerCase() like pattern) or
                         (EventsTable.locationName.lowerCase() like pattern)
@@ -96,7 +107,7 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
     override suspend fun categoriesLike(q: String, limit: Int): List<String> = tx {
         val pattern = "%${q.lowercase()}%"
         EventsTable.select(EventsTable.category)
-            .where { (EventsTable.category.lowerCase() like pattern) and (EventsTable.category neq "") }
+            .where { (EventsTable.category.lowerCase() like pattern) and (EventsTable.category neq "") and publicOnly() }
             .withDistinct()
             .limit(limit)
             .map { it[EventsTable.category] }
@@ -104,6 +115,7 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
 
     override suspend fun create(draft: Event): Event = tx {
         val eid = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
         EventsTable.insert {
             it[id] = eid
             it[title] = draft.title
@@ -133,8 +145,24 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
             it[buildingId] = draft.venue?.buildingId
             it[floorId] = draft.venue?.floorId
             it[roomId] = draft.venue?.roomId
+            it[moderationStatus] = draft.moderationStatus
+            it[createdAtMs] = now
+            it[contact] = draft.contact
+            it[externalId] = draft.externalId
+            writeV3(it, draft)
         }
-        draft.copy(id = eid)
+        draft.copy(id = eid, createdAtMs = now)
+    }
+
+    // Новые поля V17, общие для create/update. contact и externalId задаются только при создании.
+    private fun writeV3(it: UpdateBuilder<*>, draft: Event) {
+        it[EventsTable.recurrence] = draft.recurrence?.let { r -> json.encodeToString(r) }
+        it[EventsTable.area] = draft.area?.let { a -> json.encodeToString(a) }
+        it[EventsTable.presentation] = draft.presentation
+        it[EventsTable.sceneTemplate] = draft.sceneTemplate
+        it[EventsTable.sceneParams] = draft.sceneParams
+        it[EventsTable.sourceUrl] = draft.sourceUrl
+        it[EventsTable.sourceName] = draft.sourceName
     }
 
     override suspend fun update(id: String, draft: Event): Event? = tx {
@@ -164,9 +192,33 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
             it[buildingId] = draft.venue?.buildingId
             it[floorId] = draft.venue?.floorId
             it[roomId] = draft.venue?.roomId
+            writeV3(it, draft)
         }
         if (updated == 0) null
         else EventsTable.selectAll().where { EventsTable.id eq id }.singleOrNull()?.let(::toEvent)
+    }
+
+    override suspend fun byModeration(status: String, limit: Int): List<Event> = tx {
+        joined.selectAll().where { EventsTable.moderationStatus eq status }
+            .orderBy(EventsTable.createdAtMs, if (status == "pending") SortOrder.ASC else SortOrder.DESC)
+            .limit(limit)
+            .map(::toEvent)
+    }
+
+    override suspend fun moderate(id: String, publish: Boolean, reason: String?, reviewer: String): Event? = tx {
+        // Решение принимается один раз: повторный клик или гонка двух модераторов ничего не меняют.
+        val changed = EventsTable.update({ (EventsTable.id eq id) and (EventsTable.moderationStatus eq "pending") }) {
+            it[moderationStatus] = if (publish) "published" else "rejected"
+            it[reviewedBy] = reviewer
+            it[reviewedAtMs] = System.currentTimeMillis()
+            it[rejectReason] = if (publish) null else reason
+        }
+        if (changed == 0) null
+        else joined.selectAll().where { EventsTable.id eq id }.map(::toEvent).singleOrNull()
+    }
+
+    override suspend fun byExternalId(externalId: String): Event? = tx {
+        joined.selectAll().where { EventsTable.externalId eq externalId }.map(::toEvent).singleOrNull()
     }
 
     override suspend fun delete(id: String): Boolean = tx {
@@ -328,7 +380,24 @@ class EventRepositoryImpl(private val database: org.jetbrains.exposed.sql.Databa
         confirmationCount = r[EventsTable.confirmationCount],
         interestCount = r[EventsTable.interestCount],
         venue = r[EventsTable.buildingId]?.let { com.eventmap.server.domain.model.EventVenue(it, r[EventsTable.floorId], r[EventsTable.roomId]) },
+        moderationStatus = r[EventsTable.moderationStatus],
+        reviewedBy = r[EventsTable.reviewedBy],
+        reviewedAtMs = r[EventsTable.reviewedAtMs],
+        rejectReason = r[EventsTable.rejectReason],
+        createdAtMs = r[EventsTable.createdAtMs],
+        // Повреждённый JSON не валит выдачу: поле просто не показывается.
+        recurrence = r[EventsTable.recurrence]?.let { runCatching { json.decodeFromString<EventRecurrence>(it) }.getOrNull() },
+        area = r[EventsTable.area]?.let { runCatching { json.decodeFromString<EventArea>(it) }.getOrNull() },
+        presentation = r[EventsTable.presentation],
+        sceneTemplate = r[EventsTable.sceneTemplate],
+        sceneParams = r[EventsTable.sceneParams],
+        sourceUrl = r[EventsTable.sourceUrl],
+        sourceName = r[EventsTable.sourceName],
+        contact = r[EventsTable.contact],
+        externalId = r[EventsTable.externalId],
     )
+
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private fun normalizeSignalTitle(value: String): Set<String> =
         value.lowercase()

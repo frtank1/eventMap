@@ -123,6 +123,21 @@ object EventsTable : Table("events") {
     val buildingId = varchar("building_id", 100).nullable()
     val floorId = varchar("floor_id", 64).nullable()
     val roomId = varchar("room_id", 64).nullable()
+    // Event V3 · V17: channel, moderation and map presentation. JSON columns are validated on write.
+    val moderationStatus = varchar("moderation_status", 16).default("published") // pending|published|rejected|expired
+    val reviewedBy = varchar("reviewed_by", 64).nullable()
+    val reviewedAtMs = long("reviewed_at_ms").nullable()
+    val rejectReason = varchar("reject_reason", 1000).nullable()
+    val createdAtMs = long("created_at_ms").default(0)
+    val recurrence = text("recurrence").nullable()
+    val area = text("area").nullable()
+    val presentation = varchar("presentation", 2).default("S") // S|M|L
+    val sceneTemplate = varchar("scene_template", 40).nullable()
+    val sceneParams = text("scene_params").nullable()
+    val sourceUrl = varchar("source_url", 500).nullable()
+    val sourceName = varchar("source_name", 120).nullable()
+    val contact = varchar("contact", 200).nullable() // moderator only
+    val externalId = varchar("external_id", 100).nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

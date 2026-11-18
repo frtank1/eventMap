@@ -78,6 +78,8 @@ import com.eventmap.server.domain.usecase.GetEventTicketStatusUseCase
 import com.eventmap.server.presentation.dto.ErrorResponse
 import com.eventmap.server.presentation.routes.authRoutes
 import com.eventmap.server.presentation.routes.adminRoutes
+import com.eventmap.server.presentation.routes.adminEventRoutes
+import com.eventmap.server.presentation.routes.eventSuggestionRoutes
 import com.eventmap.server.presentation.routes.businessRoutes
 import com.eventmap.server.presentation.routes.eventRoutes
 import com.eventmap.server.presentation.routes.friendRoutes
@@ -252,6 +254,8 @@ fun Application.module() {
     val eventRepository: com.eventmap.server.domain.repository.EventRepository by inject()
     val venueCatalog: com.eventmap.server.domain.repository.VenueCatalog by inject()
     val venueEditor: com.eventmap.server.domain.repository.VenueEditor by inject()
+    val suggestEvent: com.eventmap.server.domain.usecase.SuggestEventUseCase by inject()
+    val moderateEvent: com.eventmap.server.domain.usecase.ModerateEventUseCase by inject()
 
     routing {
         // The public content channel has its own CORS policy. Do not widen API origins.
@@ -272,6 +276,7 @@ fun Application.module() {
             getFriends, eventParticipants, eventRatings, rateEvent, eventTicketStatus, purchase,
             eventRepository,
         )
+        eventSuggestionRoutes(suggestEvent) // «Предложить событие» без аккаунта → очередь модерации
         mediaRoutes(presignUpload, confirmMedia, eventMedia, mediaBlobs, config, muxVideo)
         videoRoutes(videoFeed, reactVideo, createVideo, muxVideo)
         muxRoutes(muxVideo)
@@ -289,6 +294,7 @@ fun Application.module() {
         searchRoutes(searchUseCase)
         adminRoutes(businessRepository, questRepository, config.adminKey) // /admin — модерация бизнесов и квестов
         adminVenueRoutes(venueEditor, config.adminKey)
+        adminEventRoutes(eventRepository, moderateEvent, config.adminKey) // очередь предложений событий
         }
     }
 }

@@ -71,7 +71,8 @@ fun Route.eventRoutes(
         }
     }
     get("/events/{id}") {
-        val ev = getEvent(call.parameters["id"].orEmpty())
+        // Предложение, ожидающее модерации, по прямой ссылке не открывается.
+        val ev = getEvent(call.parameters["id"].orEmpty())?.takeIf { it.moderationStatus == "published" }
         if (ev == null) call.respond(HttpStatusCode.NotFound, ErrorResponse(ErrorResponse.Body("EVENT_NOT_FOUND", "Событие не найдено")))
         else call.respond(ev.toDto())
     }
@@ -148,7 +149,7 @@ fun Route.eventRoutes(
             val userId = call.principal<JWTPrincipal>()?.payload?.getClaim("userId")?.asString()
                 ?: return@patch call.respond(HttpStatusCode.Unauthorized, ErrorResponse(ErrorResponse.Body("UNAUTHORIZED", "Нужен токен")))
             val body = call.receive<CreateEventRequest>()
-            when (val r = updateEvent(userId, call.parameters["id"].orEmpty(), body.toDraft(creatorId = userId), clearVenue = body.clearVenue)) {
+            when (val r = updateEvent(userId, call.parameters["id"].orEmpty(), body.toDraft(creatorId = userId), clearVenue = body.clearVenue, keepV3 = !body.sendsV3())) {
                 is UpdateEventUseCase.Result.Ok -> call.respond(r.event.toDto())
                 is UpdateEventUseCase.Result.NotFound ->
                     call.respond(HttpStatusCode.NotFound, ErrorResponse(ErrorResponse.Body("EVENT_NOT_FOUND", "Событие не найдено")))
@@ -260,4 +261,13 @@ internal fun CreateEventRequest.toDraft(creatorId: String) = Event(
     expiresAtMs = expiresAtMs,
     proofMediaId = proofMediaId,
     venue = venue,
+    presentation = presentation ?: "S",
+    area = area,
+    recurrence = recurrence,
+    sourceUrl = sourceUrl?.trim()?.takeIf { it.isNotEmpty() },
+    sourceName = sourceName?.trim()?.takeIf { it.isNotEmpty() },
 )
+
+/** Did the client send any V17 field? Older apps do not, and their edits must not wipe them. */
+internal fun CreateEventRequest.sendsV3() =
+    presentation != null || area != null || recurrence != null || sourceUrl != null || sourceName != null

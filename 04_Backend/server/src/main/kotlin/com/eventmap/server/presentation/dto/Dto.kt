@@ -49,6 +49,12 @@ import kotlinx.serialization.Serializable
     val proofMediaId: String? = null,
     val venue: com.eventmap.server.domain.model.EventVenue? = null,
     val clearVenue: Boolean = false,
+    // V17. null = not sent: an older client; PATCH then keeps the stored values.
+    val presentation: String? = null,
+    val area: com.eventmap.server.domain.model.EventArea? = null,
+    val recurrence: com.eventmap.server.domain.model.EventRecurrence? = null,
+    val sourceUrl: String? = null,
+    val sourceName: String? = null,
 )
 @Serializable data class EventDto(
     val id: String, val title: String, val description: String, val category: String, val status: String,
@@ -62,6 +68,14 @@ import kotlinx.serialization.Serializable
     val capacity: Int? = null, val expiresAtMs: Long? = null,
     val confirmationCount: Int = 0, val interestCount: Int = 0,
     val venue: com.eventmap.server.domain.model.EventVenue? = null,
+    // V17: how the event looks on the map and where it was announced. Guest contacts are never here.
+    val presentation: String = "S",
+    val area: com.eventmap.server.domain.model.EventArea? = null,
+    val recurrence: com.eventmap.server.domain.model.EventRecurrence? = null,
+    val sceneTemplate: String? = null,
+    val sceneParams: String? = null,
+    val sourceUrl: String? = null,
+    val sourceName: String? = null,
 )
 @Serializable data class OrganizerDto(
     val id: String, val name: String, val bio: String, val avatarUrl: String? = null,
@@ -195,6 +209,43 @@ fun Event.toDto() = EventDto(
     goingCount, liveViewers, ratingAvg, ratingCount, cover, organizerId ?: "", organizerName,
     commentsCount, kind, sourceType, visibility, joinPolicy, audience, minAge,
     capacity, expiresAtMs, confirmationCount, interestCount, venue,
+    presentation = presentation, area = area, recurrence = recurrence,
+    sceneTemplate = sceneTemplate, sceneParams = sceneParams,
+    sourceUrl = sourceUrl, sourceName = sourceName,
+)
+
+// ===== Предложения и модерация событий (V17) =====
+// Тело POST /events/suggestions. Поле website — ловушка для ботов: в форме его не видно.
+@Serializable data class SuggestEventRequest(
+    val title: String = "",
+    val description: String = "",
+    val category: String = "",
+    val startAt: String = "",
+    val endAt: String = "",
+    val location: LocationDto? = null,
+    val buildingId: String? = null,
+    val price: PriceDto = PriceDto("free"),
+    val sourceUrl: String? = null,
+    val contact: String? = null,
+    val website: String = "",
+)
+@Serializable data class SuggestEventResponse(val status: String)
+@Serializable data class AdminEventDto(
+    val id: String, val title: String, val description: String, val category: String,
+    val startAt: String, val endAt: String, val location: LocationDto, val price: PriceDto,
+    val sourceType: String, val moderationStatus: String, val createdAtMs: Long,
+    val sourceUrl: String? = null, val sourceName: String? = null,
+    val contact: String? = null, val buildingId: String? = null,
+    val reviewedAtMs: Long? = null, val rejectReason: String? = null,
+)
+
+fun Event.toAdminDto() = AdminEventDto(
+    id = id, title = title, description = description, category = category,
+    startAt = startAt, endAt = endAt, location = LocationDto(location.lat, location.lng, location.name),
+    price = PriceDto(price.type, price.amount, price.currency),
+    sourceType = sourceType, moderationStatus = moderationStatus, createdAtMs = createdAtMs,
+    sourceUrl = sourceUrl, sourceName = sourceName, contact = contact, buildingId = venue?.buildingId,
+    reviewedAtMs = reviewedAtMs, rejectReason = rejectReason,
 )
 
 fun Organizer.toDto() = OrganizerDto(id, name, bio, avatarUrl, isVerified, eventsCount, subscribers)

@@ -4,6 +4,11 @@ import kotlinx.serialization.Serializable
 import kotlin.math.abs
 
 @Serializable data class EventVenue(val buildingId: String, val floorId: String? = null, val roomId: String? = null)
+/** Weekly rule: ISO weekdays (1 = Monday) at the start/end time of day, until an Astana date (inclusive). */
+@Serializable data class EventRecurrence(val weekdays: List<Int>, val until: String)
+/** Territory of a large event: polygon of [lng, lat] pairs and named entrances. */
+@Serializable data class EventArea(val polygon: List<List<Double>>, val entrances: List<EventEntrance> = emptyList())
+@Serializable data class EventEntrance(val lng: Double, val lat: Double, val name: String = "")
 @Serializable data class PlanPoint(val x: Double, val y: Double)
 @Serializable data class VenuePlan(val width: Double, val height: Double, val outline: List<PlanPoint> = emptyList())
 @Serializable data class VenueRoom(val id: String, val name: String, val polygon: List<PlanPoint> = emptyList())
