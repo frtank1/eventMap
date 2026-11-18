@@ -4,6 +4,7 @@
   "description": "Живая 3D-карта Астаны: что происходит в городе сегодня и на выходных.",
   "siteUrl": "",
   "suggestUrl": "",
+  "apiBase": "",
   "apiEvents": "",
   "theme": "auto",
   "demoEvents": true,

@@ -92,3 +92,45 @@ export function parseWeather(json){
   return {kind,temp:Number.isFinite(t)&&Math.abs(t)<70?Math.round(t):null};
 }
 export const formatTemp=t=>t===null||t===undefined?'':`${t>0?'+':t<0?'−':''}${Math.abs(t)}°`;
+
+// ---------- «Предложить событие» (POST /events/suggestions) ----------
+// Mirrors the server rules so a guest sees the problem before sending. The server stays the
+// authority: it validates again and nothing reaches the map until a moderator publishes it.
+export const SUGGEST_LIMITS=Object.freeze({title:120,description:2000,contact:200,url:500,price:10000000});
+const clean=v=>typeof v==='string'?v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim():'';
+// A date and wall-clock time in Astana → UTC instant (the server parses ISO instants with Z).
+export function astanaInstant(date,time){
+  const d=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date||''),t=/^(\d{2}):(\d{2})$/.exec(time||'');if(!d||!t)return null;
+  const [y,m,day,h,min]=[+d[1],+d[2],+d[3],+t[1],+t[2]];if(m<1||m>12||day<1||day>31||h>23||min>59)return null;
+  const ms=Date.UTC(y,m-1,day,h,min)-ASTANA_OFFSET_MS,check=new Date(ms+ASTANA_OFFSET_MS);
+  return check.getUTCDate()===day?ms:null; // rejects 31 February and friends
+}
+export function buildSuggestion(form,place,now){
+  const title=clean(form.title),description=clean(form.description),contact=clean(form.contact),url=clean(form.url);
+  if(!place||!Number.isFinite(place.lat)||!Number.isFinite(place.lng))return {error:'Выберите место на карте'};
+  if(place.lat<BOUNDS.south||place.lat>BOUNDS.north||place.lng<BOUNDS.west||place.lng>BOUNDS.east)return {error:'Пока принимаем события только в Астане'};
+  if(!title)return {error:'Напишите название'};
+  if(title.length>SUGGEST_LIMITS.title)return {error:`Название — до ${SUGGEST_LIMITS.title} символов`};
+  if(!CATEGORIES[form.category])return {error:'Выберите категорию'};
+  const start=astanaInstant(form.date,form.start);if(start===null)return {error:'Укажите дату и время начала'};
+  let end=null;
+  if(form.end){end=astanaInstant(form.date,form.end);if(end===null)return {error:'Проверьте время окончания'};if(end<=start)end+=86400000;} // past midnight
+  if((end??start+3*3600000)<=now)return {error:'Это время уже прошло'};
+  if(start>now+366*86400000)return {error:'Событие должно быть в ближайший год'};
+  if(description.length>SUGGEST_LIMITS.description)return {error:`Описание — до ${SUGGEST_LIMITS.description} символов`};
+  if(url&&!httpUrl(url))return {error:'Ссылка должна начинаться с https:// или http://'};
+  if(url.length>SUGGEST_LIMITS.url)return {error:'Слишком длинная ссылка'};
+  if(contact.length>SUGGEST_LIMITS.contact)return {error:`Контакт — до ${SUGGEST_LIMITS.contact} символов`};
+  const amount=form.price===''||form.price===undefined||form.price===null?0:Number(form.price);
+  if(!Number.isInteger(amount)||amount<0||amount>SUGGEST_LIMITS.price)return {error:'Цена — целое число тенге'};
+  const name=clean(place.title)&&place.title!=='Точка на карте'?clean(place.title):clean(place.address)||'Точка на карте';
+  return {body:{title,description,category:form.category,startAt:new Date(start).toISOString(),endAt:end===null?'':new Date(end).toISOString(),
+    location:{lat:place.lat,lng:place.lng,name:name.slice(0,255)},
+    ...(typeof place.buildingId==='string'&&place.buildingId?{buildingId:place.buildingId}:{}),
+    price:amount>0?{type:'paid',amount,currency:'KZT'}:{type:'free',amount:0,currency:'KZT'},
+    ...(url?{sourceUrl:url}:{}),...(contact?{contact}:{}),website:clean(form.website)}};
+}
+export function suggestEndpoint(apiBase){
+  try{const u=new URL(apiBase);if(u.protocol!=='https:'&&!(u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname)))return '';
+    return u.href.replace(/\/?$/,'/')+'events/suggestions';}catch{return '';}
+}

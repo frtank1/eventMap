@@ -27,3 +27,16 @@ button:focus-visible,a:focus-visible{outline:3px solid var(--em-accent);outline-
 .em-look-label{margin:12px 0 6px;color:#5b6778;font:600 12px system-ui,sans-serif;text-transform:uppercase;letter-spacing:.04em}
 .em-seg{display:flex;flex-wrap:wrap;gap:6px}
 .em-mode{max-width:44vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.em-suggest{border:0;cursor:pointer}
+.em-pick{position:fixed;z-index:7;left:12px;right:12px;top:calc(max(10px,env(safe-area-inset-top)) + 96px);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 8px 8px 14px;border-radius:16px;background:#17263aee;color:#fff;font:600 13px system-ui,sans-serif;box-shadow:0 8px 24px #17263a55}
+.em-where-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.em-where-row .em-where{margin:0}
+.em-linkbtn{flex:none;padding:6px 0;border:0;background:none;color:var(--em-accent);font:600 13px system-ui,sans-serif;cursor:pointer}
+.em-form{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.em-field{display:flex;flex-direction:column;gap:4px;min-width:0;font:600 12px system-ui,sans-serif}.em-field small{font-weight:400;opacity:.7}
+.em-field input,.em-field select,.em-field textarea{width:100%;box-sizing:border-box;min-height:42px;padding:9px 11px;border-radius:12px;border:1px solid var(--em-line);background:#fff;color:var(--em-ink);font:400 16px system-ui,sans-serif}
+.em-field textarea{resize:vertical}
+.em-three{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+.em-hp{position:absolute!important;left:-10000px;width:1px;height:1px;overflow:hidden}
+.em-error{margin:0;color:#b4231f;font:600 13px system-ui,sans-serif}.em-fine{margin:0;font-size:12px;opacity:.7}
+body.em-picking .em-suggest{display:none}
+@media(min-width:760px){.em-pick{left:50%;right:auto;transform:translateX(-50%)}}

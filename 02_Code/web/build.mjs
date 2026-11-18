@@ -66,6 +66,12 @@ if(config.apiEvents&&/^https:\/\//.test(config.apiEvents)){
   const origin=new URL(config.apiEvents).origin;
   if(!html.includes(origin)){if(!html.includes("connect-src 'self'"))throw new Error('Engine CSP has no connect-src to extend');html=html.replace("connect-src 'self'",`connect-src 'self' ${origin}`);}
 }
+// «Предложить событие» posts to the API server: only that origin (HTTPS, or localhost while developing).
+if(config.apiBase){
+  const u=new URL(config.apiBase),local=u.protocol==='http:'&&['localhost','127.0.0.1'].includes(u.hostname);
+  if(u.protocol!=='https:'&&!local)throw new Error('config.apiBase must be https:// (or http://localhost for development)');
+  if(!html.includes(u.origin)){if(!html.includes("connect-src 'self'"))throw new Error('Engine CSP has no connect-src to extend');html=html.replace("connect-src 'self'",`connect-src 'self' ${u.origin}`);}
+}
 // Live weather for «Авто» (Open-Meteo by default): only that origin, and only over HTTPS.
 if(config.weatherUrl&&/^https:\/\//.test(config.weatherUrl)){
   const origin=new URL(config.weatherUrl).origin;

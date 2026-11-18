@@ -1,7 +1,8 @@
 // Public web shell around the 3D city engine. It plays the part the native app
 // plays on phones: it feeds the engine public events and reacts to taps.
 // The engine bundle itself is used unchanged, through its existing bridge.
-import {normalizeEvents,filterEvents,formatWhen,toCityEvent,isNight,themeFor,mapUrl,shareUrl,nearby,isLive,CATEGORIES,parseWeather,formatTemp} from './lib.js';
+import {normalizeEvents,filterEvents,formatWhen,toCityEvent,isNight,themeFor,mapUrl,shareUrl,nearby,isLive,CATEGORIES,parseWeather,formatTemp,
+  buildSuggestion,suggestEndpoint,SUGGEST_LIMITS,ASTANA_OFFSET_MS} from './lib.js';
 
 const params=new URLSearchParams(location.search);
 const state={config:{},events:[],filter:'all',selected:null,covers:new Map(),coverFiles:{},demo:false,look:{phase:'auto',season:'auto',weather:'auto'},live:null};
@@ -97,7 +98,66 @@ function openPlace(place){
     box.append(head);
     if(here.length){const list=el('div','em-list');for(const e of here.slice(0,6)){const b=el('button','em-row');b.append(el('strong','',e.title),el('small','',formatWhen(e,now())));b.onclick=()=>openEvent(e.id);list.append(b);}box.append(list);}
     else box.append(el('p','em-text','Здесь пока нет событий.'));
-    if(state.config.suggestUrl)box.append(link('Предложить событие здесь',state.config.suggestUrl,'em-action em-primary'));
+    if(suggestApi()){const b=el('button','em-action em-primary','Предложить событие здесь');b.onclick=()=>openSuggest(place);box.append(b);}
+    else if(state.config.suggestUrl)box.append(link('Предложить событие здесь',state.config.suggestUrl,'em-action em-primary'));
+  });
+}
+
+// ---------- «Предложить событие»: place on the map → short form → moderation queue ----------
+const suggestApi=()=>suggestEndpoint(state.config.apiBase||'');
+let pickHint=null;
+function startPicking(){
+  closeSheet();state.picking=true;pickHint?.remove();
+  pickHint=el('div','em-pick');pickHint.setAttribute('role','status');
+  const cancel=el('button','em-chipbtn','Отмена');cancel.onclick=stopPicking;
+  pickHint.append(el('span','','Коснитесь места на карте, где пройдёт событие'),cancel);document.body.append(pickHint);document.body.classList.add('em-picking');
+}
+function stopPicking(){state.picking=false;pickHint?.remove();pickHint=null;document.body.classList.remove('em-picking');}
+function openSuggest(place){
+  const endpoint=suggestApi();if(!endpoint)return;
+  openSheet('Предложить событие',box=>{
+    box.append(el('h2','em-look-title','Предложить событие'));
+    const named=place.title&&place.title!=='Точка на карте'?place.title:'';
+    const whereRow=el('div','em-where-row'),change=el('button','em-linkbtn','Другое место');change.type='button';change.onclick=startPicking;
+    whereRow.append(el('p','em-where',[named,place.address].filter(Boolean).join(' · ')||'Точка на карте'),change);box.append(whereRow);
+    const form=el('form','em-form');form.noValidate=true;
+    const input=(name,type,props={})=>{const i=el(type==='textarea'?'textarea':'input');if(type!=='textarea')i.type=type;i.name=name;Object.assign(i,props);return i;};
+    const field=(label,control,hint)=>{const l=el('label','em-field');l.append(el('span','',label),control);if(hint)l.append(el('small','',hint));return l;};
+    const category=el('select');category.name='category';category.append(new Option('Выберите категорию',''));
+    for(const [key,c] of Object.entries(CATEGORIES))if(key!=='newyear'||themeFor(now())==='newyear')category.append(new Option(c.label,key));
+    const today=new Date(now()+ASTANA_OFFSET_MS).toISOString().slice(0,10);
+    const times=el('div','em-three');
+    times.append(field('Дата',input('date','date',{value:today,min:today,required:true})),field('Начало',input('start','time',{step:300,required:true})),field('Конец',input('end','time',{step:300})));
+    // People never see this field; a bot that fills it is answered as usual and nothing is kept.
+    const trap=el('label','em-hp');trap.setAttribute('aria-hidden','true');trap.append('Сайт',input('website','text',{tabIndex:-1,autocomplete:'off'}));
+    const error=el('p','em-error');error.setAttribute('role','alert');error.hidden=true;
+    const submit=el('button','em-action em-primary','Отправить на проверку');submit.type='submit';
+    form.append(field('Название',input('title','text',{maxLength:SUGGEST_LIMITS.title,required:true,autocomplete:'off'})),field('Категория',category),times,
+      field('Описание',input('description','textarea',{maxLength:SUGGEST_LIMITS.description,rows:3}),'Что будет, для кого, нужна ли регистрация'),
+      field('Ссылка на анонс',input('url','url',{maxLength:SUGGEST_LIMITS.url,placeholder:'https://…',inputMode:'url'})),
+      field('Цена, ₸',input('price','number',{min:0,step:100,placeholder:'Бесплатно',inputMode:'numeric'})),
+      field('Как с вами связаться',input('contact','text',{maxLength:SUGGEST_LIMITS.contact,autocomplete:'off'}),'Необязательно. Видит только модератор, на карте не показывается.'),
+      trap,error,submit,el('p','em-fine','Событие появится на карте после проверки модератором.'));
+    let sending=false;
+    const fail=text=>{error.textContent=text;error.hidden=false;};
+    form.onsubmit=async ev=>{
+      ev.preventDefault();if(sending)return;error.hidden=true;
+      const r=buildSuggestion(Object.fromEntries(new FormData(form)),place,now());if(r.error){fail(r.error);return;}
+      sending=true;submit.disabled=true;submit.textContent='Отправляем…';
+      const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
+      try{
+        const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r.body),credentials:'omit',cache:'no-store',signal:ctl.signal});
+        if(res.status===202){
+          const thanks=el('div','em-head'),done=el('button','em-action em-primary','Готово');done.onclick=closeSheet;
+          thanks.append(el('h2','','Спасибо!'),el('p','em-text','Предложение у модератора. Если всё в порядке, событие появится на карте.'),done);
+          whereRow.remove();form.replaceWith(thanks);done.focus({preventScroll:true});return;
+        }
+        let message='';try{message=(await res.json())?.error?.message||'';}catch{/* not JSON */}
+        fail(res.status===429?'Слишком много предложений подряд. Попробуйте через час.':message||'Не удалось отправить. Попробуйте позже.');
+      }catch{fail('Нет связи с сервером. Попробуйте ещё раз.');}
+      finally{clearTimeout(timer);sending=false;submit.disabled=false;submit.textContent='Отправить на проверку';}
+    };
+    box.append(form);
   });
 }
 
@@ -152,9 +212,10 @@ function chrome(){
     mode.textContent=[p,z,weather==='auto'?live:weather!=='clear'?label('weather',weather):''].filter(Boolean).join(' · ');};
   mode.onclick=openLook;
   bar.append(brand,chips,mode);document.body.append(bar,count);render();paintLook();
-  if(state.config.suggestUrl)document.body.append(link('+ Предложить событие',state.config.suggestUrl,'em-suggest'));
+  if(suggestApi()){const b=el('button','em-suggest','+ Предложить событие');b.onclick=startPicking;document.body.append(b);}
+  else if(state.config.suggestUrl)document.body.append(link('+ Предложить событие',state.config.suggestUrl,'em-suggest'));
   if(state.demo)document.body.append(el('div','em-demo','Демо-данные'));
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet();});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSheet();stopPicking();}});
   return render;
 }
 
@@ -172,7 +233,7 @@ async function start(){
   window.addEventListener('eventmap-message',e=>{
     const m=e.detail;if(!m||m.v!==1)return;
     if(m.type==='event')openEvent(m.id);
-    if(m.type==='place')openPlace(m);
+    if(m.type==='place'){if(state.picking){stopPicking();openSuggest(m);}else openPlace(m);}
     if(m.type==='covers')void answerCovers(m.ids);
     if(m.type==='ready')push();
   });
